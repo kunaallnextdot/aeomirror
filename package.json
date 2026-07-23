@@ -1,0 +1,29 @@
+{
+  "name": "aeomirror",
+  "version": "1.0.0",
+  "private": true,
+  "description": "AEOMirror monorepo — FastAPI backend + Vite/React frontend. One-command local dev.",
+  "scripts": {
+    "dev": "concurrently -k -n backend,frontend -c blue,green \"npm:dev:backend\" \"npm:dev:frontend\"",
+    "dev:backend": "cd backend && { test -x .venv/bin/python || { echo '[dev:backend] Backend venv missing. Run: npm run setup:backend' >&2; exit 1; }; } && exec .venv/bin/python -m uvicorn app.main:app --reload --port 8000",
+    "dev:frontend": "npm run dev --prefix frontend",
+    "setup:backend": "bash scripts/setup-backend.sh",
+    "install:frontend": "npm install --prefix frontend",
+    "test:backend": "cd backend && { test -x .venv/bin/python || { echo '[test:backend] Backend venv missing. Run: npm run setup:backend' >&2; exit 1; }; } && .venv/bin/python -m pytest -q",
+    "build:frontend": "npm run build --prefix frontend",
+    "db:migrate": "cd backend && .venv/bin/alembic revision --autogenerate",
+    "db:upgrade": "cd backend && .venv/bin/alembic upgrade head",
+    "db:downgrade": "cd backend && .venv/bin/alembic downgrade -1",
+    "services:up": "docker compose -f docker-compose.services.yml up -d",
+    "services:down": "docker compose -f docker-compose.services.yml down",
+    "services:logs": "docker compose -f docker-compose.services.yml logs -f",
+    "loadtest": "cd backend && .venv/bin/python -m tests.loadtest",
+    "postinstall": "npm install --prefix frontend"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.0"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

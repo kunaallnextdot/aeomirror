@@ -1,0 +1,39 @@
+# Local development infrastructure ONLY: PostgreSQL + Redis.
+# Start with:  npm run services:up   (stop: npm run services:down)
+#
+# Credentials here are DEVELOPMENT-ONLY placeholders — never used in production.
+# The app reads DATABASE_URL / REDIS_URL from backend/.env; the defaults below
+# match backend/.env.example:
+#   DATABASE_URL=postgresql+psycopg://aeomirror:password@localhost:5432/aeomirror
+#   REDIS_URL=redis://localhost:6379/0
+services:
+  postgres:
+    image: postgres:16
+    container_name: aeomirror-postgres
+    environment:
+      POSTGRES_USER: aeomirror
+      POSTGRES_PASSWORD: password        # dev-only placeholder
+      POSTGRES_DB: aeomirror
+    ports:
+      - "5432:5432"
+    volumes:
+      - aeomirror_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U aeomirror -d aeomirror"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7
+    container_name: aeomirror-redis
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  aeomirror_pgdata:

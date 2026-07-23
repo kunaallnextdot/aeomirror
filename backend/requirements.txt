@@ -1,0 +1,14 @@
+fastapi==0.111.0
+uvicorn[standard]==0.30.1
+pydantic==2.7.4
+pydantic-settings==2.3.4
+SQLAlchemy==2.0.31
+beautifulsoup4==4.12.3
+lxml==5.2.2
+httpx==0.27.0
+python-dotenv==1.0.1
+# --- Phase 1: production infra (INTEGRATIONS.md A1/A2/A3) ---
+psycopg[binary]==3.2.9     # PostgreSQL driver (psycopg 3). URL: postgresql+psycopg://
+redis==5.0.7               # shared cache + rate-limit store
+alembic==1.13.2            # database migrations (replaces create_all on startup)
+pytest==8.2.2

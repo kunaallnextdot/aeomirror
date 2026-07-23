@@ -1,0 +1,64 @@
+# Full production-like stack: Postgres + Redis + backend (migrations on start) +
+# frontend. Credentials here are DEV-ONLY placeholders. In real production use
+# managed Postgres/Redis and inject DATABASE_URL/REDIS_URL/secrets from your
+# platform's secret store — do NOT commit real values.
+#
+#   docker compose up --build
+#   frontend: http://localhost:8080   backend: http://localhost:8000 (docs at /docs)
+
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: aeomirror
+      POSTGRES_PASSWORD: password        # dev-only placeholder
+      POSTGRES_DB: aeomirror
+    volumes:
+      - backend_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U aeomirror -d aeomirror"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  backend:
+    build: ./backend
+    ports:
+      - "8000:8000"
+    environment:
+      - ENVIRONMENT=production
+      - DATABASE_URL=postgresql+psycopg://aeomirror:password@postgres:5432/aeomirror
+      - REDIS_URL=redis://redis:6379/0
+      - CORS_ORIGINS=http://localhost:8080
+      - LOG_LEVEL=INFO
+      # - ENABLE_HSTS=True        # enable when served over HTTPS behind a proxy
+      # - ADMIN_TOKEN=change-me   # required to reach /debug/* in production
+      # - RESEND_API_KEY=...      # optional lead email (see INTEGRATIONS.md B1)
+      # - EMAIL_FROM=AEOMirror <hi@aeomirror.com>
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        # Static build bakes this in. Point at your deployed API in real prod.
+        VITE_API_URL: http://localhost:8000
+    ports:
+      - "8080:80"
+    depends_on:
+      - backend
+
+volumes:
+  backend_data:
