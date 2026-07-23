@@ -4,7 +4,11 @@ __pycache__/
 .venv/
 venv/
 *.db
+
+# env: ignore real/secret env files; keep .env.example and .env.development (committed).
 .env
+.env.local
+.env.*.local
 
 # node
 node_modules/

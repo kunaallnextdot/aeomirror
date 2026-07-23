@@ -7,8 +7,18 @@
 //
 // Point VITE_API_URL at your deployed API in production.
 
-const API = import.meta.env.VITE_API_URL || "http://localhost:8000";
+// API base URL — comes ONLY from the environment (Vite injects it at build time).
+// No hardcoded URL lives in the code:
+//   - local dev:  frontend/.env.development (committed) sets it
+//   - production: Vercel Environment Variable VITE_API_URL (set in the dashboard)
+// See frontend/.env.example and the README for details.
+const API = import.meta.env.VITE_API_URL;
 const MOCK_ENABLED = import.meta.env.VITE_ENABLE_MOCK_SCANNER === "true";
+
+if (!API && import.meta.env.DEV) {
+  // Help catch a misconfigured environment early (dev only; never in production).
+  console.warn("[AEOMirror] VITE_API_URL is not set — create frontend/.env.development or set it in your environment.");
+}
 
 // Typed error the UI can inspect. `code` is the HTTP status (number) or a short
 // string ("network"). `message` is always safe to show to a user — it never

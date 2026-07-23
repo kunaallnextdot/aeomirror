@@ -280,6 +280,39 @@ VITE_API_URL=https://api.example.com npm run build:frontend   # or the Docker bu
 
 `VITE_API_URL` is compiled into the static bundle, so rebuild when it changes.
 
+### Frontend API URL configuration (Vercel)
+
+The frontend reads the backend URL **only** from `import.meta.env.VITE_API_URL` —
+there is no hardcoded URL anywhere in the code.
+
+**Local development** (works out of the box — no manual env editing):
+
+```bash
+cd frontend
+npm install
+npm run dev          # http://localhost:5173
+```
+
+`frontend/.env.development` (committed) already sets
+`VITE_API_URL=http://localhost:8000`, and Vite loads it automatically in dev mode.
+To point your local frontend at a different backend, create `frontend/.env.local`
+(gitignored) and override it:
+
+```bash
+# frontend/.env.local
+VITE_API_URL=http://localhost:8000
+```
+
+**Production (Vercel)** — do NOT commit the production URL; supply it in the dashboard:
+
+1. Vercel project → **Settings → Environment Variables**
+2. Add: `VITE_API_URL = https://api.aeomirror.com` (Production scope)
+3. **Redeploy.** Vite injects env vars at **build time**, so a change to a Vercel
+   environment variable only takes effect after a new build/deploy.
+
+Because `.env.development` is dev-only, it can never leak `localhost` into a Vercel
+production build — production always uses the dashboard value.
+
 ### Backend deployment
 
 The backend image (`backend/Dockerfile`) runs as a non-root user, has a
