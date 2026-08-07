@@ -1,0 +1,21 @@
+# Keep the production image lean and free of secrets/local state.
+.venv/
+venv/
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+tests/
+*.db
+*.sqlite
+*.sqlite3
+# Secrets — NEVER copy real env files into the image (config comes from the platform).
+.env
+.env.*
+!.env.example
+# Local tooling / VCS
+.git/
+.gitignore
+.mypy_cache/
+.ruff_cache/
+*.log

@@ -54,9 +54,13 @@ async def _sleep_backoff(attempt: int) -> None:
     await asyncio.sleep(capped * (0.5 + random.random() * 0.5))  # full-ish jitter
 
 
-async def _with_retry(factory):
-    """Run an async operation with bounded retries on transient failures only."""
-    attempts = settings.fetch_retry_count + 1
+async def _with_retry(factory, retries: int | None = None):
+    """Run an async operation with bounded retries on transient failures only.
+
+    `retries` overrides the global `fetch_retry_count` for this call only (used by the
+    interactive content-insight re-fetch, which doesn't need the scanner's full budget);
+    None keeps the global default."""
+    attempts = (settings.fetch_retry_count if retries is None else retries) + 1
     for i in range(attempts):
         try:
             return await factory()
@@ -89,7 +93,10 @@ async def _fetch_page(client: httpx.AsyncClient, start_url: str) -> tuple[int, s
                 loc = resp.headers.get("location")
                 if loc:
                     target = urljoin(current, loc)
-                    validate_url(target)   # SSRF re-check on the redirect target
+                    # SSRF re-check on the redirect target. check_chars=False: a sloppy
+                    # Location (raw space/pipe) must not kill an otherwise-safe scan; the
+                    # IP-range checks still run. httpx encodes the path when it requests.
+                    validate_url(target, check_chars=False)
                     current = target
                     continue
             if resp.status_code in _RETRY_STATUS:
@@ -106,11 +113,13 @@ async def _exists(client: httpx.AsyncClient, url: str) -> bool:
         return False
 
 
-async def fetch(url: str, *, transport: "httpx.BaseTransport | None" = None) -> PageBundle:
+async def fetch(url: str, *, transport: "httpx.BaseTransport | None" = None,
+                retries: int | None = None) -> PageBundle:
     """Live fetch. The URL must already be SSRF-validated by the caller; redirect
     targets are validated here. Raises UnsafeUrlError (SSRF) or FetchError.
 
-    `transport` is a test-only seam for injecting an httpx.MockTransport."""
+    `transport` is a test-only seam for injecting an httpx.MockTransport. `retries`
+    overrides the global `fetch_retry_count` for this call only (None → global)."""
     # defense-in-depth: reject non-http(s) even if a caller skipped validation
     if urlparse(url).scheme not in ("http", "https"):
         raise UnsafeUrlError("Only http and https URLs are allowed.")
@@ -124,7 +133,7 @@ async def fetch(url: str, *, transport: "httpx.BaseTransport | None" = None) -> 
         follow_redirects=False,  # we follow manually so each hop is revalidated
         transport=transport,
     ) as client:
-        status, html, resp_headers = await _with_retry(lambda: _fetch_page(client, url))
+        status, html, resp_headers = await _with_retry(lambda: _fetch_page(client, url), retries)
 
         robots = ""
         try:
@@ -135,12 +144,20 @@ async def fetch(url: str, *, transport: "httpx.BaseTransport | None" = None) -> 
             pass
 
         llms_present = await _exists(client, f"{origin}/llms.txt")
-        sitemap_present = ("sitemap" in robots.lower()) or await _exists(
-            client, f"{origin}/sitemap.xml"
-        )
+
+        # Capture the sitemap body (capped) so the sitemap signal can validate it.
+        sitemap_xml = ""
+        try:
+            sm = await client.get(f"{origin}/sitemap.xml")
+            if sm.status_code == 200:
+                sitemap_xml = sm.text[:200_000]
+        except httpx.HTTPError:
+            pass
+        sitemap_present = bool(sitemap_xml) or ("sitemap" in robots.lower())
 
     return PageBundle(
         url=url, html=html, robots_txt=robots,
         llms_txt_present=llms_present, sitemap_present=sitemap_present,
+        sitemap_xml=sitemap_xml,
         status_code=status, headers=resp_headers,
     )

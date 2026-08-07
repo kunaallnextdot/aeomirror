@@ -8,6 +8,12 @@ class ScanRequest(BaseModel):
     url: str
 
 
+class BulkScanRequest(BaseModel):
+    """JSON body for POST /v1/scan/bulk. A file upload (CSV/XLSX) is the alternative
+    input and is read from the multipart form instead of this model."""
+    urls: list[str] = []
+
+
 class CheckOut(BaseModel):
     id: str
     label: str
@@ -41,6 +47,18 @@ class CrawlerOut(BaseModel):
     status: str
 
 
+class SectionOut(BaseModel):
+    """One AI-visibility signal (Phase 3). Additive to the legacy family model."""
+    id: str
+    label: str
+    score: int
+    status: str                       # pass | warn | fail
+    weight: float
+    issues: list[str] = []
+    recommendations: list[str] = []
+    evidence: dict = {}
+
+
 class ScanResponse(BaseModel):
     scan_id: str
     url: str
@@ -51,6 +69,27 @@ class ScanResponse(BaseModel):
     top_issues: list[IssueOut]
     crawlers: list[CrawlerOut]
     remaining_free_scans: int
+    # --- Phase 3: modular AI-visibility signals (additive, backward-compatible) ---
+    overall_score: int | None = None
+    scanner_version: str | None = None
+    scanned_at: str | None = None
+    duration_ms: int | None = None
+    sections: list[SectionOut] = []
+    # --- bulk scan report (additive). Present only for bulk scans; None for
+    # single-page scans so old rows and the single-page UI still work.
+    # Shape: {"pages": [{url, overall_score, status_label, top_issue,
+    #         sections_summary, error?}], "page_count", "avg_score",
+    #         "best": {url, score}, "worst": {url, score}, "requested", "truncated"}
+    bulk: dict | None = None
+    # --- lifecycle (background bulk scans). "completed" for single-page scans; a bulk
+    # scan moves pending -> running -> completed | failed. progress is the live state
+    # while running: {total, done, failed, current_url}.
+    status: str | None = None
+    progress: dict | None = None
+    # Safe, user-facing failure message for a FAILED (bulk) scan, surfaced from
+    # result["error"]. None for healthy scans. Only this string is exposed — never the
+    # whole internal result dict.
+    error: str | None = None
 
 
 class LeadRequest(BaseModel):

@@ -1,0 +1,109 @@
+# Render blueprint for the AEOMirror backend (Phase 10).
+# Frontend is deployed separately on Vercel (see frontend/vercel.json).
+#
+# Provisions: API web service, a standalone monitoring worker, managed PostgreSQL,
+# and managed Redis. Secrets (JWT_SECRET, STRIPE_*, RESEND_API_KEY, SENTRY_DSN,
+# ADMIN_EMAILS) are set in the Render dashboard, never committed.
+
+databases:
+  - name: aeomirror-db
+    databaseName: aeomirror
+    plan: starter
+    postgresMajorVersion: "16"
+
+services:
+  # ---------------- managed Redis ----------------
+  - type: redis
+    name: aeomirror-redis
+    plan: starter
+    maxmemoryPolicy: allkeys-lru
+    ipAllowList: []          # only reachable from Render services
+
+  # ---------------- API ----------------
+  - type: web
+    name: aeomirror-api
+    runtime: docker
+    rootDir: backend
+    dockerfilePath: ./Dockerfile
+    plan: starter
+    healthCheckPath: /healthz
+    autoDeploy: true
+    envVars:
+      - key: ENVIRONMENT
+        value: production
+      - key: WEB_CONCURRENCY
+        value: "2"
+      - key: SCHEDULER_ENABLED
+        value: "false"        # the worker service runs scans instead
+      - key: ENABLE_HSTS
+        value: "true"
+      - key: TRUST_PROXY
+        value: "true"
+      - key: CORS_ORIGINS
+        value: https://aeomirror.com,https://www.aeomirror.com
+      - key: APP_BASE_URL
+        value: https://aeomirror.com
+      - key: DATABASE_URL
+        fromDatabase:
+          name: aeomirror-db
+          property: connectionString
+      - key: REDIS_URL
+        fromService:
+          type: redis
+          name: aeomirror-redis
+          property: connectionString
+      - key: JWT_SECRET
+        generateValue: true   # stable, Render-generated secret
+      # Set in the dashboard (do not commit):
+      - key: STRIPE_SECRET_KEY
+        sync: false
+      - key: STRIPE_WEBHOOK_SECRET
+        sync: false
+      - key: STRIPE_PRICE_PRO
+        sync: false
+      - key: RESEND_API_KEY
+        sync: false
+      - key: EMAIL_FROM
+        sync: false
+      - key: ADMIN_EMAILS
+        sync: false
+      - key: SENTRY_DSN
+        sync: false
+      - key: ADMIN_TOKEN
+        sync: false
+      - key: ANTHROPIC_API_KEY
+        sync: false          # optional; AI features stay off when unset
+
+  # ---------------- monitoring worker ----------------
+  - type: worker
+    name: aeomirror-worker
+    runtime: docker
+    rootDir: backend
+    dockerfilePath: ./Dockerfile
+    dockerCommand: python run_worker.py
+    plan: starter
+    autoDeploy: true
+    envVars:
+      - key: ENVIRONMENT
+        value: production
+      - key: SCHEDULER_ENABLED
+        value: "true"
+      - key: DATABASE_URL
+        fromDatabase:
+          name: aeomirror-db
+          property: connectionString
+      - key: REDIS_URL
+        fromService:
+          type: redis
+          name: aeomirror-redis
+          property: connectionString
+      - key: APP_BASE_URL
+        value: https://aeomirror.com
+      - key: RESEND_API_KEY
+        sync: false
+      - key: EMAIL_FROM
+        sync: false
+      - key: SENTRY_DSN
+        sync: false
+      - key: ANTHROPIC_API_KEY
+        sync: false          # worker generates AI report content for bulk/scheduled jobs

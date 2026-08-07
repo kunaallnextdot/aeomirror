@@ -11,9 +11,17 @@ import app.core.cache as cache_mod
 from app.core.cache import RateLimiter, rate_limiter
 from app.main import app
 from app.scanner.models import PageBundle
+from tests.authutil import authenticate
 from tests.test_scanner import GOOD_HTML, GOOD_ROBOTS
 
+# The per-IP abuse limiter now applies to authenticated scan requests (scanning
+# requires an account). Billing is off in tests, so only the IP limiter can 429.
 client = TestClient(app)
+
+
+@pytest.fixture(autouse=True, scope="module")
+def _auth_client():
+    authenticate(client)
 
 
 async def _fake_fetch(url):

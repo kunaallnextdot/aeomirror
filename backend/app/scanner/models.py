@@ -11,6 +11,7 @@ class PageBundle:
     robots_txt: str = ""
     llms_txt_present: bool = False
     sitemap_present: bool = False
+    sitemap_xml: str = ""          # captured sitemap.xml body (Phase 3 signals)
     status_code: int = 200
     headers: dict = field(default_factory=dict)
 

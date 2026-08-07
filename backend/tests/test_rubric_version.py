@@ -12,9 +12,16 @@ from app.scanner import rubric_provider
 from app.scanner.engine import score
 from app.scanner.rubric import CHECK_WEIGHTS, FAMILY_WEIGHTS, Rubric, default_rubric
 from app.scanner.models import PageBundle
+from tests.authutil import authenticate
 from tests.test_scanner import GOOD_HTML, GOOD_ROBOTS, good_page
 
+# Scanning requires an account; billing off in tests so scans never gate on quota.
 client = TestClient(app)
+
+
+@pytest.fixture(autouse=True, scope="module")
+def _auth_client():
+    authenticate(client)
 
 
 @pytest.fixture(autouse=True)

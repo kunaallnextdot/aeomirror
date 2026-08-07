@@ -34,6 +34,16 @@ def test_validate_url_rejects_internal(monkeypatch, target):
         validate_url(target)
 
 
+def test_validate_url_rejects_raw_forbidden_chars(monkeypatch):
+    """A raw RFC-3986-forbidden char (e.g. a stray trailing '<') is rejected, not
+    stripped — the check runs before host resolution, so it holds even in allow-private
+    test mode. Percent-encoded equivalents (%3C) stay valid and must still pass."""
+    monkeypatch.setattr(settings, "allow_private_hosts", True)
+    with pytest.raises(UnsafeUrlError):
+        validate_url("https://www.thedocmirror.com/resources/ai-visibility-for-doctors<")
+    assert validate_url("https://example.com/a%3Cb") == "https://example.com/a%3Cb"
+
+
 def test_fetch_rejects_non_http_scheme():
     with pytest.raises(UnsafeUrlError):
         run(fetch("ftp://example.com/resource"))
@@ -54,6 +64,23 @@ def test_redirect_to_private_ip_is_blocked_and_not_retried(monkeypatch):
     with pytest.raises(UnsafeUrlError):
         run(fetch("http://redirector.example/", transport=httpx.MockTransport(handler)))
     assert calls["main"] == 1  # SSRF rejection is not retried
+
+
+def test_redirect_with_raw_space_in_location_is_followed(monkeypatch):
+    """A sloppy Location header with a raw space no longer kills the scan: the redirect
+    is followed (httpx encodes the path) and the final page is returned. The char check
+    is entry-point-only; SSRF still runs on the hop."""
+    monkeypatch.setattr(settings, "allow_private_hosts", True)
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path in AUX:
+            return httpx.Response(404)
+        if request.url.host == "start.example":
+            return httpx.Response(302, headers={"location": "http://dest.example/a b?q=1 2"})
+        return httpx.Response(200, content=b"<html>ok</html>")
+
+    bundle = run(fetch("http://start.example/", transport=httpx.MockTransport(handler)))
+    assert bundle.status_code == 200 and "ok" in bundle.html
 
 
 # ---------------- body cap ----------------

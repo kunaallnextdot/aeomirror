@@ -12,3 +12,20 @@ psycopg[binary]==3.2.9     # PostgreSQL driver (psycopg 3). URL: postgresql+psyc
 redis==5.0.7               # shared cache + rate-limit store
 alembic==1.13.2            # database migrations (replaces create_all on startup)
 pytest==8.2.2
+# --- Phase 5: authentication + multi-user SaaS ---
+PyJWT==2.8.0               # JWT access tokens (HS256)
+bcrypt==4.1.3              # password hashing
+email-validator==2.1.1     # pydantic EmailStr validation
+# --- Phase 6: exportable AI-visibility reports ---
+reportlab==4.2.2          # pure-Python PDF generation (no system libs)
+openpyxl==3.1.2           # parse .xlsx uploads for bulk scans (first column)
+python-multipart==0.0.9   # multipart/form-data parsing for bulk CSV/XLSX uploads
+# --- AI features (Anthropic) — server-side only ---
+# Powers the AI-written report narrative + AI content-quality insights. Both features
+# degrade gracefully to the deterministic rule-based path when ANTHROPIC_API_KEY is
+# unset, so this dependency is only exercised when AI is configured.
+anthropic==0.40.0
+# --- Phase 10: production (optional) ---
+# Error tracking. Install only if you set SENTRY_DSN; the app runs fine without it.
+# sentry-sdk==2.14.0
+gunicorn==22.0.0          # production process manager for uvicorn workers

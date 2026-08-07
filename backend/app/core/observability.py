@@ -51,8 +51,16 @@ class Metrics:
         self.cache_hits = 0
         self.cache_misses = 0
         self.rate_limited_429 = 0
+        self.api_requests = 0       # all HTTP requests handled (Phase 8 admin)
         self._latency_sum_ms = 0.0
         self._latency_count = 0
+        self._req_latency_sum_ms = 0.0   # all-request latency (not just scans)
+        self._req_latency_count = 0
+
+    def observe_request_latency(self, ms: float) -> None:
+        with self._lock:
+            self._req_latency_sum_ms += ms
+            self._req_latency_count += 1
 
     def incr(self, name: str, n: int = 1) -> None:
         with self._lock:
@@ -66,12 +74,16 @@ class Metrics:
     def snapshot(self) -> dict:
         with self._lock:
             avg = self._latency_sum_ms / self._latency_count if self._latency_count else 0.0
+            req_avg = (self._req_latency_sum_ms / self._req_latency_count
+                       if self._req_latency_count else 0.0)
             return {
                 "total_scans": self.total_scans,
                 "cache_hits": self.cache_hits,
                 "cache_misses": self.cache_misses,
                 "rate_limited_429": self.rate_limited_429,
+                "api_requests": self.api_requests,
                 "avg_scan_latency_ms": round(avg, 1),
+                "avg_request_latency_ms": round(req_avg, 1),
             }
 
 
@@ -101,6 +113,8 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
             _req_logger.exception("request_error request_id=%s", rid)
             raise
         latency_ms = round((time.perf_counter() - start) * 1000, 1)
+        metrics.incr("api_requests")
+        metrics.observe_request_latency(latency_ms)
         log_json(_req_logger, logging.INFO, event="request", request_id=rid,
                  timestamp=time.time(), method=request.method, path=request.url.path,
                  status=response.status_code, latency_ms=latency_ms)
@@ -119,7 +133,41 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
         response.headers.setdefault("X-XSS-Protection", "0")
         response.headers.setdefault("Permissions-Policy", "geolocation=(), microphone=(), camera=()")
+        # The API returns JSON only and never embeds untrusted markup, so a strict
+        # CSP is safe. Relaxed on the docs routes so Swagger/ReDoc can load assets.
+        path = request.url.path
+        if path.startswith(("/docs", "/redoc", "/openapi")):
+            response.headers.setdefault(
+                "Content-Security-Policy",
+                "default-src 'self'; img-src 'self' data: https:; "
+                "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; "
+                "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; "
+                "worker-src blob:")
+        else:
+            response.headers.setdefault(
+                "Content-Security-Policy", "default-src 'none'; frame-ancestors 'none'")
         if settings.enable_hsts:
             response.headers.setdefault(
                 "Strict-Transport-Security", "max-age=31536000; includeSubDomains")
         return response
+
+
+def init_error_tracking() -> bool:
+    """Initialize Sentry when SENTRY_DSN is configured. Optional dependency: if
+    sentry-sdk isn't installed, this is a no-op. Never raises."""
+    if not settings.sentry_dsn:
+        return False
+    try:
+        import sentry_sdk
+        sentry_sdk.init(
+            dsn=settings.sentry_dsn,
+            environment=settings.environment,
+            traces_sample_rate=settings.sentry_traces_sample_rate,
+            send_default_pii=False,
+        )
+        logging.getLogger("aeomirror").info("error tracking (Sentry) enabled")
+        return True
+    except Exception as e:  # pragma: no cover - depends on optional package
+        logging.getLogger("aeomirror").warning(
+            "Sentry not initialized (%s); continuing without it", type(e).__name__)
+        return False

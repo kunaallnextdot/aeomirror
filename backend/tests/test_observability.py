@@ -10,9 +10,16 @@ from app.config import settings
 from app.core.cache import rate_limiter
 from app.main import app
 from app.scanner.models import PageBundle
+from tests.authutil import authenticate
 from tests.test_scanner import GOOD_HTML, GOOD_ROBOTS
 
+# Scanning requires an account; billing off in tests so scans never gate on quota.
 client = TestClient(app)
+
+
+@pytest.fixture(autouse=True, scope="module")
+def _auth_client():
+    authenticate(client)
 
 
 async def _fake_fetch(url):
@@ -80,3 +87,25 @@ def test_429_increments_rate_limited_metric(monkeypatch):
     after = client.get("/debug/metrics").json()["metrics"]["rate_limited_429"]
     assert after >= before + 1
     rate_limiter._hits.clear()
+
+
+def test_500_response_carries_cors_headers_for_allowed_origin():
+    """A 500 from an unhandled exception (e.g. a DB error) must still carry
+    Access-Control-Allow-Origin for an allowed Origin, so a cross-origin browser
+    receives the error instead of a blocked response it reports as "backend down"."""
+    async def _boom():
+        raise RuntimeError("boom")
+
+    app.add_api_route("/_test_boom_cors", _boom, methods=["GET"])
+    try:
+        err_client = TestClient(app, raise_server_exceptions=False)   # return the 500, don't re-raise
+        origin = settings.cors_list()[0]                              # an allowed origin
+        r = err_client.get("/_test_boom_cors", headers={"Origin": origin})
+        assert r.status_code == 500
+        assert r.headers.get("access-control-allow-origin") == origin
+        assert r.headers.get("access-control-allow-credentials") == "true"
+        body = r.json()
+        assert body["detail"] == "Internal server error." and "request_id" in body
+    finally:
+        app.router.routes = [rt for rt in app.router.routes
+                             if getattr(rt, "path", None) != "/_test_boom_cors"]

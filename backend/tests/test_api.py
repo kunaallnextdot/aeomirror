@@ -6,9 +6,17 @@ from fastapi.testclient import TestClient
 import app.api.routes_scan as rs
 from app.main import app
 from app.scanner.models import PageBundle
+from tests.authutil import authenticate
 from tests.test_scanner import GOOD_HTML, GOOD_ROBOTS, BAD_HTML, BAD_ROBOTS
 
+# Scanning now REQUIRES an account; authenticate the client once (in a fixture, so the
+# test schema exists first). Billing is off in tests, so scans never gate on quota.
 client = TestClient(app)
+
+
+@pytest.fixture(autouse=True, scope="module")
+def _auth_client():
+    authenticate(client)
 
 
 async def fake_fetch_good(url):
@@ -47,7 +55,9 @@ def test_ssrf_blocks_localhost(monkeypatch):
 def test_get_scan_by_id(monkeypatch):
     monkeypatch.setattr(rs, "fetch", fake_fetch_good)
     created = client.post("/v1/scan", json={"url": "https://brewlab.io/x"}).json()
-    got = client.get(f"/v1/scan/{created['scan_id']}")
+    # Org-owned scans are private: read them via the authenticated detail endpoint
+    # (the public /v1/scan/{id} only serves legacy anonymous rows).
+    got = client.get(f"/api/scans/{created['scan_id']}")
     assert got.status_code == 200
     assert got.json()["ars"] == created["ars"]
 

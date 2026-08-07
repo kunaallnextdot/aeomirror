@@ -1,122 +1,107 @@
 # INTEGRATIONS.md
 
-This file lists exactly what your developer must wire up. Everything not listed
-here is already built and working. Items are ordered by when you need them:
-the first three make the free scanner production-grade; the rest unlock paid
-features and can wait until the free scanner is live and pulling leads.
+AEOMirror is fully built through Phase 10 — scanner, auth, billing, monitoring,
+reports, admin, and the AI features are all implemented and tested. **Nothing in the
+product is stubbed anymore**; the experimental inference module was removed in Phase 10.
 
-Each item marks the file(s) to touch. Search the codebase for `TODO` and
-`INTEGRATION POINT` to find every hook in place.
-
----
-
-## A. Required to take the FREE scanner to production
-
-### A1. Postgres (replace SQLite)
-- **File:** `backend/.env` → `DATABASE_URL`
-- **Do:** set `DATABASE_URL=postgresql+psycopg2://user:pass@host:5432/aeomirror`,
-  uncomment `psycopg2-binary` in `requirements.txt`, install.
-- **Note:** the ORM models are already Postgres-compatible. No code change.
-
-### A2. Alembic migrations (replace create_all)
-- **File:** `backend/app/db/session.py` (`init_db`) and app startup
-- **Do:** initialize Alembic, generate the first migration from the existing
-  models, and remove the `init_db()` call in `app/main.py` startup. `create_all`
-  is a dev convenience only.
-
-### A3. Redis (replace in-memory cache + rate limiter)
-- **Files:** `backend/app/core/cache.py`, `backend/.env` → `REDIS_URL`
-- **Why:** the in-memory `TTLCache` and `RateLimiter` are per-process. With more
-  than one worker, cache dedupe and rate limits must be shared.
-- **Do:** reimplement `TTLCache.get/set` and `RateLimiter.check` against Redis.
-  The interfaces are tiny and deliberately unchanged at every call site, so this
-  is a mechanical swap.
+What's left is **configuration**: point the app at production infrastructure and drop in
+provider secrets. Local dev works out of the box with none of these (SQLite + in-memory
+cache/rate-limiter + dev-completion checkout + AI disabled). Set secrets in your host's
+dashboard (Render / Vercel), never in Git.
 
 ---
 
-## B. Lead capture email
+## A. Production infrastructure
 
-### B1. Email provider (welcome / report email)
-- **File:** `backend/app/services/leads.py` → `send_welcome_email()`
-- **Do:** replace the print stub with a real ESP call (Resend, AWS SES,
-  Postmark). Add the key to `.env` (e.g. `RESEND_API_KEY`). The lead is already
-  captured and stored in the `leads` table; only the send is stubbed.
+### A1. PostgreSQL
+- **Var:** `DATABASE_URL` (backend) — e.g. `postgresql+psycopg://user:pass@host:5432/aeomirror`
+- Dev falls back to SQLite. Migrations run on deploy (`alembic upgrade head`, via
+  `entrypoint.sh`); the ORM is already Postgres-compatible.
 
----
+### A2. Redis (shared cache + rate limiter)
+- **Var:** `REDIS_URL` (backend)
+- Dev uses a per-process in-memory fallback. With more than one worker, set `REDIS_URL`
+  so the 24h scan cache and the per-IP rate limiter are shared. Both fail open.
 
-## C. Step 5: Auth and billing (paid product)
-
-### C1. Authentication
-- **File:** `backend/app/api/routes_misc.py` → `/v1/auth/signup`, `/v1/auth/login`
-  (currently return 501)
-- **Do:** implement signup/login. Recommended: a hosted provider (Clerk, Auth0,
-  Supabase Auth) or FastAPI JWT. Add `users` and `organizations` tables
-  (schema is in the PRD). Protect the paid routes with an auth dependency.
-
-### C2. Domain verification gate
-- **Do:** before any paid action on a domain (scans that cost money, fix
-  generation, monitoring), require the user to verify domain ownership
-  (DNS TXT record or a hosted file). The free structural scan does not need
-  this; anything metered does.
-
-### C3. Billing
-- **Do:** integrate Stripe. Create the plan tiers (Scan $29 / Track $69 /
-  Compound $99 / Agency $299), map them to the `plans` table, and enforce
-  plan limits (sites, prompts, engines) before running metered work.
-  Add `STRIPE_SECRET_KEY` to `.env`.
+### A3. JWT secret
+- **Var:** `JWT_SECRET` (backend) — **required in production** (startup fails without it).
+  Dev generates a per-process secret.
 
 ---
 
-## D. Step 6: Paid inference (the metered engine)
+## B. Provider secrets (each feature degrades gracefully without its key)
 
-All interfaces exist in `backend/app/services/inference/`. Replace the stubs in
-`stub.py` with real providers. `base.py` defines the contracts; do not change
-them, so the rest of the app is unaffected.
+### B1. Stripe (billing)
+- **Vars:** `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `STRIPE_PRICE_PRO`
+- Billing is fully implemented: plans, checkout, signature-verified webhooks at
+  `/billing/webhooks/stripe`, subscription lifecycle, invoices, and entitlement gating.
+  Without keys the checkout runs in **dev-completion** mode (a local completion page) so
+  the flow is exercisable without Stripe. Set the keys for real payments; live mode also
+  needs a configured Stripe customer portal.
 
-### D1. Prompt simulation (answer visibility)
-- **File:** `backend/app/services/inference/stub.py` → `StubPromptSimulator.run`
-- **Do:** call each engine's API (OpenAI, Anthropic, Google, Perplexity) with the
-  prompt, run each several times, and report brand mention / citation / position
-  **with a confidence interval**. Add the keys to `.env`.
-- **Honesty requirement (important):** results measured via a provider API must
-  be labelled as API-measured, not consumer-surface (ChatGPT app / AI Overviews)
-  measured. The two differ. Do not present a heuristic as a real citation rate.
+### B2. Resend (transactional email)
+- **Vars:** `RESEND_API_KEY`, `EMAIL_FROM`
+- Auth / billing / monitoring emails are wired (best-effort, logged). Leave unset to
+  disable sending — everything else still works.
 
-### D2. Fix generation
-- **File:** `backend/app/services/inference/stub.py` → `StubFixGenerator.generate`
-- **Do:** call an LLM with a schema-constrained prompt that reads the page HTML
-  and emits a valid, copy-paste-ready asset (Organization JSON-LD, FAQPage
-  schema, llms.txt). Validate the output parses before returning it.
+### B3. Anthropic (AI report narrative + content insights)
+- **Vars:** `ANTHROPIC_API_KEY` (optionally `AI_MODEL`, `AI_MAX_TOKENS`, `AI_TIMEOUT_SECONDS`)
+- Built: **(A)** a Claude-written report narrative on **all plans**, tiered — paid
+  viewers (Pro orgs or a $9-unlocked report) get full insights + action plan, the free
+  tier gets the summary + top-3 insights (subject to the free guardrails).
+  `entitlements.export_unlocked` selects the TIER, it does not gate access; the narrative
+  is cached on the `reports` row. **(B)** Pro-only per-page AI Content Insights (cached per `(scan, page)` in
+  `ai_content_insights`). The key is read only from env, never logged and never sent to
+  the frontend. Unset or on failure → the deterministic rule-based path. `pip install -r
+  requirements.txt` already includes `anthropic`.
 
-### D3. Enforce budget
-- **Do:** every call in D1/D2 must decrement the caller's plan quota before
-  executing. This is what keeps token COGS below the price of each tier.
+### B4. Sentry (optional error tracking)
+- **Vars:** `SENTRY_DSN` (+ `SENTRY_TRACES_SAMPLE_RATE`); uncomment `sentry-sdk` in
+  `requirements.txt`. Unset → disabled.
 
----
-
-## E. Frontend
-
-### E1. Point at the deployed API
-- **File:** `frontend/.env` → `VITE_API_URL`
-- **Do:** set it to your deployed API URL and rebuild. The scanner already calls
-  the real API and falls back to mock only when the API is unreachable.
-
-### E2. Dashboard data (currently mock)
-- **File:** `frontend/src/App.jsx` (the dashboard screens)
-- **Do:** the single-site Overview and the secondary screens (Scans, Answer
-  visibility, Competitors, Fixes, Reports) render mock data. Wire them to the
-  real endpoints as those endpoints come online (scan history exists now;
-  monitoring and fixes come with Step 6).
+### B5. Admin access
+- **Vars:** `ADMIN_EMAILS` (auto-grant platform-admin to these emails), `ADMIN_TOKEN`
+  (guards `/metrics` and `/debug/*` in production).
 
 ---
 
-## Quick reference: what is real vs stubbed today
+## C. Frontend
 
-| Real and working | Stubbed (you implement) |
+### C1. API URL
+- **Var:** `VITE_API_URL` (frontend / Vercel) → your deployed API (e.g.
+  `https://api.aeomirror.com`). Baked in at build time; rebuild after changing it.
+
+### C2. Optional analytics
+- **Vars:** `VITE_GA_ID`, `VITE_CLARITY_ID`, `VITE_GSC_VERIFICATION`. Nothing loads
+  unless set.
+
+### C3. SEO assets
+- Add `frontend/public/og-image.png` and `logo.png` (referenced by the SEO / JSON-LD tags).
+
+---
+
+## D. Deployment
+
+`render.yaml` (backend API + a separate monitoring worker + PostgreSQL 16 + Redis) and
+`frontend/vercel.json` (SPA routing + security headers / CSP) are authored and ready; CI
+(`.github/workflows/ci.yml`) gates both auto-deploys. See `DEPLOYMENT.md`, `RUNBOOK.md`,
+`OPERATIONS.md`, `BACKUP.md`, and `SECURITY.md`.
+
+---
+
+## Quick reference: real vs. needs-config today
+
+| Real and working (code complete) | Needs configuration only |
 |---|---|
-| 6-family scanner + ARS scoring | Auth (signup/login → 501) |
-| POST /v1/scan (fetch, score, persist) | Billing (Stripe) |
-| SSRF guard, rate limit, cache | Email send (capture is real) |
-| Lead capture + storage | Prompt simulation (interface + stub) |
-| Scan retrieval by ID | Fix generation (interface + stub) |
-| Frontend scanner + dashboard shell | Dashboard live data |
+| 10-signal scanner + weighted score | `DATABASE_URL` (Postgres) — dev uses SQLite |
+| Public + org-scoped scan API, SSRF, cache, rate limit | `REDIS_URL` — dev uses in-memory |
+| Auth (register / login / refresh-rotation / reset / verify / RBAC) | `JWT_SECRET` (required in prod) |
+| Billing (plans, checkout, signed webhooks, invoices, gating) | Stripe keys (dev-completion works without) |
+| Monitoring (scheduler / worker, alerts, trends) | — |
+| Reports + PDF / CSV / JSON exports (gated) | — |
+| AI report narrative + Content Insights | `ANTHROPIC_API_KEY` |
+| Transactional email (auth / billing / monitoring) | `RESEND_API_KEY` + `EMAIL_FROM` |
+| Admin platform (users / orgs / scans / monitors / analytics / settings) | `ADMIN_EMAILS`, `ADMIN_TOKEN` |
+| Frontend scanner + full product dashboard | `VITE_API_URL` + SEO images |
+
+No stubbed code paths remain — the experimental inference module was removed in Phase 10.

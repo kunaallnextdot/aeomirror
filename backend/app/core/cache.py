@@ -126,9 +126,11 @@ class RateLimiter:
         "return c"
     )
 
-    def __init__(self, limit: int, window: int):
+    def __init__(self, limit: int, window: int, prefix: str | None = None):
         self.limit = limit
         self.window = window
+        if prefix:
+            self.PREFIX = prefix
         self._hits: dict[str, list[float]] = {}
         self._lock = Lock()
 
@@ -164,4 +166,20 @@ class RateLimiter:
 scan_cache = TTLCache(settings.cache_ttl_seconds)
 rate_limiter = RateLimiter(
     settings.free_scans_per_window, settings.rate_limit_window_seconds
+)
+# Phase 5: login-abuse limiter (per email+IP), separate namespace + budget.
+login_limiter = RateLimiter(
+    settings.login_max_attempts, settings.login_window_seconds,
+    prefix="aeomirror:rate-limit:login:",
+)
+# Contact-form limiter (per IP), separate namespace + budget — anti-spam.
+contact_limiter = RateLimiter(
+    settings.contact_max_per_window, settings.contact_rate_window_seconds,
+    prefix="aeomirror:rate-limit:contact:",
+)
+# Public report-share read limiter (per IP), separate namespace — anti-scraping on the
+# unauthenticated /public/reports/{token} path (token entropy already blocks guessing).
+public_report_limiter = RateLimiter(
+    settings.public_report_max_per_window, settings.public_report_rate_window_seconds,
+    prefix="aeomirror:rate-limit:public-report:",
 )

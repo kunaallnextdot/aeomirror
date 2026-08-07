@@ -24,14 +24,22 @@ aeomirror-app/
 
 | Layer | Status |
 |---|---|
-| Free scanner engine (6 signal families, ARS scoring) | Built, unit-tested |
-| Public scan API (SSRF guard, rate limit, cache, DB, lead capture) | Built, tested (11 passing tests) |
+| Scanner engine (10 AI-visibility signals + ARS scoring) | Built, unit-tested |
+| Public scan API (SSRF guard, rate limit, cache, DB, lead capture) | Built, tested |
 | Frontend (scanner wired to API + product dashboard) | Built, compiles clean |
-| Auth / billing (Step 5) | Stubbed with clear integration points |
+| Auth + billing (account-required scanning; Free / Pro $29 / $9 one-time report) | Built, tested |
+| AI report narrative + AI Content Insights (Anthropic) | Built — set `ANTHROPIC_API_KEY` to enable |
 | Paid inference: prompt simulation, fix generation (Step 6) | Adapter interfaces + stubs; drop in API keys |
 
-The free scanner is the priority and it is complete. Everything paid is
-scaffolded so you only add credentials and provider calls. See INTEGRATIONS.md.
+The scanner is complete. **The first single-page scan is free with no account**
+(one per browser, tracked in `localStorage`); after that — and for scan history, bulk
+scans, monitoring, reports and exports — an account is required. The Free plan gets
+1 scan job/month + a one-time 50-URL bulk trial (scores only); Pro ($29/mo) gets 15
+scan jobs/month (each a single page or a bulk of up to 50 URLs), full per-page bulk
+detail, AI-written reports, AI Content Insights, and exports; a $9 one-time purchase
+unlocks one scan's full report + all exports + AI narrative. Remaining paid inference
+(prompt simulation, fix generation) is scaffolded — add credentials and provider calls.
+See INTEGRATIONS.md.
 
 ---
 
@@ -126,7 +134,7 @@ npm run build:frontend # outputs frontend/dist
 | Missing email configuration | Expected when `RESEND_API_KEY`/`EMAIL_FROM` are blank — sends are skipped, lead capture still works. |
 | `TypeError: unsupported operand ... \|` at startup / import | Wrong Python (< 3.10). See the Python fix above. |
 | Port already in use (5432/6379/8000/5173) | Stop the conflicting service or `lsof -ti :PORT \| xargs kill -9`. |
-| Getting HTTP 429 | Rate limit hit (`FREE_SCANS_PER_WINDOW`, default 3/hour/IP). Honor `Retry-After`, or raise the limit in `.env` for local testing. |
+| Getting HTTP 429 | Per-IP abuse limiter hit (`FREE_SCANS_PER_WINDOW`, default 20/hour/IP — not a billing limit). Honor `Retry-After`, or raise the limit in `.env` for local testing. |
 | Repeated identical scans look "stuck" on one result | Expected: identical URLs are served from the 24h cache (same `scan_id`, no refetch). |
 | Environment variables | Backend defaults work with no `.env`; copy `backend/.env.example` → `backend/.env` to override. Frontend copies `frontend/.env.example` → `frontend/.env` (`VITE_API_URL`). **Never commit `.env`.** |
 

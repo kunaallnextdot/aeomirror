@@ -1,0 +1,123 @@
+/* Phase 8 admin platform styles. Reuses the design tokens from .root (App.jsx).
+   A distinct amber accent + "ADMIN" mark signals this is the internal console. */
+.ad{--ad-accent:#E6A94A;display:grid;grid-template-columns:230px 1fr;min-height:100vh;color:var(--txt);
+  background:var(--bg);font-family:'Inter',system-ui,sans-serif}
+.ad *{box-sizing:border-box}
+.ad-mono{font-family:'IBM Plex Mono',monospace}
+.ad-dim{color:var(--txt-dim)}
+
+.ad-side{border-right:1px solid var(--line);background:var(--panel);display:flex;flex-direction:column;
+  padding:16px 12px;gap:14px;position:sticky;top:0;height:100vh}
+.ad-brand{display:flex;align-items:center;gap:8px;font-size:15px;font-weight:700;padding:2px 8px;font-family:'Hanken Grotesk',sans-serif}
+.ad-brand svg{color:var(--ad-accent)}
+.ad-tag{font-size:8.5px;font-weight:800;letter-spacing:.1em;background:rgba(230,169,74,.16);color:var(--ad-accent);padding:2px 6px;border-radius:5px}
+.ad-nav{display:flex;flex-direction:column;gap:2px;margin-top:4px}
+.ad-nav button{display:flex;align-items:center;gap:11px;background:transparent;border:none;color:var(--txt-mid);
+  padding:9px 11px;border-radius:8px;cursor:pointer;font-size:13.5px;font-weight:500;text-align:left;width:100%}
+.ad-nav button:hover{background:var(--panel-2);color:var(--txt)}
+.ad-nav button.on{background:rgba(230,169,74,.14);color:var(--ad-accent)}
+.ad-nav button span{flex:1}
+.ad-side-foot{margin-top:auto;display:flex;flex-direction:column;gap:8px}
+.ad-me{font-size:12.5px;font-weight:600;padding:0 8px;display:flex;flex-direction:column}
+.ad-me .ad-dim{font-size:10.5px;font-weight:400}
+.ad-exit{display:flex;align-items:center;gap:8px;background:transparent;border:1px solid var(--line);color:var(--txt-mid);padding:9px 11px;border-radius:8px;cursor:pointer;font-size:12.5px}
+
+.ad-main{padding:22px 26px 60px;min-width:0;overflow-x:hidden}
+.ad-head{display:flex;justify-content:space-between;align-items:center;gap:16px;margin-bottom:18px;flex-wrap:wrap}
+.ad-h1{font-size:20px;font-weight:700;font-family:'Hanken Grotesk',sans-serif}
+.ad-sub{font-size:12.5px;color:var(--txt-dim);margin-top:2px}
+
+.ad-btn{display:inline-flex;align-items:center;gap:7px;background:var(--panel-2);border:1px solid var(--line-2);
+  color:var(--txt);padding:8px 13px;border-radius:8px;font-size:12.5px;font-weight:500;cursor:pointer}
+.ad-btn:hover:not(:disabled){border-color:var(--ad-accent)}
+.ad-btn:disabled{opacity:.5;cursor:default}
+.ad-btn.sm{padding:5px 9px;font-size:12px}
+.ad-ic{display:inline-flex;align-items:center;justify-content:center;background:var(--panel-2);border:1px solid var(--line-2);
+  color:var(--txt-mid);width:28px;height:28px;border-radius:7px;cursor:pointer}
+.ad-ic:hover:not(:disabled){color:var(--txt);border-color:var(--ad-accent)}
+.ad-ic.danger:hover:not(:disabled){color:var(--bad);border-color:var(--bad)}
+.ad-ic:disabled{opacity:.45;cursor:default}
+.ad-actions{display:flex;gap:6px;justify-content:flex-end}
+.ad-select,.ad-input{background:var(--panel-2);border:1px solid var(--line-2);border-radius:8px;color:var(--txt);
+  padding:8px 11px;font-size:12.5px;outline:none}
+.ad-input:focus,.ad-select:focus{border-color:var(--ad-accent)}
+
+.ad-search{display:flex;align-items:center;gap:8px;background:var(--panel);border:1px solid var(--line-2);
+  border-radius:9px;padding:8px 12px;min-width:240px}
+.ad-search input{background:transparent;border:none;outline:none;color:var(--txt);font-size:13px;width:100%}
+.ad-search svg{color:var(--txt-dim);flex:none}
+
+.ad-stats{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px;margin-bottom:18px}
+.ad-stat{border:1px solid var(--line);border-radius:12px;background:var(--panel);padding:14px 16px}
+.ad-stat-l{font-size:11.5px;color:var(--txt-dim)}
+.ad-stat-v{font-size:24px;font-weight:800;font-family:'Hanken Grotesk',sans-serif;margin-top:6px;line-height:1.1}
+.ad-stat-s{font-size:11px;color:var(--txt-mid);margin-top:4px}
+
+.ad-badge{display:inline-flex;align-items:center;font-size:10.5px;font-weight:700;padding:2px 8px;border-radius:6px;
+  border:1px solid var(--line-2);color:var(--txt-mid);margin-left:6px;text-transform:capitalize}
+.ad-badge:first-child{margin-left:0}
+.ad-good{color:var(--good);border-color:rgba(67,192,138,.4);background:rgba(67,192,138,.1)}
+.ad-warn{color:var(--warn);border-color:rgba(230,169,74,.4);background:rgba(230,169,74,.1)}
+.ad-bad{color:var(--bad);border-color:rgba(229,97,91,.4);background:rgba(229,97,91,.1)}
+.ad-accent{color:var(--accent);border-color:rgba(52,211,224,.4);background:rgba(52,211,224,.1)}
+.ad-neutral{color:var(--txt-mid)}
+
+.ad-tablewrap{border:1px solid var(--line);border-radius:12px;overflow:hidden;overflow-x:auto}
+.ad-table{width:100%;border-collapse:collapse;font-size:12.5px;min-width:640px}
+.ad-table.sm{min-width:0}
+.ad-table th{text-align:left;color:var(--txt-dim);font-weight:500;font-size:11px;padding:10px 12px;background:var(--panel);border-bottom:1px solid var(--line)}
+.ad-table td{padding:10px 12px;border-bottom:1px solid var(--line);vertical-align:middle}
+.ad-table tr:last-child td{border-bottom:none}
+.ad-table tbody tr:hover{background:var(--panel-2)}
+.ad-empty-row{text-align:center;color:var(--txt-dim);padding:26px!important}
+
+.ad-pager{display:flex;justify-content:space-between;align-items:center;margin-top:12px;font-size:12px;color:var(--txt-dim)}
+.ad-pager-btns{display:flex;gap:6px}
+
+.ad-loading{display:flex;align-items:center;gap:9px;color:var(--txt-mid);padding:30px 0;font-size:13px}
+.ad-error{display:flex;align-items:center;gap:9px;color:var(--bad);background:rgba(229,97,91,.08);border:1px solid var(--bad);
+  border-radius:9px;padding:12px 14px;font-size:13px}
+.ad-notice{background:var(--panel-2);border:1px solid var(--line-2);border-radius:9px;padding:10px 13px;font-size:12.5px;
+  color:var(--txt-mid);margin-bottom:14px;font-family:'IBM Plex Mono',monospace;word-break:break-all}
+
+.ad-panel{border:1px solid var(--line);border-radius:14px;background:var(--panel);padding:18px;margin-bottom:16px}
+.ad-panel-h{font-size:14px;font-weight:600;margin-bottom:14px}
+.ad-grid2{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.ad-chart{height:220px}
+
+.ad-health{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:12px;margin-bottom:18px}
+.ad-hcard{border:1px solid var(--line);border-radius:12px;background:var(--panel);padding:14px}
+.ad-hcard-l{font-size:11.5px;color:var(--txt-dim);margin-bottom:8px}
+.ad-hcard-x{font-size:10.5px;color:var(--txt-mid);margin-top:8px}
+
+.ad-flags{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px}
+.ad-flag{display:flex;align-items:center;gap:9px;font-size:13px;color:var(--txt);cursor:pointer;text-transform:capitalize}
+.ad-flag input{accent-color:var(--ad-accent);width:16px;height:16px}
+.ad-setrow{display:flex;align-items:center;gap:10px;margin-bottom:10px;flex-wrap:wrap}
+.ad-setlabel{font-size:12.5px;color:var(--txt-mid);width:170px}
+.ad-setrow .ad-input{flex:1;min-width:180px}
+
+.ad-modal{position:fixed;inset:0;background:rgba(4,7,10,.72);display:flex;align-items:center;justify-content:center;z-index:60;padding:20px}
+.ad-modal-c{background:var(--panel);border:1px solid var(--line-2);border-radius:14px;padding:18px;max-width:640px;width:100%}
+.ad-modal-h{display:flex;justify-content:space-between;align-items:center;font-weight:600;margin-bottom:12px}
+.ad-logs{background:#0d141b;border:1px solid var(--line);border-radius:8px;padding:12px;font-family:'IBM Plex Mono',monospace;
+  font-size:11.5px;color:var(--txt);max-height:50vh;overflow:auto;white-space:pre-wrap;line-height:1.5}
+
+/* support inbox */
+.ad-tabs{display:flex;gap:6px;margin-bottom:14px;flex-wrap:wrap}
+.ad-tabs button{display:inline-flex;align-items:center;gap:7px;background:transparent;border:1px solid var(--line-2);
+  color:var(--txt-mid);padding:6px 13px;border-radius:8px;font-size:12.5px;cursor:pointer}
+.ad-tabs button.on{background:var(--panel-2);color:var(--txt);border-color:var(--ad-accent)}
+.ad-tabn{background:var(--line-2);color:var(--txt);border-radius:20px;padding:0 7px;font-size:11px;font-weight:600}
+.ad-strong{font-weight:600;color:var(--txt)}
+.ad-link{color:var(--ad-accent,#34D3E0);text-decoration:none}
+.ad-link:hover{text-decoration:underline}
+.ad-contact-meta{display:grid;gap:6px;font-size:13px;margin-bottom:12px}
+.ad-contact-meta .ad-dim{display:inline-block;min-width:70px}
+.ad-contact-body{margin:0}
+.ad-modal-actions{display:flex;gap:8px;justify-content:flex-end;margin-top:14px;flex-wrap:wrap}
+.ad-btn.danger{color:var(--bad)}
+.ad-btn.danger:hover:not(:disabled){border-color:var(--bad)}
+
+@media(max-width:900px){.ad{grid-template-columns:1fr}.ad-side{position:static;height:auto;flex-direction:row;flex-wrap:wrap;align-items:center}
+  .ad-nav{flex-direction:row;flex-wrap:wrap}.ad-side-foot{margin:0}.ad-grid2{grid-template-columns:1fr}}

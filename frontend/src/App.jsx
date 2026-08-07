@@ -1,13 +1,30 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, Suspense } from "react";
 import {
   Search, Lock, ArrowRight, Radar, LayoutDashboard, ScanLine, MessageSquareText,
-  Users, Wrench, FileText, Settings, RefreshCw, X, AlertTriangle,
-  ExternalLink, Sparkles, Globe
+  Users, Wrench, FileText, Settings, RefreshCw, AlertTriangle, ChevronDown, Download,
+  ExternalLink, Sparkles, Globe, Mail, LifeBuoy
 } from "lucide-react";
-import {
-  AreaChart, Area, ResponsiveContainer, XAxis, YAxis, Tooltip, CartesianGrid
-} from "recharts";
-import { scanUrl, getScanById, captureLead, ScanError } from "./api";
+import { scanUrl, getScanById, bulkScanUrls, bulkScanFile, billing, downloadReport, ScanError } from "./api";
+import { UpgradeProvider, useUpgrade } from "./dashboard/UpgradeModal.jsx";
+import { setPendingScan, takePendingScan, freeScanUsed, markFreeScanUsed } from "./auth/pendingScan.js";
+import { useAuth } from "./auth/AuthContext.jsx";
+import { useLocation, navigate } from "./auth/router.jsx";
+import { Avatar } from "./auth/ui.jsx";
+import Login from "./auth/pages/Login.jsx";
+import Register from "./auth/pages/Register.jsx";
+import ForgotPassword from "./auth/pages/ForgotPassword.jsx";
+import ResetPassword from "./auth/pages/ResetPassword.jsx";
+import VerifyEmail from "./auth/pages/VerifyEmail.jsx";
+import AcceptInvitation from "./auth/pages/AcceptInvitation.jsx";
+import { Loader2 } from "lucide-react";
+
+// Code-split the heavy authenticated bundles (charts, admin) so the public
+// marketing + auth pages stay small and fast to load.
+const Dashboard = React.lazy(() => import("./dashboard/Dashboard.jsx"));
+const AdminApp = React.lazy(() => import("./admin/AdminApp.jsx"));
+const Contact = React.lazy(() => import("./pages/Contact.jsx"));
+const PublicReport = React.lazy(() => import("./dashboard/PublicReport.jsx"));
+const SUPPORT_EMAIL = "aeomirror.support@gmail.com";
 
 /* localStorage key holding only the id of the most recent successful scan.
    The report itself is always re-fetched from the backend (source of truth). */
@@ -74,18 +91,27 @@ function arc(cx, cy, r, s, e) {
   const large = e - s <= 180 ? 0 : 1;
   return `M ${x1} ${y1} A ${r} ${r} 0 ${large} 1 ${x2} ${y2}`;
 }
-function Gauge({ value, size = 200, label = "AI Readiness" }) {
+function Gauge({ value, size = 200, label = "AI Readiness Score" }) {
   const cx = size / 2, cy = size / 2, r = size / 2 - 16;
   const va = 180 * (value / 100);
   const col = bandColor(value);
+  // Horizontal padding in the viewBox so the end tick labels (0 and 100) never
+  // clip against the SVG edge. Only 0 and 100 are shown to keep the dial clean.
+  const PAD = 12;
   return (
     <div className="gauge" style={{ width: size }}>
-      <svg width={size} height={size / 2 + 30} viewBox={`0 0 ${size} ${size / 2 + 30}`}>
+      <svg width={size} height={size / 2 + 30}
+           viewBox={`${-PAD} 0 ${size + PAD * 2} ${size / 2 + 30}`}>
         <path d={arc(cx, cy, r, 0, 180)} className="gauge-track" />
         <path d={arc(cx, cy, r, 0, Math.max(0.1, va))} style={{ stroke: col }} className="gauge-val" />
-        {[0, 45, 75, 100].map((t) => {
-          const [x, y] = polar(cx, cy, r + 12, 180 * (t / 100));
-          return <text key={t} x={x} y={y} className="gauge-tick">{t}</text>;
+        {[0, 100].map((t) => {
+          const [x, y] = polar(cx, cy, r, 180 * (t / 100));
+          // Anchor the ends inward (0 = start, 100 = end) and drop them just below
+          // the arc so both stay fully inside the padded viewBox.
+          return (
+            <text key={t} x={x} y={y + 15} textAnchor={t === 0 ? "start" : "end"}
+                  className="gauge-tick">{t}</text>
+          );
         })}
       </svg>
       <div className="gauge-center">
@@ -146,19 +172,22 @@ function CrawlerStrip({ crawlers }) {
   );
 }
 
-/* ---------- family bars ---------- */
-function FamilyBars({ families }) {
+/* ---------- signal bars (per-signal score breakdown) ----------
+   Reads the same 10 signals that produce the headline score, so the breakdown and
+   the gauge always agree (previously this showed the legacy 6-family ARS view whose
+   totals diverged from the headline). */
+function SignalBars({ sections = [] }) {
   return (
     <div className="fam">
-      {families.map((f) => {
-        const pct = Math.round((f.earned / f.weight) * 100);
+      {sections.map((s) => {
+        const v = Math.max(0, Math.min(100, s.score ?? 0));
         return (
-          <div key={f.id} className="fam-row">
-            <div className="fam-label">{f.label}</div>
+          <div key={s.id} className="fam-row">
+            <div className="fam-label">{s.label}</div>
             <div className="fam-track">
-              <div className="fam-fill" style={{ width: `${pct}%`, background: bandColor(pct) }} />
+              <div className="fam-fill" style={{ width: `${v}%`, background: bandColor(v) }} />
             </div>
-            <div className="fam-num mono">{f.earned}<span className="fam-den">/{f.weight}</span></div>
+            <div className="fam-num mono" style={{ color: bandColor(v) }}>{s.score}<span className="fam-den">/100</span></div>
           </div>
         );
       })}
@@ -166,62 +195,125 @@ function FamilyBars({ families }) {
   );
 }
 
-/* ---------- issue list ---------- */
-function IssueList({ issues, locked, max = 5 }) {
+/* ---------- issue list ----------
+   Two modes:
+   - locked (signed-out): lock icons, fix hint teased, no expansion.
+   - expandable (signed-in, any plan): no locks; each row is clickable and expands
+     to reveal the finding + how to fix it, like the dashboard scan detail. */
+function IssueList({ issues, locked = false, max = 5 }) {
+  const [open, setOpen] = useState({});
   const list = issues.slice(0, max);
+  const toggle = (i) => setOpen((o) => ({ ...o, [i]: !o[i] }));
+
+  if (locked) {
+    return (
+      <div className="issues">
+        {list.map((c, i) => (
+          <div key={i} className="issue">
+            <span className="issue-chip" style={{ color: STATUS_COLOR[c.status], borderColor: STATUS_COLOR[c.status] }}>
+              {STATUS_LABEL[c.status]}
+            </span>
+            <div className="issue-body">
+              <div className="issue-label">{c.label} <span className="issue-fam">{c.family}</span></div>
+              <div className="issue-fix"><Lock size={11} /> {c.fix || c.fix_hint}</div>
+            </div>
+            <button className="issue-btn locked"><Lock size={12} /> Fix</button>
+          </div>
+        ))}
+      </div>
+    );
+  }
+
   return (
     <div className="issues">
-      {list.map((c, i) => (
-        <div key={i} className="issue">
-          <span className="issue-chip" style={{ color: STATUS_COLOR[c.status], borderColor: STATUS_COLOR[c.status] }}>
-            {STATUS_LABEL[c.status]}
-          </span>
-          <div className="issue-body">
-            <div className="issue-label">{c.label} <span className="issue-fam">{c.family}</span></div>
-            <div className="issue-fix">
-              {locked ? <><Lock size={11} /> {c.fix || c.fix_hint}</> : <><Wrench size={11} /> {c.fix || c.fix_hint}</>}
-            </div>
+      {list.map((c, i) => {
+        const isOpen = !!open[i];
+        const fix = c.fix || c.fix_hint;
+        return (
+          <div key={i} className={`issue expandable${isOpen ? " open" : ""}`}>
+            <button className="issue-main" onClick={() => toggle(i)} aria-expanded={isOpen}>
+              <span className="issue-chip" style={{ color: STATUS_COLOR[c.status], borderColor: STATUS_COLOR[c.status] }}>
+                {STATUS_LABEL[c.status]}
+              </span>
+              <div className="issue-body">
+                <div className="issue-label">{c.label} <span className="issue-fam">{c.family}</span></div>
+                <div className="issue-fix"><Wrench size={11} /> {isOpen ? "How to fix ↓" : "See the fix"}</div>
+              </div>
+              <ChevronDown size={15} className="issue-chev" style={{ transform: isOpen ? "rotate(180deg)" : "none" }} />
+            </button>
+            {isOpen && (
+              <div className="issue-detail">
+                {c.detail && <p className="issue-detail-finding">{c.detail}</p>}
+                {fix && (
+                  <div className="issue-detail-fix">
+                    <div className="issue-detail-h"><Wrench size={11} /> Recommended fix</div>
+                    <p>{fix}</p>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
-          {locked
-            ? <button className="issue-btn locked"><Lock size={12} /> Fix</button>
-            : <button className="issue-btn"><ArrowRight size={12} /> Generate</button>}
-        </div>
-      ))}
+        );
+      })}
     </div>
   );
 }
 
+
 /* ============================= FREE SCANNER LAYER ============================= */
 function FreeScanner({ compact, onFull, onScanComplete }) {
+  const { isAuthenticated } = useAuth();
+  // Plan + upgrade modal come from the shared subscription context (present only when
+  // signed in — MarketingRoot wraps signed-in visitors in <UpgradeProvider>). Signed-out
+  // visitors get the DEFAULT (plan null, openUpgrade no-op) and never reach that branch.
+  const { plan, openUpgrade } = useUpgrade();
+  const isPro = plan === "pro";
   const [url, setUrl] = useState("");
   const [state, setState] = useState("idle"); // idle | scanning | done
   const [report, setReport] = useState(null);
   const [error, setError] = useState(null);
-  const [emailGate, setEmailGate] = useState(false);
-  const [scanCount, setScanCount] = useState(0);
-  const [email, setEmail] = useState("");
+  const [pdfBusy, setPdfBusy] = useState(false);
+  const [gate402, setGate402] = useState(null);   // scan-quota message (signed-in, out of scans)
+  // Bulk scanning is a signed-in feature; anonymous stays single-page only.
+  const [tab, setTab] = useState("single");   // "single" | "bulk"
   const inFlight = useRef(false); // synchronous guard against duplicate submits
 
-  const run = async () => {
-    if (!url.trim()) return;
+  useEffect(() => {
+    if (!isAuthenticated) setTab("single");
+  }, [isAuthenticated]);
+
+  // Send a signed-out visitor into Register, preserving the URL so it auto-runs after
+  // they sign up.
+  const toRegister = (theUrl) => { setPendingScan(theUrl, "single"); navigate("/register"); };
+
+  const run = async (overrideUrl) => {
+    // onClick passes a DOM event as the first arg — only honor a STRING override so the
+    // event is never mistaken for a URL. (Auto-run after auth calls run(url).)
+    const theUrl = (typeof overrideUrl === "string" ? overrideUrl : url).trim();
+    if (!theUrl) return;
     if (inFlight.current) return; // guard against duplicate submits
-    if (scanCount >= 1) { setEmailGate(true); return; }
+    // First scan is FREE with no login (tracked per browser). Once used, the next scan
+    // opens the register flow — the pending URL auto-runs after they sign up.
+    if (!isAuthenticated && freeScanUsed()) { toRegister(theUrl); return; }
     inFlight.current = true;
     setState("scanning");
-    setError(null);
+    setError(null); setGate402(null);
     try {
       // real backend call — no silent mock fallback; a failure surfaces below
       const [result] = await Promise.all([
-        scanUrl(url),
+        scanUrl(theUrl),
         new Promise((r) => setTimeout(r, 1200)), // keep the scan animation legible
       ]);
       const adapted = adaptReport(result);
       setReport(adapted);
       setState("done");
-      setScanCount((c) => c + 1);
+      if (!isAuthenticated) markFreeScanUsed();   // consume the one free scan for this browser
       onScanComplete?.(adapted); // lift the real report to the app root
     } catch (err) {
-      if (err && err.code === 429) { setEmailGate(true); setState("idle"); return; }
+      // Out of scan jobs for the month (signed-in) → show the upgrade gate.
+      if (err && err.code === 402) { setGate402(err.message); setState("idle"); return; }
+      // A stale/invalid session on an anonymous scan → send them to register.
+      if (err && err.code === 401 && !isAuthenticated) { toRegister(theUrl); return; }
       // Show a clear, safe message. Never fall back to fake scores.
       setError(err instanceof ScanError ? err.message : "Scan failed. Please try again.");
       setState("idle");
@@ -230,26 +322,71 @@ function FreeScanner({ compact, onFull, onScanComplete }) {
     }
   };
 
+  // After registration/login the pending URL is auto-scanned without re-entry.
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    const pending = takePendingScan();
+    if (pending?.url) { setUrl(pending.url); run(pending.url); }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isAuthenticated]);
+
+  // The AI Readiness Score = the honest 10-signal aggregate (falls back to the
+  // legacy family score only for pre-signal reports). For a site scan the headline
+  // is the site average across the crawled pages. Same number the breakdown below.
+  const headline = report ? (report.overall_score ?? report.ars) : null;
+
+  // Signed-in CTAs: open this scan's full detail in the dashboard, and (Pro) export the PDF.
+  const viewFullReport = () => {
+    if (report?.scan_id) navigate(`/app?scan=${encodeURIComponent(report.scan_id)}`);
+  };
+  const downloadPdf = async () => {
+    if (!report?.scan_id || pdfBusy) return;
+    setPdfBusy(true); setError(null);
+    try { await downloadReport(report.scan_id, "pdf"); }
+    catch (e) { setError(e instanceof ScanError ? e.message : "Could not download the PDF. Please try again."); }
+    finally { setPdfBusy(false); }
+  };
+
   return (
     <div className={compact ? "scanner compact" : "scanner"}>
-      <div className="scan-input">
-        <Globe size={16} className="scan-globe" />
-        <input
-          value={url}
-          onChange={(e) => setUrl(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && run()}
-          placeholder="Paste any website URL"
-          spellCheck={false}
-        />
-        <button className="scan-go" onClick={run} disabled={state === "scanning"}>
-          {state === "scanning" ? <><ScanLine size={15} className="spin-slow" /> Scanning</> : <>Scan free <ArrowRight size={15} /></>}
-        </button>
-      </div>
-      <div className="scan-hint">Checks crawler access, render parity, schema, structure, extractability, freshness. No login for your first scan.</div>
+      {isAuthenticated && (
+        <div className="scan-mode" role="group" aria-label="Scan type">
+          <button type="button" className={tab === "single" ? "on" : ""} onClick={() => setTab("single")}>Single page</button>
+          <button type="button" className={tab === "bulk" ? "on" : ""} onClick={() => setTab("bulk")}>Bulk — up to 50 URLs</button>
+        </div>
+      )}
+
+      {tab === "single" ? (
+        <>
+          <div className="scan-input">
+            <Globe size={16} className="scan-globe" />
+            <input
+              value={url}
+              onChange={(e) => setUrl(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && run()}
+              placeholder="Paste any website URL"
+              spellCheck={false}
+            />
+            <button className="scan-go" onClick={() => run()} disabled={state === "scanning"}>
+              {state === "scanning" ? <><ScanLine size={15} className="spin-slow" /> Scanning</> : <>Scan free <ArrowRight size={15} /></>}
+            </button>
+          </div>
+          <div className="scan-hint">Checks crawler access, indexability, schema, content structure, internal linking, performance and freshness across 10 signals. Free account — 1 scan a month, plus a one-time 50-URL bulk trial.</div>
+        </>
+      ) : (
+        <BulkScanPanel onGate={setGate402} />
+      )}
 
       {error && (
         <div className="scan-error" role="alert">
           <AlertTriangle size={14} /> <span>{error}</span>
+        </div>
+      )}
+
+      {gate402 && (
+        <div className="scan-error scan-gate" role="alert">
+          <AlertTriangle size={14} /> <span>{gate402}</span>
+          <button className="scan-gate-up" onClick={() => navigate("/app")}>Upgrade to Pro <ArrowRight size={13} /></button>
         </div>
       )}
 
@@ -268,48 +405,188 @@ function FreeScanner({ compact, onFull, onScanComplete }) {
             <div className="report-domain">
               <div className="report-label mono">RESULT</div>
               <div className="report-url">{report.domain}</div>
-              <span className="report-badge" style={{ color: bandColor(report.ars), borderColor: bandColor(report.ars) }}>
-                {band(report.ars) === "good" ? "AI ready" : band(report.ars) === "warn" ? "Needs work" : "At risk"}
+              <span className="report-badge" style={{ color: bandColor(headline), borderColor: bandColor(headline) }}>
+                {band(headline) === "good" ? "AI ready" : band(headline) === "warn" ? "Needs work" : "At risk"}
               </span>
             </div>
-            <Gauge value={report.ars} size={168} />
+            <Gauge value={headline} size={168} />
           </div>
 
           <div className="report-grid">
             <div className="panel">
-              <div className="panel-h">Score by signal family</div>
-              <FamilyBars families={report.families} />
+              <div className="panel-h">Score by signal <span className="panel-sub">10 checks</span></div>
+              <SignalBars sections={report.sections} />
             </div>
             <CrawlerStrip crawlers={report.crawlers} />
           </div>
 
           <div className="panel">
-            <div className="panel-h">Top issues <span className="panel-sub">fixes unlock with a free account</span></div>
-            <IssueList issues={report.issues} locked max={5} />
-          </div>
-
-          <div className="report-cta">
-            <div>
-              <div className="cta-title">Unlock the full report and the fixes</div>
-              <div className="cta-sub">Generated schema, llms.txt, an FAQ block, and a re-scan that proves the score moved.</div>
+            <div className="panel-h">Top issues
+              {!isAuthenticated && <span className="panel-sub">fixes unlock with a free account</span>}
             </div>
-            <button className="cta-btn" onClick={onFull}>Create free account <ArrowRight size={15} /></button>
+            <IssueList issues={report.issues} locked={!isAuthenticated} max={5} />
           </div>
+
+          {!isAuthenticated ? (
+            <div className="report-cta">
+              <div>
+                <div className="cta-title">Unlock the full report and the fixes</div>
+                <div className="cta-sub">Generated schema, llms.txt, an FAQ block, and a re-scan that proves the score moved.</div>
+              </div>
+              <button className="cta-btn" onClick={onFull}>Create free account <ArrowRight size={15} /></button>
+            </div>
+          ) : (
+            <div className="report-cta">
+              <div>
+                <div className="cta-title">Your full report is ready</div>
+                <div className="cta-sub">
+                  {isPro
+                    ? "Open the full breakdown in your dashboard, or download the PDF to share."
+                    : "Open the full breakdown in your dashboard — every signal, fix and evidence detail."}
+                </div>
+              </div>
+              <div className="report-cta-actions">
+                <button className="cta-btn" onClick={viewFullReport}>View full report <ArrowRight size={15} /></button>
+                {isPro ? (
+                  <button className="cta-link" onClick={downloadPdf} disabled={pdfBusy}>
+                    <Download size={14} /> {pdfBusy ? "Preparing…" : "Download PDF"}
+                  </button>
+                ) : (
+                  <button className="cta-link" onClick={() => openUpgrade("report", { scanId: report.scan_id })}>
+                    <Sparkles size={14} /> Unlock exports &amp; AI-written report
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
         </div>
       )}
 
-      {emailGate && (
-        <div className="modal-wrap" onClick={() => setEmailGate(false)}>
-          <div className="modal" onClick={(e) => e.stopPropagation()}>
-            <button className="modal-x" onClick={() => setEmailGate(false)}><X size={16} /></button>
-            <div className="modal-title">One scan on us. For the next, tell us where to send it.</div>
-            <div className="modal-sub">Your first scan was free. Add an email to keep scanning and save your reports.</div>
-            <input className="modal-input" placeholder="you@company.com" value={email} onChange={(e) => setEmail(e.target.value)} />
-            <button className="modal-btn" onClick={async () => { await captureLead(email, url); setEmailGate(false); setScanCount(0); }}>Continue scanning <ArrowRight size={15} /></button>
-            <div className="modal-fine">This is the lead-capture gate on scan #2. Mocked in the prototype.</div>
-          </div>
-        </div>
+    </div>
+  );
+}
+
+/* Bulk scan (signed-in): paste up to 50 URLs or upload a CSV/XLSX. Submits to the
+   background bulk endpoint and navigates to the live progress view (202). */
+const BULK_MAX = 50;
+// Mirror of the backend `bulk_upload_max_bytes` cap (config.py) so the user gets
+// instant feedback instead of a round-trip 413. The server check stays authoritative.
+const BULK_UPLOAD_MAX_BYTES = 2_000_000;
+const BULK_ACCEPT = ".csv,.xlsx,.txt,.json,.jsonl,.tsv";
+const SKIP_LABEL = {
+  invalid: "Invalid URL", duplicate: "Duplicate", ssrf_blocked: "Blocked (unsafe address)",
+  over_limit: `Beyond the ${BULK_MAX}-URL limit`,
+};
+
+function BulkScanPanel({ onGate }) {
+  const [text, setText] = useState("");
+  const [file, setFile] = useState(null);
+  const [dragOver, setDragOver] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState(null);
+  const [skipped, setSkipped] = useState(null);
+  const [trial, setTrial] = useState({ available: false, isPro: false });
+  const fileRef = useRef(null);
+
+  useEffect(() => {
+    let ok = true;
+    billing.subscription()
+      .then((s) => { if (ok) setTrial({ available: !!s?.usage?.bulk_trial?.available, isPro: s?.plan === "pro" }); })
+      .catch(() => {});
+    return () => { ok = false; };
+  }, []);
+
+  const lines = text.split(/[\n,]+/).map((l) => l.trim()).filter(Boolean);
+  const count = lines.length;
+  const over = count > BULK_MAX;
+
+  const submit = async () => {
+    if (busy) return;
+    setErr(null); setSkipped(null);
+    if (!file && count === 0) { setErr("Paste at least one URL, or upload a .csv, .xlsx, .txt or .json file."); return; }
+    setBusy(true);
+    try {
+      const res = file ? await bulkScanFile(file) : await bulkScanUrls(lines);
+      navigate(`/app?scan=${res.scan_id}`);   // 202 → live progress view
+    } catch (e) {
+      if (e && e.code === 402) { onGate?.(e.message); }
+      else {
+        setErr(e instanceof ScanError ? e.message : "Bulk scan failed. Please try again.");
+        if (e?.summary?.skipped?.length) setSkipped(e.summary.skipped);
+      }
+    } finally { setBusy(false); }
+  };
+
+  const chooseFile = (f) => {
+    if (!f) { setFile(null); return; }
+    if (f.size > BULK_UPLOAD_MAX_BYTES) {
+      // Instant feedback; the server enforces the same cap authoritatively (413).
+      setErr(`That file is too large (max ${BULK_UPLOAD_MAX_BYTES / 1_000_000} MB). `
+             + "Split it up or paste fewer URLs.");
+      if (fileRef.current) fileRef.current.value = "";
+      return;
+    }
+    setErr(null);
+    setFile(f);
+  };
+
+  const onDrop = (e) => {
+    e.preventDefault(); setDragOver(false);
+    const f = e.dataTransfer.files?.[0];
+    if (f) chooseFile(f);
+  };
+
+  return (
+    <div className="bulk">
+      {!trial.isPro && trial.available && (
+        <div className="bulk-badge"><Sparkles size={12} /> 1 free bulk trial</div>
       )}
+      <textarea className="bulk-text" rows={5} spellCheck={false}
+                placeholder={"One URL per line…\nhttps://example.com/\nhttps://example.com/pricing"}
+                value={text} onChange={(e) => setText(e.target.value)} />
+      <div
+        className={`bulk-drop${dragOver ? " over" : ""}`}
+        onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+        onDragLeave={() => setDragOver(false)}
+        onDrop={onDrop}
+        onClick={() => fileRef.current?.click()}
+        role="button" tabIndex={0}
+      >
+        <FileText size={15} />
+        <span>{file ? file.name : "Drop a .csv, .xlsx, .txt or .json here, or click to browse"}</span>
+        {file && <button className="bulk-clear" onClick={(e) => { e.stopPropagation(); setFile(null); if (fileRef.current) fileRef.current.value = ""; }}>Clear</button>}
+        <input ref={fileRef} type="file" accept={BULK_ACCEPT} hidden
+               onChange={(e) => chooseFile(e.target.files?.[0] || null)} />
+      </div>
+
+      <div className="bulk-foot">
+        <span className={`bulk-count${over ? " over" : ""}`}>
+          {file ? "URLs read from file" : `${count} / ${BULK_MAX} URLs`}{over ? " · extras skipped" : ""}
+        </span>
+        <button className="scan-go" onClick={submit} disabled={busy}>
+          {busy ? <><ScanLine size={15} className="spin-slow" /> Starting…</>
+            : <>Scan {file ? "file" : `${Math.min(count, BULK_MAX)} URL${count === 1 ? "" : "s"}`} <ArrowRight size={15} /></>}
+        </button>
+      </div>
+
+      {err && <div className="scan-error" role="alert"><AlertTriangle size={14} /> <span>{err}</span></div>}
+      {skipped?.length > 0 && <SkippedList skipped={skipped} />}
+      <div className="scan-hint">Bulk scans run in the background — we'll take you to a live progress view.</div>
+    </div>
+  );
+}
+
+function SkippedList({ skipped }) {
+  return (
+    <div className="bulk-skipped">
+      <div className="bulk-skipped-h">{skipped.length} URL{skipped.length === 1 ? "" : "s"} skipped</div>
+      {skipped.slice(0, 8).map((s, i) => (
+        <div key={i} className="bulk-skipped-row">
+          <span className="bulk-skipped-url">{s.url}</span>
+          <span className="bulk-skipped-reason">{SKIP_LABEL[s.reason] || s.reason}</span>
+        </div>
+      ))}
+      {skipped.length > 8 && <div className="d-dim" style={{ fontSize: 11.5, marginTop: 4 }}>+{skipped.length - 8} more</div>}
     </div>
   );
 }
@@ -329,409 +606,184 @@ function Marketing({ onFull, onScanComplete }) {
       </div>
 
       <div className="mkt-strip">
-        <div className="mkt-stat"><div className="mono big">6</div><div>signal families scored, zero AI cost</div></div>
+        <div className="mkt-stat"><div className="mono big">10</div><div>signals scored — free scan, no AI cost</div></div>
         <div className="mkt-stat"><div className="mono big">4</div><div>AI crawlers checked per scan</div></div>
-        <div className="mkt-stat"><div className="mono big">0-100</div><div>AI Readiness Score, one number</div></div>
+        <div className="mkt-stat"><div className="mono big">AI</div><div>written reports & content insights on Pro</div></div>
       </div>
     </div>
   );
 }
 
-/* ============================= APP SHELL ============================= */
-const NAV = [
-  { id: "overview", label: "Overview", icon: LayoutDashboard },
-  { id: "scans", label: "Scans", icon: ScanLine },
-  { id: "answers", label: "Answer visibility", icon: MessageSquareText, paid: true },
-  { id: "competitors", label: "Competitors", icon: Users, paid: true },
-  { id: "fixes", label: "Fixes", icon: Wrench },
-  { id: "reports", label: "Reports", icon: FileText },
-  { id: "settings", label: "Settings", icon: Settings },
-];
+/* Legacy AppShell + mock screens removed in Phase 4 (replaced by ./dashboard/Dashboard.jsx). */
 
-function AppShell({ report, notice, onReport, history = [], onSelectScan, onExit, onGoScan }) {
-  const [active, setActive] = useState("overview");
-  const [rescanning, setRescanning] = useState(false);
-  const [rescanError, setRescanError] = useState(null);
-  const [historyError, setHistoryError] = useState(null);
-  const inFlight = useRef(false); // synchronous guard: blocks same-tick double clicks
-
-  const site = report ? report.domain : "no site yet";
-
-  // Open a past scan from the history list: fetch the stored report, then show it.
-  const openScan = async (id) => {
-    setHistoryError(null);
-    try {
-      await onSelectScan(id);
-      setActive("overview");
-    } catch (err) {
-      setHistoryError(err instanceof ScanError ? err.message
-        : "Could not load that scan. It may have expired.");
-    }
-  };
-
-  // Re-scan the current report's URL against the real backend.
-  const doRescan = async () => {
-    if (inFlight.current || !report?.url) return; // prevent duplicate clicks
-    inFlight.current = true;
-    setRescanning(true);
-    setRescanError(null);
-    try {
-      const fresh = adaptReport(await scanUrl(report.url));
-      onReport(fresh); // replaces dashboard data and updates the saved scan id
-    } catch (err) {
-      setRescanError(err instanceof ScanError ? err.message : "Re-scan failed. Please try again.");
-    } finally {
-      inFlight.current = false;
-      setRescanning(false);
-    }
-  };
-
+/* ============================= AUTH-AWARE MARKETING HEADER ============================= */
+function TopBar() {
+  const { ready, isAuthenticated, user } = useAuth();
   return (
-    <div className="app">
-      <aside className="side">
-        <div className="brand"><Radar size={18} /> <span>AEOMirror</span></div>
-        <div className="site-switch">
-          <div className="site-btn" style={{ cursor: "default" }}>
-            <Globe size={14} /> <span>{site}</span>
-          </div>
-        </div>
-        <nav className="nav">
-          {NAV.map((n) => (
-            <button key={n.id} className={`nav-item ${active === n.id ? "on" : ""}`} onClick={() => setActive(n.id)}>
-              <n.icon size={16} /> <span>{n.label}</span>
-              {n.paid && <span className="nav-tag">PRO</span>}
+    <div className="topbar-auth">
+      <div className="topbar-brand" onClick={() => navigate("/")} style={{ cursor: "pointer" }}><Radar size={17} /> AEOMirror</div>
+      <div className="topbar-actions">
+        <button className="tb-btn tb-link" onClick={() => navigate("/contact")}>Contact</button>
+        {!ready ? null : isAuthenticated ? (
+          <>
+            <button className="tb-btn tb-primary" onClick={() => navigate("/app")}>
+              <LayoutDashboard size={15} /> Dashboard
             </button>
-          ))}
-        </nav>
-        <button className="exit" onClick={onExit}><ArrowRight size={14} style={{ transform: "rotate(180deg)" }} /> Homepage scanner</button>
-      </aside>
+            <button className="tb-avatar" onClick={() => navigate("/app")} title={user?.name}>
+              <Avatar user={user} size={30} />
+            </button>
+          </>
+        ) : (
+          <>
+            <button className="tb-btn" onClick={() => navigate("/login")}>Log in</button>
+            <button className="tb-btn tb-primary" onClick={() => navigate("/register")}>Sign up free</button>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
 
-      <main className="main">
-        <header className="topbar">
-          <div>
-            <div className="crumb mono">{site.toUpperCase()}</div>
-            <div className="topbar-title">{NAV.find((n) => n.id === active).label}</div>
-          </div>
-          <button className="rescan" onClick={doRescan} disabled={rescanning || !report}>
-            <RefreshCw size={14} className={rescanning ? "spin-slow" : ""} /> {rescanning ? "Re-scanning" : "Re-scan"}
+function MarketingRoot() {
+  const { isAuthenticated } = useAuth();
+  const body = (
+    <>
+      <TopBar />
+      <Marketing onFull={() => navigate(isAuthenticated ? "/app" : "/register")} onScanComplete={() => {}} />
+      <SiteFooter />
+    </>
+  );
+  // Signed-in visitors get the shared subscription context (plan + usage) and the
+  // UpgradeModal, so the result card can render its plan-aware CTA and open the
+  // paywall. Signed-out visitors skip it (no authed billing call, no modal needed).
+  return isAuthenticated ? <UpgradeProvider>{body}</UpgradeProvider> : body;
+}
+
+/* Public /contact page shell: same marketing chrome (top bar + footer). */
+function ContactRoot() {
+  return (
+    <>
+      <TopBar />
+      <Suspense fallback={<FullScreenLoader />}><Contact /></Suspense>
+      <SiteFooter />
+    </>
+  );
+}
+
+/* Website footer with a Contact/Support section. */
+function SiteFooter() {
+  return (
+    <footer className="site-footer">
+      <div className="footer-inner">
+        <div className="footer-brand">
+          <div className="footer-logo"><Radar size={16} /> AEOMirror</div>
+          <p className="footer-tag">See what AI can reach, read and cite on any site — then fix it.</p>
+        </div>
+        <div className="footer-help">
+          <div className="footer-help-h"><LifeBuoy size={15} /> Need help?</div>
+          <a className="footer-mail" href={`mailto:${SUPPORT_EMAIL}`}>
+            <Mail size={13} /> {SUPPORT_EMAIL}
+          </a>
+          <button className="footer-cta" onClick={() => navigate("/contact")}>
+            Contact us <ArrowRight size={14} />
           </button>
-        </header>
-
-        <div className="content">
-          {(rescanError || historyError) && (
-            <div className="scan-error" role="alert" style={{ marginBottom: 16 }}>
-              <AlertTriangle size={14} /> <span>{rescanError || historyError}</span>
-            </div>
-          )}
-
-          {!report ? (
-            <DashboardEmpty notice={notice} onGoScan={onGoScan} />
-          ) : (
-            <>
-              {active === "overview" && <Overview report={report} />}
-              {active === "scans" && <Scans history={history} current={report} onSelect={openScan} />}
-              {active === "answers" && <Answers />}
-              {active === "competitors" && <Competitors report={report} />}
-              {active === "fixes" && <Fixes report={report} />}
-              {active === "reports" && <Reports />}
-              {active === "settings" && <SettingsScreen />}
-            </>
-          )}
         </div>
-      </main>
-    </div>
+      </div>
+      <div className="footer-bottom">© {new Date().getFullYear()} AEOMirror. All rights reserved.</div>
+    </footer>
   );
 }
 
-/* Shown when the dashboard has no real scan to display yet. */
-function DashboardEmpty({ notice, onGoScan }) {
+function FullScreenLoader() {
   return (
-    <div className="card wide">
-      <div className="empty">
-        <ScanLine size={26} />
-        <div className="empty-t">No scan loaded yet</div>
-        <div className="empty-s">
-          {notice || "Run a scan from the homepage scanner to populate this dashboard with a live report."}
-        </div>
-        <button className="cta-btn small" onClick={onGoScan}>Go to scanner <ArrowRight size={14} /></button>
+    <div style={{ minHeight: "100vh", display: "grid", placeItems: "center", color: "var(--txt-mid)" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+        <Loader2 size={18} className="spin-slow" /> Loading…
       </div>
     </div>
   );
 }
 
-/* ---------- OVERVIEW (full fidelity) ---------- */
-const TREND = [
-  { w: "May 26", s: 41 }, { w: "Jun 02", s: 44 }, { w: "Jun 09", s: 43 },
-  { w: "Jun 16", s: 52 }, { w: "Jun 23", s: 58 }, { w: "Jun 30", s: 57 },
-  { w: "Jul 07", s: 64 }, { w: "Jul 14", s: 68 },
-];
-function Overview({ report }) {
-  return (
-    <div className="grid-main">
-      <section className="card score-card">
-        <Gauge value={report.ars} size={210} />
-        <div className="score-side">
-          <div className="score-band" style={{ color: bandColor(report.ars) }}>
-            {band(report.ars) === "good" ? "AI ready" : band(report.ars) === "warn" ? "Needs work" : "At risk"}
-          </div>
-          <div className="score-copy">This is structural readiness: whether AI crawlers can reach, render, parse and extract this site. Answer visibility (whether engines actually cite you) is tracked separately under the PRO tab.</div>
-          <div className="rubric mono">rubric {report.rubric_version}</div>
-        </div>
-      </section>
-
-      <section className="card">
-        <div className="card-h">Readiness trend <span className="card-sub">illustrative — history builds after repeat scans</span></div>
-        <div style={{ height: 150 }}>
-          <ResponsiveContainer width="100%" height="100%">
-            <AreaChart data={TREND} margin={{ top: 6, right: 6, bottom: 0, left: -18 }}>
-              <defs>
-                <linearGradient id="g" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor="var(--accent)" stopOpacity={0.35} />
-                  <stop offset="100%" stopColor="var(--accent)" stopOpacity={0} />
-                </linearGradient>
-              </defs>
-              <CartesianGrid stroke="var(--line)" vertical={false} />
-              <XAxis dataKey="w" tick={{ fill: "var(--txt-dim)", fontSize: 10 }} axisLine={false} tickLine={false} />
-              <YAxis domain={[0, 100]} tick={{ fill: "var(--txt-dim)", fontSize: 10 }} axisLine={false} tickLine={false} />
-              <Tooltip contentStyle={{ background: "var(--panel-2)", border: "1px solid var(--line)", borderRadius: 8, color: "var(--txt)", fontSize: 12 }} />
-              <Area type="monotone" dataKey="s" stroke="var(--accent)" strokeWidth={2} fill="url(#g)" />
-            </AreaChart>
-          </ResponsiveContainer>
-        </div>
-      </section>
-
-      <section className="card">
-        <div className="card-h">Score by signal family</div>
-        <FamilyBars families={report.families} />
-      </section>
-
-      <section className="card">
-        <CrawlerStrip crawlers={report.crawlers} />
-      </section>
-
-      <section className="card wide">
-        <div className="card-h">This week's backlog <span className="card-sub">ranked by impact, ready to assign</span></div>
-        <IssueList issues={report.issues} locked={false} max={5} />
-      </section>
-
-      <section className="card">
-        <div className="card-h">Competitor snapshot <span className="card-sub">PRO</span></div>
-        <div className="comp-mini">
-          {[{ n: report.domain, s: report.ars, you: true }, { n: "competitor-a.com", s: report.ars + 9 }, { n: "competitor-b.com", s: report.ars - 6 }].map((c) => (
-            <div key={c.n} className={`comp-row ${c.you ? "you" : ""}`}>
-              <span className="comp-name">{c.n}{c.you && <span className="you-tag">you</span>}</span>
-              <div className="comp-track"><div className="comp-fill" style={{ width: `${c.s}%`, background: c.you ? "var(--accent)" : "var(--line-2)" }} /></div>
-              <span className="mono comp-s">{c.s}</span>
-            </div>
-          ))}
-        </div>
-      </section>
-    </div>
-  );
+/* Route guard (middleware): unauthenticated users are redirected to Login. The
+   redirect runs in an effect (never during render) to avoid racing state commits. */
+function Protected({ children }) {
+  const { ready, isAuthenticated } = useAuth();
+  useEffect(() => {
+    if (ready && !isAuthenticated) navigate("/login", { replace: true });
+  }, [ready, isAuthenticated]);
+  if (!ready || !isAuthenticated) return <FullScreenLoader />;
+  return children;
 }
 
-/* ---------- lighter secondary screens (walking skeleton) ---------- */
-function Scans({ history = [], current, onSelect }) {
-  const fmtDate = (ms) => {
-    try { return new Date(ms).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" }); }
-    catch { return "-"; }
-  };
-  return (
-    <div className="card wide">
-      <div className="card-h">Scan history <span className="card-sub">stored scans in this browser</span></div>
-      {history.length === 0 ? (
-        <div className="empty">
-          <ScanLine size={22} />
-          <div className="empty-t">No scans yet</div>
-          <div className="empty-s">Run a scan and it will appear here.</div>
-        </div>
-      ) : (
-        <table className="tbl">
-          <thead><tr><th>Date</th><th>URL</th><th>ARS</th><th>Rubric</th><th>Status</th><th></th></tr></thead>
-          <tbody>
-            {history.map((h) => (
-              <tr key={h.id}>
-                <td className="mono">{fmtDate(h.date)}</td>
-                <td>{h.domain || h.url}{current && current.scan_id === h.id && <span className="you-tag" style={{ marginLeft: 7 }}>current</span>}</td>
-                <td><span className="mono" style={{ color: bandColor(h.ars) }}>{h.ars}</span></td>
-                <td className="mono dim">{h.rubric_version || "-"}</td>
-                <td><span className="pill">{h.status || "complete"}</span></td>
-                <td><button className="link-btn" onClick={() => onSelect(h.id)}>View <ExternalLink size={11} /></button></td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
-    </div>
-  );
+/* Admin guard: platform admins only; everyone else is bounced to the app. */
+function AdminOnly({ children }) {
+  const { user } = useAuth();
+  useEffect(() => {
+    if (user && !user.is_platform_admin) navigate("/app", { replace: true });
+  }, [user]);
+  if (!user?.is_platform_admin) return <FullScreenLoader />;
+  return children;
 }
-function Answers() {
-  const prompts = [
-    { p: "best cold brew coffee maker 2026", ct: 2, tot: 5 },
-    { p: "affordable ethical skincare india", ct: 3, tot: 5 },
-    { p: "shopify vs woocommerce for small brands", ct: 0, tot: 5 },
-  ];
-  return (
-    <div className="grid-main">
-      <div className="card wide paid-banner">
-        <Sparkles size={15} /> <span>Answer visibility runs live prompts against ChatGPT, Claude, Gemini and Perplexity. This is a metered PRO feature. Results below are illustrative.</span>
-      </div>
-      {prompts.map((pr, i) => (
-        <div key={i} className="card">
-          <div className="card-h prompt-h">"{pr.p}"</div>
-          <div className="prompt-score">
-            <span className="mono big" style={{ color: pr.ct === 0 ? "var(--bad)" : "var(--txt)" }}>{pr.ct}/{pr.tot}</span>
-            <span className="dim">engines mentioned you</span>
-          </div>
-          <div className="engine-dots">
-            {["GPT", "Claude", "Gemini", "Pplx", "AIO"].map((e, j) => (
-              <span key={e} className="edot" style={{ background: j < pr.ct ? "var(--good)" : "var(--line-2)" }}>{e}</span>
-            ))}
-          </div>
-        </div>
-      ))}
-    </div>
-  );
-}
-function Competitors({ report }) {
-  const comps = [
-    { n: report.domain, s: report.ars, you: true },
-    { n: "competitor-a.com", s: report.ars + 9 },
-    { n: "competitor-b.com", s: report.ars - 6 },
-    { n: "competitor-c.com", s: report.ars + 2 },
-  ].sort((a, b) => b.s - a.s);
-  return (
-    <div className="card wide">
-      <div className="card-h">Readiness vs tracked competitors <span className="card-sub">PRO</span></div>
-      <div className="comp-mini big-gap">
-        {comps.map((c) => (
-          <div key={c.n} className={`comp-row ${c.you ? "you" : ""}`}>
-            <span className="comp-name">{c.n}{c.you && <span className="you-tag">you</span>}</span>
-            <div className="comp-track"><div className="comp-fill" style={{ width: `${c.s}%`, background: c.you ? "var(--accent)" : "var(--line-2)" }} /></div>
-            <span className="mono comp-s" style={{ color: bandColor(c.s) }}>{c.s}</span>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-function Fixes({ report }) {
-  const assets = [
-    { t: "Organization JSON-LD", d: "Generated from your page content", ready: true },
-    { t: "FAQPage schema", d: "From detected question-answer gaps", ready: true },
-    { t: "robots.txt corrector", d: "Unblocks GPTBot and ClaudeBot", ready: true },
-    { t: "llms.txt", d: "Emerging convention, adoption unconfirmed", ready: true },
-  ];
-  return (
-    <div className="grid-main">
-      <div className="card wide">
-        <div className="card-h">Generated fixes <span className="card-sub">each ships as a copy-paste asset, then re-scan to prove the delta</span></div>
-        <div className="fix-grid">
-          {assets.map((a) => (
-            <div key={a.t} className="fix-card">
-              <div className="fix-t">{a.t}</div>
-              <div className="fix-d">{a.d}</div>
-              <button className="fix-btn"><Wrench size={12} /> Generate</button>
-            </div>
-          ))}
-        </div>
-      </div>
-    </div>
-  );
-}
-function Reports() {
-  return (
-    <div className="card wide">
-      <div className="card-h">Client reports <span className="card-sub">white-label export, Agency tier</span></div>
-      <div className="empty">
-        <FileText size={26} />
-        <div className="empty-t">No reports generated yet</div>
-        <div className="empty-s">Build a white-label PDF from any site's latest scan and schedule it monthly.</div>
-        <button className="cta-btn small">New report <ArrowRight size={14} /></button>
-      </div>
-    </div>
-  );
-}
-function SettingsScreen() {
-  return (
-    <div className="grid-main">
-      <div className="card">
-        <div className="card-h">Plan</div>
-        <div className="plan-row"><span>Current plan</span><span className="pill accent">Track / $69</span></div>
-        <div className="plan-row"><span>Sites</span><span className="mono">1 of 5</span></div>
-        <div className="plan-row"><span>Tracked prompts</span><span className="mono">18 of 25</span></div>
-        <div className="plan-row"><span>Engines</span><span className="mono">4</span></div>
-      </div>
-      <div className="card">
-        <div className="card-h">Team</div>
-        <div className="plan-row"><span>Ayush Prashar</span><span className="pill">Owner</span></div>
-        <div className="plan-row"><span>seat 2</span><span className="pill dim">invite</span></div>
-        <div className="plan-row"><span>seat 3</span><span className="pill dim">invite</span></div>
-      </div>
-    </div>
-  );
+
+/* ============================= ROUTER ============================= */
+function AppRouter() {
+  const { path } = useLocation();
+
+  // Public shared report (/r/:token) — no dashboard shell, no auth. AuthProvider skips
+  // its bootstrap for this path, so a signed-out visitor fires no auth call here.
+  if (path.startsWith("/r/")) {
+    return (
+      <Suspense fallback={<FullScreenLoader />}>
+        <PublicReport token={decodeURIComponent(path.slice(3))} />
+      </Suspense>
+    );
+  }
+
+  // Public contact & support page.
+  if (path === "/contact") return <ContactRoot />;
+
+  // Public auth pages.
+  if (path === "/login") return <Login />;
+  if (path === "/register") return <Register />;
+  if (path === "/forgot-password") return <ForgotPassword />;
+  if (path === "/reset-password") return <ResetPassword />;
+  if (path === "/verify-email") return <VerifyEmail />;
+  if (path === "/accept-invitation") return <AcceptInvitation />;
+
+  // Internal admin platform (platform admins only).
+  if (path.startsWith("/admin")) {
+    return (
+      <Protected>
+        <AdminOnly>
+          <Suspense fallback={<FullScreenLoader />}><AdminApp /></Suspense>
+        </AdminOnly>
+      </Protected>
+    );
+  }
+
+  // Protected app.
+  if (path.startsWith("/app")) {
+    return (
+      <Protected>
+        <Suspense fallback={<FullScreenLoader />}>
+          <Dashboard onRunScan={() => navigate("/")} onExit={() => navigate("/")} />
+        </Suspense>
+      </Protected>
+    );
+  }
+
+  // Default: the public marketing scanner.
+  return <MarketingRoot />;
 }
 
 /* ============================= ROOT ============================= */
 export default function App() {
-  const [view, setView] = useState("marketing"); // marketing | app
-  const [report, setReport] = useState(null);     // the real backend report (source of truth)
-  const [notice, setNotice] = useState(null);     // e.g. a saved scan that expired
-  const [history, setHistory] = useState(loadHistory);
-
-  // Store a fresh real report, remember its id for restore, and record history.
-  const commitReport = (rep) => {
-    setReport(rep);
-    setNotice(null);
-    try {
-      if (rep?.scan_id && !String(rep.scan_id).startsWith("mock-")) {
-        localStorage.setItem(LAST_SCAN_KEY, rep.scan_id);
-      }
-    } catch { /* localStorage unavailable — non-fatal */ }
-    setHistory(pushHistory(rep));
-  };
-
-  // Open a past scan by id: always fetch the stored report from the backend
-  // (never regenerate) and show it in the dashboard.
-  const selectScan = async (id) => {
-    const rep = adaptReport(await getScanById(id));
-    commitReport(rep);
-    return rep;
-  };
-
-  // On load, restore the last scan from the backend using the saved id.
-  useEffect(() => {
-    let saved = null;
-    try { saved = localStorage.getItem(LAST_SCAN_KEY); } catch { /* ignore */ }
-    if (!saved) return;
-    let cancelled = false;
-    (async () => {
-      try {
-        const rep = adaptReport(await getScanById(saved));
-        if (!cancelled) setReport(rep);
-      } catch (err) {
-        // Expired / missing / unreachable: drop the invalid id and stay graceful.
-        if (err instanceof ScanError && err.code === 404) {
-          try { localStorage.removeItem(LAST_SCAN_KEY); } catch { /* ignore */ }
-          if (!cancelled) setNotice("Your last saved scan has expired. Run a new scan to continue.");
-        }
-      }
-    })();
-    return () => { cancelled = true; };
-  }, []);
-
+  // Scans are persisted server-side and now scoped to the signed-in organization;
+  // the dashboard loads its own data from GET /api/scans + /api/dashboard.
   return (
     <div className="root">
       <style>{CSS}</style>
-      <div className="switcher">
-        <button className={view === "marketing" ? "on" : ""} onClick={() => setView("marketing")}>Homepage scanner</button>
-        <button className={view === "app" ? "on" : ""} onClick={() => setView("app")}>Product dashboard</button>
-      </div>
-      {view === "marketing"
-        ? <Marketing onFull={() => setView("app")} onScanComplete={commitReport} />
-        : <AppShell report={report} notice={notice} onReport={commitReport}
-                    history={history} onSelectScan={selectScan}
-                    onExit={() => setView("marketing")} onGoScan={() => setView("marketing")} />}
+      <AppRouter />
     </div>
   );
 }
@@ -756,18 +808,50 @@ h1,h2,h3,.brand,.topbar-title,.gauge-num,.cta-title{font-family:'Hanken Grotesk'
 
 /* switcher */
 .switcher{position:sticky;top:0;z-index:40;display:flex;gap:4px;justify-content:center;
-  padding:8px;background:rgba(11,15,20,.85);backdrop-filter:blur(8px);border-bottom:1px solid var(--line)}
+  padding:8px;background:var(--bg);border-bottom:1px solid var(--line)}
 .switcher button{background:transparent;border:1px solid transparent;color:var(--txt-mid);
   padding:6px 14px;border-radius:7px;font-size:12.5px;cursor:pointer;font-weight:500}
 .switcher button.on{background:var(--panel-2);color:var(--txt);border-color:var(--line)}
 
+/* auth-aware marketing top bar — solid (not translucent) so scrolled hero content,
+   the stats strip and the footer never ghost through it behind the scan card. */
+.topbar-auth{position:sticky;top:0;z-index:40;display:flex;justify-content:space-between;align-items:center;
+  padding:12px 22px;background:var(--bg);border-bottom:1px solid var(--line)}
+.topbar-brand{display:flex;align-items:center;gap:8px;font-weight:700;font-size:15px;font-family:'Hanken Grotesk',sans-serif}
+.topbar-brand svg{color:var(--accent)}
+.topbar-actions{display:flex;align-items:center;gap:10px}
+.tb-btn{display:inline-flex;align-items:center;gap:7px;background:transparent;border:1px solid var(--line-2);
+  color:var(--txt);padding:8px 14px;border-radius:8px;font-size:13px;font-weight:500;cursor:pointer;font-family:'Inter',sans-serif}
+.tb-btn:hover{border-color:var(--txt-dim)}
+.tb-primary{background:var(--accent);color:#04222a;border-color:transparent;font-weight:600}
+.tb-link{border-color:transparent;color:var(--txt-mid)}
+.tb-link:hover{border-color:transparent;color:var(--txt)}
+.tb-avatar{background:none;border:none;cursor:pointer;padding:0;display:flex}
+
+/* site footer */
+.site-footer{border-top:1px solid var(--line);background:var(--panel);margin-top:40px}
+.footer-inner{max-width:1080px;margin:0 auto;padding:34px 24px 26px;display:flex;justify-content:space-between;gap:32px;flex-wrap:wrap}
+.footer-brand{max-width:360px}
+.footer-logo{display:flex;align-items:center;gap:8px;font-weight:700;font-size:15px;font-family:'Hanken Grotesk',sans-serif}
+.footer-logo svg{color:var(--accent)}
+.footer-tag{color:var(--txt-mid);font-size:13px;line-height:1.55;margin:10px 0 0}
+.footer-help{display:flex;flex-direction:column;gap:10px;align-items:flex-start}
+.footer-help-h{display:flex;align-items:center;gap:8px;font-weight:600;font-size:14px}
+.footer-help-h svg{color:var(--accent)}
+.footer-mail{display:inline-flex;align-items:center;gap:7px;color:var(--txt-mid);text-decoration:none;font-size:13.5px}
+.footer-mail:hover{color:var(--accent)}
+.footer-cta{display:inline-flex;align-items:center;gap:7px;background:var(--accent);color:#04222a;border:none;
+  padding:9px 15px;border-radius:8px;font-weight:600;font-size:13px;cursor:pointer;font-family:'Inter',sans-serif}
+.footer-bottom{border-top:1px solid var(--line);color:var(--txt-dim);font-size:12px;text-align:center;padding:16px 24px}
+
 /* marketing */
-.mkt{max-width:1080px;margin:0 auto;padding:56px 24px 80px}
+.mkt{max-width:1080px;margin:0 auto;padding:56px 24px 80px;position:relative;z-index:0}
+.mkt-hero{position:relative;z-index:1}
 .eyebrow{display:inline-flex;align-items:center;gap:7px;color:var(--accent);font-size:11px;
   letter-spacing:.12em;margin-bottom:22px;border:1px solid var(--line);padding:5px 11px;border-radius:20px}
 .mkt-hero h1{font-size:52px;line-height:1.03;font-weight:800;letter-spacing:-.02em;margin:0 0 20px}
 .mkt-lede{color:var(--txt-mid);font-size:16.5px;line-height:1.55;max-width:640px;margin:0 0 34px}
-.mkt-strip{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-top:52px;
+.mkt-strip{position:relative;z-index:1;display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-top:52px;
   padding-top:34px;border-top:1px solid var(--line)}
 .mkt-stat{color:var(--txt-mid);font-size:13px}
 .mkt-stat .big{font-size:30px;color:var(--txt);font-weight:600;margin-bottom:4px}
@@ -785,9 +869,38 @@ h1,h2,h3,.brand,.topbar-title,.gauge-num,.cta-title{font-family:'Hanken Grotesk'
   border:none;padding:10px 16px;border-radius:8px;font-weight:600;font-size:13.5px;cursor:pointer;white-space:nowrap}
 .scan-go:disabled{opacity:.7;cursor:default}
 .scan-hint{color:var(--txt-dim);font-size:12px;margin-top:10px;line-height:1.5}
+.scan-mode{display:inline-flex;gap:4px;margin-top:12px;padding:3px;border:1px solid var(--line);border-radius:9px;background:var(--panel)}
+.scan-mode button{background:transparent;border:none;color:var(--txt-mid);padding:6px 12px;border-radius:6px;
+  font-size:12.5px;cursor:pointer;font-family:'Inter',sans-serif;white-space:nowrap}
+.scan-mode button.on{background:var(--accent-dim);color:var(--accent);font-weight:600}
+/* bulk scan panel (homepage, signed-in) */
+.bulk{margin-top:14px;text-align:left}
+.bulk-badge{display:inline-flex;align-items:center;gap:5px;margin-bottom:10px;font-size:11.5px;font-weight:600;
+  color:var(--accent);background:var(--accent-dim);border:1px solid var(--accent);border-radius:20px;padding:3px 10px}
+.bulk-text{width:100%;box-sizing:border-box;background:var(--panel);border:1px solid var(--line-2);border-radius:10px;
+  color:var(--txt);font-size:13px;font-family:'IBM Plex Mono',monospace;padding:11px 13px;resize:vertical;line-height:1.6;outline:none}
+.bulk-text:focus{border-color:var(--accent)}
+.bulk-drop{display:flex;align-items:center;gap:9px;margin-top:10px;padding:11px 13px;border:1px dashed var(--line-2);
+  border-radius:10px;color:var(--txt-mid);font-size:12.5px;cursor:pointer;background:var(--panel)}
+.bulk-drop.over{border-color:var(--accent);background:var(--accent-dim)}
+.bulk-drop svg{flex:none;color:var(--txt-dim)}
+.bulk-drop span{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.bulk-clear{background:none;border:none;color:var(--txt-dim);font-size:12px;cursor:pointer;text-decoration:underline}
+.bulk-foot{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:12px}
+.bulk-count{font-size:12px;color:var(--txt-mid);font-family:'IBM Plex Mono',monospace}
+.bulk-count.over{color:var(--warn)}
+.bulk-skipped{margin-top:12px;border:1px solid var(--line);border-radius:10px;padding:10px 12px;background:var(--panel)}
+.bulk-skipped-h{font-size:12px;font-weight:600;color:var(--warn);margin-bottom:6px}
+.bulk-skipped-row{display:flex;justify-content:space-between;gap:12px;font-size:11.5px;padding:2px 0}
+.bulk-skipped-url{color:var(--txt-mid);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-family:'IBM Plex Mono',monospace}
+.bulk-skipped-reason{color:var(--txt-dim);flex:none}
 .scan-error{display:flex;align-items:center;gap:8px;margin-top:14px;padding:10px 12px;border:1px solid var(--bad);
   border-radius:9px;background:rgba(229,97,91,.10);color:var(--bad);font-size:12.5px}
 .scan-error svg{flex:none}
+/* scan-quota (402) gate: amber, with an inline upgrade CTA */
+.scan-gate{border-color:var(--warn);background:rgba(230,169,74,.10);color:var(--warn)}
+.scan-gate-up{margin-left:auto;display:inline-flex;align-items:center;gap:5px;background:var(--warn);color:#2a1e05;
+  border:none;padding:6px 12px;border-radius:7px;font-weight:600;font-size:12px;cursor:pointer;white-space:nowrap}
 .score-band{display:inline-flex;align-items:center;font-weight:700;font-size:12.5px;font-family:'IBM Plex Mono';
   border:1px solid;padding:3px 10px;border-radius:20px;margin-bottom:2px}
 
@@ -813,12 +926,17 @@ h1,h2,h3,.brand,.topbar-title,.gauge-num,.cta-title{font-family:'Hanken Grotesk'
 .cta-btn{display:inline-flex;align-items:center;gap:8px;background:var(--accent);color:#04222a;
   border:none;padding:11px 18px;border-radius:9px;font-weight:600;cursor:pointer;font-size:13.5px;white-space:nowrap}
 .cta-btn.small{padding:9px 14px;font-size:13px}
+.report-cta-actions{display:flex;flex-direction:column;align-items:flex-end;gap:8px}
+.cta-link{display:inline-flex;align-items:center;gap:6px;background:none;border:none;color:var(--accent);
+  cursor:pointer;font-size:12.5px;font-weight:500;padding:0;font-family:'Inter',sans-serif}
+.cta-link:hover{text-decoration:underline}
+.cta-link:disabled{opacity:.6;cursor:default;text-decoration:none}
 
 /* gauge */
 .gauge{position:relative;text-align:center;flex:none}
 .gauge-track{fill:none;stroke:var(--line);stroke-width:12;stroke-linecap:round}
 .gauge-val{fill:none;stroke-width:12;stroke-linecap:round;transition:all .9s cubic-bezier(.2,.7,.2,1)}
-.gauge-tick{fill:var(--txt-dim);font-size:9px;font-family:'IBM Plex Mono';text-anchor:middle}
+.gauge-tick{fill:var(--txt-dim);font-size:9px;font-family:'IBM Plex Mono'}
 .gauge-center{position:absolute;top:46%;left:0;right:0;transform:translateY(-50%)}
 .gauge-num{font-size:46px;font-weight:800;line-height:1;font-family:'Hanken Grotesk'}
 .gauge-den{color:var(--txt-dim);font-size:12px;font-family:'IBM Plex Mono';margin-top:2px}
@@ -864,6 +982,45 @@ h1,h2,h3,.brand,.topbar-title,.gauge-num,.cta-title{font-family:'Hanken Grotesk'
 .issue-btn{display:inline-flex;align-items:center;gap:5px;background:var(--panel-2);color:var(--txt);
   border:1px solid var(--line-2);padding:6px 11px;border-radius:7px;font-size:12px;cursor:pointer;flex:none;font-weight:500}
 .issue-btn.locked{color:var(--txt-mid)}
+/* expandable issue (signed-in): whole row is a toggle, detail drops below */
+.issue.expandable{display:block;padding:0;overflow:hidden}
+.issue-main{width:100%;display:flex;align-items:center;gap:12px;padding:11px 12px;
+  background:transparent;border:none;color:var(--txt);cursor:pointer;text-align:left;font-family:'Inter',sans-serif}
+.issue-main:hover,.issue.expandable.open .issue-main{background:var(--panel-2)}
+.issue-chev{color:var(--txt-dim);flex:none;transition:transform .2s}
+.issue-detail{padding:2px 12px 13px 12px;border-top:1px solid var(--line);display:flex;flex-direction:column;gap:10px}
+.issue-detail-finding{color:var(--txt-mid);font-size:12px;line-height:1.5;margin:10px 0 0}
+.issue-detail-h{font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--txt-dim);
+  display:flex;align-items:center;gap:6px;margin-bottom:5px}
+.issue-detail-h svg{color:var(--accent)}
+.issue-detail-fix p{color:var(--txt-mid);font-size:12.5px;line-height:1.5;margin:0}
+
+/* signal report (Phase 3) */
+.sig{margin-top:16px}
+.sig .panel-h{justify-content:flex-start}
+.sig-overall{margin-left:auto;font-size:12.5px;font-weight:600}
+.sig-list{display:flex;flex-direction:column;gap:8px}
+.sig-card{border:1px solid var(--line);border-radius:10px;background:var(--panel);overflow:hidden}
+.sig-head{width:100%;display:flex;align-items:center;gap:10px;background:transparent;border:none;
+  color:var(--txt);padding:11px 13px;cursor:pointer;text-align:left;font-size:13px}
+.sig-head:hover{background:var(--panel-2)}
+.sig-dot{width:8px;height:8px;border-radius:50%;flex:none}
+.sig-name{flex:1;font-weight:500}
+.sig-chip{font-size:9.5px;font-weight:700;border:1px solid;border-radius:5px;padding:2px 6px;
+  font-family:'IBM Plex Mono';width:44px;text-align:center;flex:none}
+.sig-score{font-size:13px;font-weight:600;width:26px;text-align:right}
+.sig-chev{color:var(--txt-dim);transition:transform .2s;flex:none}
+.sig-body{padding:4px 13px 14px 31px;border-top:1px solid var(--line);display:flex;flex-direction:column;gap:12px}
+.sig-block-h{font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--txt-dim);margin:10px 0 6px}
+.sig-ul{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px}
+.sig-ul li{display:flex;align-items:flex-start;gap:7px;font-size:12.5px;line-height:1.45}
+.sig-ul li svg{margin-top:2px;flex:none}
+.sig-issue svg{color:var(--warn)} .sig-rec svg{color:var(--accent)}
+.sig-issue span{color:var(--txt-mid)} .sig-rec span{color:var(--txt-mid)}
+.sig-clean{display:flex;align-items:center;gap:7px;color:var(--good);font-size:12.5px;margin-top:8px}
+.sig-ev{display:grid;grid-template-columns:1fr 1fr;gap:4px 16px}
+.sig-ev-row{display:flex;justify-content:space-between;gap:10px;font-size:11px;border-bottom:1px solid var(--line);padding:3px 0}
+.sig-ev-k{color:var(--txt-dim)} .sig-ev-v{color:var(--txt-mid);text-align:right;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:60%}
 
 /* modal */
 .modal-wrap{position:fixed;inset:0;background:rgba(4,7,10,.72);backdrop-filter:blur(3px);

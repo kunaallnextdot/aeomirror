@@ -1,0 +1,19 @@
+# AEOMirror — allow all crawlers, including AI engines.
+User-agent: *
+Allow: /
+Disallow: /app
+Disallow: /admin
+
+User-agent: GPTBot
+Allow: /
+
+User-agent: ClaudeBot
+Allow: /
+
+User-agent: PerplexityBot
+Allow: /
+
+User-agent: Google-Extended
+Allow: /
+
+Sitemap: https://aeomirror.com/sitemap.xml
