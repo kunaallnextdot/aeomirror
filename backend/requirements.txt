@@ -29,3 +29,4 @@ anthropic==0.40.0
 # Error tracking. Install only if you set SENTRY_DSN; the app runs fine without it.
 # sentry-sdk==2.14.0
 gunicorn==22.0.0          # production process manager for uvicorn workers
+psycopg2-binary==2.9.9
