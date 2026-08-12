@@ -520,3 +520,31 @@ def admin_delete_contact(contact_id: str, request: Request,
     audit.record(db, actor=admin, action=audit.DELETE_CONTACT, target_type="contact",
                  target_id=contact_id, ip_hash=_audit_ctx(request))
     return {"ok": True, "id": contact_id, "status": "deleted"}
+
+
+# ------------------------------- weekly digest preflight -------------------------------
+from pydantic import BaseModel   # noqa: E402
+
+
+class DigestPreflightRequest(BaseModel):
+    to: str
+    org_id: str | None = None
+
+
+@router.post("/digest/preflight")
+def digest_preflight(body: DigestPreflightRequest, db: Session = Depends(get_db)):
+    """Send a test weekly digest to `to` and return the provider response, so
+    deliverability can be verified BEFORE any live send. Uses the org's real data when
+    org_id is given and has any; otherwise a synthetic sample. Admin-only (router gate)."""
+    from app.services import digest as digest_svc
+    from app.services import email_backend
+
+    data = digest_svc.build_digest(db, body.org_id) if body.org_id else None
+    used_sample = data is None
+    if data is None:
+        data = digest_svc.sample_digest()
+    unsub = digest_svc._unsubscribe_url("preview")
+    subject, text, html_body = digest_svc.render_digest(data, unsubscribe_url=unsub)
+    res = email_backend.send(to=body.to, subject=f"[preflight] {subject}", text=text,
+                             html=html_body, headers={"List-Unsubscribe": f"<{unsub}>"})
+    return {"to": body.to, "used_sample": used_sample, "result": res}

@@ -6,7 +6,7 @@ inline via the same runner so the caller gets an immediate result.
 """
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
@@ -98,6 +98,24 @@ def _history_out(h: MonitorHistory) -> dict:
         "status": h.status, "issue_count": h.issue_count, "scores": h.scores,
         "changes": h.changes, "created_at": h.created_at,
     }
+
+
+# Severity buckets from the attribution engine (see app.services.snapshot_diff).
+_CHANGE_SEVERITIES = ("CRITICAL", "WARNING", "INFO")
+
+
+def _change_summary(change_set) -> dict | None:
+    """Counts of a scan's attribution changes by severity, or None when no change set
+    exists (a pre-attribution scan). An empty change set (a diff that found nothing)
+    returns zeroed counts — it exists, it's just empty."""
+    if change_set is None:
+        return None
+    counts = {sev: 0 for sev in _CHANGE_SEVERITIES}
+    for c in change_set:
+        sev = (c or {}).get("severity")
+        if sev in counts:
+            counts[sev] += 1
+    return counts
 
 
 def _build_trends(rows: list[MonitorHistory]) -> dict:
@@ -220,6 +238,8 @@ def update_monitor(monitor_id: str, body: UpdateMonitorRequest,
     m = _owned_monitor(db, ctx, monitor_id)
     if body.name is not None:
         m.name = body.name or None
+    if body.digest_enabled is not None:
+        m.digest_enabled = body.digest_enabled
     if body.frequency is not None:
         if body.frequency not in FREQUENCIES:
             raise HTTPException(status_code=422, detail="Invalid frequency.")
@@ -310,15 +330,36 @@ def acknowledge_alert(alert_id: str,
 def get_history(monitor_id: str,
                 ctx: AuthContext = Depends(require_permission("report:view")),
                 db: Session = Depends(get_db),
-                limit: int = Query(default=200, le=1000)):
+                limit: int = Query(default=200, le=1000),
+                days: int | None = Query(default=None, ge=1, le=365)):
+    """Monitor history + trends. `days` (optional) filters to the last N days; omitting
+    it keeps the original behaviour. Each entry additionally carries `delta` and
+    `change_summary` (attribution change counts by severity, null when no change set) plus
+    the raw `change_set` for the timeline's click-to-reveal. Org-scoped (404 otherwise).
+    Backward compatible — existing fields are unchanged."""
     m = _owned_monitor(db, ctx, monitor_id)
-    rows_desc = (db.query(MonitorHistory)
-                 .filter(MonitorHistory.monitor_id == m.id)
-                 .order_by(MonitorHistory.created_at.desc())
-                 .limit(limit).all())
+    q = db.query(MonitorHistory).filter(MonitorHistory.monitor_id == m.id)
+    if days is not None:
+        q = q.filter(MonitorHistory.created_at >= datetime.utcnow() - timedelta(days=days))
+    rows_desc = q.order_by(MonitorHistory.created_at.desc()).limit(limit).all()
     rows_asc = list(reversed(rows_desc))
+
+    # Batch-load the referenced scans once (avoid an N+1 over the history rows).
+    scan_ids = [h.scan_id for h in rows_desc if h.scan_id]
+    scans = ({s.id: s for s in db.query(Scan).filter(Scan.id.in_(scan_ids)).all()}
+             if scan_ids else {})
+
+    def _entry(h: MonitorHistory) -> dict:
+        base = _history_out(h)
+        scan = scans.get(h.scan_id)
+        change_set = (scan.result or {}).get("change_set") if scan else None
+        base["delta"] = ((h.changes or {}).get("overall") or {}).get("delta")
+        base["change_set"] = change_set
+        base["change_summary"] = _change_summary(change_set)
+        return base
+
     return {
         "monitor_id": m.id,
-        "history": [_history_out(h) for h in rows_desc],
+        "history": [_entry(h) for h in rows_desc],
         "trends": _build_trends(rows_asc),
     }

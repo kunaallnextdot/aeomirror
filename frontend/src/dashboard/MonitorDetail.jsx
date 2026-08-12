@@ -7,11 +7,12 @@ import {
   AlertTriangle, CheckCircle2, Bell, Clock, Bot, Wrench, CheckCircle, History,
 } from "lucide-react";
 import {
-  Area, AreaChart, Line, LineChart, Bar, BarChart, CartesianGrid, Legend,
+  Line, LineChart, Bar, BarChart, CartesianGrid, Legend,
   ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from "recharts";
 import {
-  getMonitor, runMonitor, updateMonitor, deleteMonitor, acknowledgeAlert, ScanError,
+  getMonitor, getMonitorHistory, runMonitor, updateMonitor, deleteMonitor,
+  acknowledgeAlert, ScanError,
 } from "../api.js";
 import { ScoreRing, scoreColor, fmtDate, TableSkeleton, ErrorState, StatusBadge } from "./ui.jsx";
 import { useAuth } from "../auth/AuthContext.jsx";
@@ -37,13 +38,20 @@ export default function MonitorDetail({ monitorId, onBack, onOpenReport }) {
   const canRun = hasPermission("scan:run");
   const canDelete = hasPermission("scan:delete");
   const [detail, setDetail] = useState(null);
+  const [history, setHistory] = useState(null);
+  const [selectedScan, setSelectedScan] = useState(null);   // a history entry, on marker click
   const [error, setError] = useState(null);
   const [busy, setBusy] = useState(false);
 
   const load = useCallback(async () => {
-    setError(null);
-    try { setDetail(await getMonitor(monitorId)); }
-    catch (e) { setError(e instanceof ScanError ? e.message : "Could not load the monitor."); }
+    setError(null); setSelectedScan(null);
+    try {
+      const [d, h] = await Promise.all([
+        getMonitor(monitorId),
+        getMonitorHistory(monitorId, { days: 90 }).catch(() => null),   // timeline is best-effort
+      ]);
+      setDetail(d); setHistory(h);
+    } catch (e) { setError(e instanceof ScanError ? e.message : "Could not load the monitor."); }
   }, [monitorId]);
 
   useEffect(() => { load(); }, [load]);
@@ -58,7 +66,6 @@ export default function MonitorDetail({ monitorId, onBack, onOpenReport }) {
 
   const m = detail.monitor;
   const trends = detail.trends || {};
-  const scoreData = (trends.score_series || []).map((p) => ({ date: shortDate(p.t), score: p.score }));
   const issueData = (trends.issue_series || []).map((p) => ({ date: shortDate(p.t), issues: p.issues }));
   const catSeries = trends.category_series || {};
   const catData = buildCategoryData(catSeries);
@@ -127,24 +134,8 @@ export default function MonitorDetail({ monitorId, onBack, onOpenReport }) {
       {/* AI crawler access (from the latest scan) */}
       <CrawlerAccessPanel data={detail.crawler_access} />
 
-      {/* charts */}
-      <div className="d-panel" style={{ marginTop: 14 }}>
-        <div className="d-panel-h">Score over time</div>
-        {scoreData.length > 1 ? (
-          <div className="d-chart">
-            <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={scoreData} margin={{ top: 6, right: 8, bottom: 0, left: -20 }}>
-                <defs><linearGradient id="mg" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="var(--accent)" stopOpacity={0.35} /><stop offset="100%" stopColor="var(--accent)" stopOpacity={0} /></linearGradient></defs>
-                <CartesianGrid stroke="var(--line)" vertical={false} />
-                <XAxis dataKey="date" tick={AXIS} axisLine={false} tickLine={false} />
-                <YAxis domain={[0, 100]} tick={AXIS} axisLine={false} tickLine={false} />
-                <Tooltip {...TT} />
-                <Area type="monotone" dataKey="score" stroke="var(--accent)" strokeWidth={2} fill="url(#mg)" />
-              </AreaChart>
-            </ResponsiveContainer>
-          </div>
-        ) : <ChartEmpty label="Needs at least two scans to chart a trend." />}
-      </div>
+      {/* score history timeline with event markers */}
+      <ScoreTimeline history={history} selected={selectedScan} onSelect={setSelectedScan} />
 
       <div className="d-grid d-grid-2" style={{ marginTop: 14 }}>
         <div className="d-panel">
@@ -276,6 +267,95 @@ function ChangeAttribution({ changes }) {
               <span className="cha-label">
                 <b>{c.category}</b> · {c.path} <span className="d-dim">({c.change_type})</span>
               </span>
+              <span className="cha-ba">
+                {c.change_type === "modified" && (
+                  <><span className="cha-old">{fmtChangeVal(c.old_value)}</span> → <span className="cha-new">{fmtChangeVal(c.new_value)}</span></>
+                )}
+                {c.change_type === "removed" && <span className="cha-old">{fmtChangeVal(c.old_value)}</span>}
+                {c.change_type === "added" && <span className="cha-new">{fmtChangeVal(c.new_value)}</span>}
+              </span>
+            </div>
+          ))}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function highestSeverity(summary) {
+  if (!summary) return null;                       // no change set -> no marker
+  for (const sev of CHANGE_SEV_ORDER) if ((summary[sev] || 0) > 0) return sev;
+  return null;                                     // change set exists but is empty
+}
+
+function ScoreTimeline({ history, selected, onSelect }) {
+  const entries = history?.history;
+  if (!entries) return null;                       // history is best-effort; render nothing until loaded
+  // oldest -> newest for the x-axis
+  const points = entries.slice().reverse().map((h) => ({
+    date: shortDate(h.created_at), score: h.overall_score,
+    sev: highestSeverity(h.change_summary), entry: h,
+  }));
+
+  if (points.length < 2) {
+    return (
+      <div className="d-panel" style={{ marginTop: 14 }}>
+        <div className="d-panel-h">Score history <span className="sub">with change events</span></div>
+        <ChartEmpty label="Not enough history yet — needs at least two scans." />
+      </div>
+    );
+  }
+
+  const renderDot = ({ cx, cy, payload }) => {
+    if (payload.sev == null) return <circle cx={cx} cy={cy} r={2.5} fill="var(--accent)" />;
+    const on = selected && selected.scan_id === payload.entry.scan_id;
+    return (
+      <circle cx={cx} cy={cy} r={on ? 7 : 5} fill={CHANGE_SEV_COLOR[payload.sev]}
+              stroke="var(--panel)" strokeWidth={2} style={{ cursor: "pointer" }}
+              onClick={() => onSelect(payload.entry)} />
+    );
+  };
+
+  return (
+    <div className="d-panel" style={{ marginTop: 14 }}>
+      <div className="d-panel-h">Score history <span className="sub">click a marker to see what changed</span></div>
+      <div className="d-chart">
+        <ResponsiveContainer width="100%" height="100%">
+          <LineChart data={points} margin={{ top: 8, right: 10, bottom: 0, left: -20 }}>
+            <CartesianGrid stroke="var(--line)" vertical={false} />
+            <XAxis dataKey="date" tick={AXIS} axisLine={false} tickLine={false} />
+            <YAxis domain={[0, 100]} tick={AXIS} axisLine={false} tickLine={false} />
+            <Tooltip {...TT} />
+            <Line type="monotone" dataKey="score" stroke="var(--accent)" strokeWidth={2}
+                  dot={renderDot} activeDot={{ r: 5 }} isAnimationActive={false} />
+          </LineChart>
+        </ResponsiveContainer>
+      </div>
+      {selected && <SelectedScanChanges entry={selected} onClose={() => onSelect(null)} />}
+    </div>
+  );
+}
+
+function SelectedScanChanges({ entry, onClose }) {
+  const changes = entry.change_set || [];
+  const groups = CHANGE_SEV_ORDER
+    .map((sev) => ({ sev, items: changes.filter((c) => c.severity === sev) }))
+    .filter((g) => g.items.length);
+  return (
+    <div className="ts-detail">
+      <div className="ts-detail-h">
+        <span>Changes on {fmtDate(entry.created_at)}</span>
+        <button className="d-iconbtn" onClick={onClose}>Close</button>
+      </div>
+      {groups.length === 0 ? (
+        <div className="d-dim" style={{ fontSize: 12.5 }}>No changes recorded for this scan.</div>
+      ) : groups.map((g) => (
+        <div key={g.sev} className="cha-group">
+          <div className="cha-sev" style={{ color: CHANGE_SEV_COLOR[g.sev] }}>{g.sev} · {g.items.length}</div>
+          {g.items.map((c, i) => (
+            <div key={i} className="cha-row">
+              <span className="cha-dot" style={{ background: CHANGE_SEV_COLOR[g.sev] }} />
+              <span className="cha-label"><b>{c.category}</b> · {c.path} <span className="d-dim">({c.change_type})</span></span>
               <span className="cha-ba">
                 {c.change_type === "modified" && (
                   <><span className="cha-old">{fmtChangeVal(c.old_value)}</span> → <span className="cha-new">{fmtChangeVal(c.new_value)}</span></>

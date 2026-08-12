@@ -103,6 +103,16 @@ class Settings(BaseSettings):
     resend_api_key: str | None = None
     email_from: str | None = None            # e.g. "AEOMirror <hi@aeomirror.com>"
     app_base_url: str = "http://localhost:5173"
+    # API's own public base URL — used for links the API itself serves (the digest
+    # unsubscribe confirmation page), distinct from the frontend app_base_url.
+    api_base_url: str = "http://localhost:8000"
+    # Weekly digest email backend: "resend" | "console". When unset, defaults to console
+    # outside production so local dev logs the rendered email instead of calling Resend.
+    # Scopes ONLY the digest + preflight (auth/billing/summary email is unchanged).
+    email_backend: str | None = None
+    # Weekly digest send window (fixed UTC — per-org timezone is out of scope). 0 = Monday.
+    digest_send_weekday: int = 0
+    digest_send_hour_utc: int = 13
 
     # --- email transport: Gmail SMTP (Contact & Support) ---
     # Credentials come ONLY from the environment (never hardcoded). Use a Gmail
@@ -243,6 +253,14 @@ class Settings(BaseSettings):
     @property
     def email_enabled(self) -> bool:
         return bool(self.resend_api_key and self.email_from)
+
+    @property
+    def digest_email_backend(self) -> str:
+        """Resolved digest email backend: an explicit EMAIL_BACKEND wins, else 'console'
+        outside production (logs to stdout), 'resend' in production."""
+        if self.email_backend in ("resend", "console"):
+            return self.email_backend
+        return "resend" if self.is_production else "console"
 
     @property
     def ai_enabled(self) -> bool:

@@ -534,3 +534,7 @@
 .cha-ba{font-family:'IBM Plex Mono';font-size:11px;color:var(--txt-mid);white-space:nowrap;flex:none;max-width:45%;overflow:hidden;text-overflow:ellipsis}
 .cha-old{color:var(--bad)}
 .cha-new{color:var(--good)}
+
+/* Score-history timeline: selected-marker change detail */
+.ts-detail{margin-top:12px;padding-top:10px;border-top:1px solid var(--line)}
+.ts-detail-h{display:flex;justify-content:space-between;align-items:center;font-size:12.5px;font-weight:600;margin-bottom:6px}

@@ -189,8 +189,14 @@ def maybe_send_summaries(db: Session, now=None) -> dict:
     org_ids = [r[0] for r in db.query(Monitor.organization_id).distinct().all() if r[0]]
     counts = {"weekly": 0, "monthly": 0}
     for org_id in org_ids:
+        # C1: the richer weekly DIGEST supersedes the legacy weekly summary for any org
+        # that has at least one digest-enabled monitor — users must never get both.
+        digest_active = db.query(Monitor).filter(
+            Monitor.organization_id == org_id, Monitor.digest_enabled.is_(True)).first() is not None
         for kind, key, days in (("weekly_summary", "weekly", 7),
                                 ("monthly_summary", "monthly", 30)):
+            if key == "weekly" and digest_active:
+                continue
             last = _last_sent(db, org_id, kind)
             if last is None:
                 _baseline(db, org_id, kind)

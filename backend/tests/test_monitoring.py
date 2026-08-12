@@ -317,6 +317,12 @@ def test_maybe_send_summaries_baseline_then_send(monkeypatch):
     db = SessionLocal()
     try:
         org_id = body["organization"]["id"]
+        # C1: the legacy weekly summary applies only to orgs WITHOUT a digest-enabled
+        # monitor, so this org opts its monitor out of the digest to exercise that path.
+        from app.db.models import Monitor
+        db.query(Monitor).filter(Monitor.organization_id == org_id).update(
+            {Monitor.digest_enabled: False})
+        db.commit()
         # first pass only records a baseline (no immediate summary)
         c1 = notifications.maybe_send_summaries(db)
         assert c1["weekly"] == 0

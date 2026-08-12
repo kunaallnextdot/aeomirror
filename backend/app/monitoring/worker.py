@@ -29,6 +29,16 @@ _SNAPSHOT_PURGE_INTERVAL = 3600.0
 _last_snapshot_purge: float | None = None
 
 
+def _maybe_send_digests(db) -> int:
+    """Best-effort weekly digest dispatch. Never raises into the worker tick."""
+    try:
+        from app.services.digest import maybe_send_digests
+        return maybe_send_digests(db).get("digests", 0)
+    except Exception:   # noqa: BLE001 — email is a side effect; never break the tick
+        logger.exception("digest dispatch failed")
+        return 0
+
+
 def _maybe_purge_snapshots(db) -> int:
     """Best-effort retention cleanup, throttled to ~hourly. Never raises."""
     global _last_snapshot_purge
@@ -57,9 +67,10 @@ async def tick() -> dict:
             await runner.process_job(db, job)
             processed += 1
         summaries = notifications.maybe_send_summaries(db)
+        digests = _maybe_send_digests(db)
         purged = _maybe_purge_snapshots(db)
         return {"enqueued": enqueued, "processed": processed, "summaries": summaries,
-                "snapshots_purged": purged}
+                "digests": digests, "snapshots_purged": purged}
     finally:
         db.close()
 

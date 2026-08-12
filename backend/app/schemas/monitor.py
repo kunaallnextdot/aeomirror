@@ -17,6 +17,7 @@ class UpdateMonitorRequest(BaseModel):
     frequency: str | None = None
     status: str | None = None          # active | paused
     name: str | None = Field(default=None, max_length=120)
+    digest_enabled: bool | None = None  # include this monitor in the weekly digest
 
 
 class AcknowledgeAlertRequest(BaseModel):

@@ -101,6 +101,9 @@ class User(Base):
     # "admin" role above — a platform admin can see/manage every organization.
     is_platform_admin = Column(Boolean, nullable=False, default=False)
     notification_prefs = Column(JSON, nullable=True)  # {"product_updates": bool, ...}
+    # Weekly digest opt-out: a stable per-user token (unsubscribe link) + the flag it sets.
+    digest_unsubscribe_token = Column(String, unique=True, index=True, nullable=True)
+    digest_opt_out = Column(Boolean, nullable=False, default=False)
     created_at = Column(DateTime, default=datetime.utcnow)
     last_login = Column(DateTime, nullable=True)
 
@@ -304,6 +307,7 @@ class Monitor(Base):
     next_scan_at = Column(DateTime, nullable=True)
     latest_scan_id = Column(String, nullable=True)
     latest_score = Column(Integer, nullable=True)
+    digest_enabled = Column(Boolean, nullable=False, default=True)   # include in the weekly digest
 
 
 class ScheduledJob(Base):

@@ -339,8 +339,9 @@ export function listAlerts(params = {}) {
 export function acknowledgeAlert(id) {
   return request(`/alerts/${encodeURIComponent(id)}/acknowledge`, { method: "POST" });
 }
-export function getMonitorHistory(id) {
-  return request(`/history/${encodeURIComponent(id)}`);
+export function getMonitorHistory(id, { days } = {}) {
+  const qs = days ? `?days=${encodeURIComponent(days)}` : "";
+  return request(`/history/${encodeURIComponent(id)}${qs}`);
 }
 
 /* =====================================================================
