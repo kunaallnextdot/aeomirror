@@ -50,6 +50,11 @@ class Settings(BaseSettings):
     bulk_concurrency: int = 5                  # simultaneous page fetches
     bulk_page_timeout_seconds: int = 12        # per-URL wall-clock cap (reuses the fetch budget)
     bulk_total_budget_seconds: int = 600       # whole-job wall-clock budget; finalize partial with truncated=true
+    # --- AI crawler access check (runs on single-page + monitor scans, not bulk) ---
+    crawler_access_enabled: bool = True         # issue live per-UA GETs to detect robots/WAF blocks
+    crawler_access_timeout_seconds: int = 10    # per-request timeout
+    crawler_access_concurrency: int = 6         # bounded concurrency for the per-bot requests
+
     bulk_upload_max_bytes: int = 2_000_000     # hard cap on an uploaded URL-list file (read in bounded
                                                # chunks; zip-container formats like .xlsx can decompress
                                                # far larger, so we never buffer past this)

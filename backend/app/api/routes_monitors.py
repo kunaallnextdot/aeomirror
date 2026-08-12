@@ -18,8 +18,9 @@ from app.config import settings
 from app.core.ssrf import UnsafeUrlError, validate_url
 from app.db.models import (
     ALERT_ACK, ALERT_OPEN, FREQUENCIES, MONITOR_ACTIVE, MONITOR_PAUSED,
-    Alert, Monitor, MonitorHistory, ScheduledJob,
+    Alert, Monitor, MonitorHistory, Scan, ScheduledJob,
 )
+from app.services.crawler_access import has_critical_block
 from app.db.session import get_db
 from app.monitoring import runner, scheduler
 from app.schemas.monitor import CreateMonitorRequest, UpdateMonitorRequest
@@ -53,6 +54,14 @@ def _trend(db: Session, monitor_id: str) -> str:
     return "up" if d > 0 else "down" if d < 0 else "flat"
 
 
+def _latest_crawler_access(db: Session, m: Monitor) -> dict | None:
+    """The AI-crawler access result from this monitor's latest scan (null-safe)."""
+    if not m.latest_scan_id:
+        return None
+    scan = db.get(Scan, m.latest_scan_id)
+    return (scan.result or {}).get("crawler_access") if scan else None
+
+
 def _monitor_out(db: Session, m: Monitor) -> dict:
     return {
         "id": m.id, "url": m.url, "domain": m.normalized_url, "name": m.name,
@@ -62,6 +71,9 @@ def _monitor_out(db: Session, m: Monitor) -> dict:
         "latest_scan_id": m.latest_scan_id,
         "trend": _trend(db, m.id),
         "open_alert_count": _open_alert_count(db, m.id),
+        # Badge signal for the Monitoring list — true if the latest scan found a critical
+        # AI crawler blocked (null-safe for monitors with no scans yet).
+        "critical_crawler_blocked": has_critical_block(_latest_crawler_access(db, m)),
         "history_count": db.query(MonitorHistory).filter(MonitorHistory.monitor_id == m.id).count(),
     }
 
@@ -190,6 +202,7 @@ def get_monitor(monitor_id: str,
         "latest_changes": hist_desc[0].changes if hist_desc else None,
         "alerts": [_alert_out(a) for a in alerts],
         "trends": trends,
+        "crawler_access": _latest_crawler_access(db, m),   # AI Crawler Access panel
     }
 
 

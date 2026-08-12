@@ -25,6 +25,10 @@ os.environ["ANTHROPIC_API_KEY"] = ""
 # Phase 9: billing gating is OFF by default in tests so pre-billing tests keep full
 # access. The billing tests flip settings.billing_enforced on to exercise gating.
 os.environ["BILLING_ENFORCED"] = "false"
+# AI crawler access check OFF by default so run_scan makes no live per-UA network calls
+# during the general suite. The crawler-access tests exercise the service directly with a
+# MockTransport, and the scan-integration test enables it + stubs the check explicitly.
+os.environ["CRAWLER_ACCESS_ENABLED"] = "false"
 
 import pytest
 

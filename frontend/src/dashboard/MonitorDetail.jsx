@@ -4,7 +4,7 @@
 import React, { useCallback, useEffect, useState } from "react";
 import {
   ChevronLeft, Play, Pause, Trash2, FileText, ArrowUpRight, ArrowDownRight,
-  AlertTriangle, CheckCircle2, Bell, Clock,
+  AlertTriangle, CheckCircle2, Bell, Clock, Bot, Wrench, CheckCircle,
 } from "lucide-react";
 import {
   Area, AreaChart, Line, LineChart, Bar, BarChart, CartesianGrid, Legend,
@@ -121,6 +121,9 @@ export default function MonitorDetail({ monitorId, onBack, onOpenReport }) {
         </div>
       )}
 
+      {/* AI crawler access (from the latest scan) */}
+      <CrawlerAccessPanel data={detail.crawler_access} />
+
       {/* charts */}
       <div className="d-panel" style={{ marginTop: 14 }}>
         <div className="d-panel-h">Score over time</div>
@@ -230,6 +233,63 @@ export default function MonitorDetail({ monitorId, onBack, onOpenReport }) {
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+const CRAWLER_STATUS_LABEL = {
+  allowed: "Allowed",
+  blocked_by_robots: "Blocked · robots.txt",
+  blocked_by_server: "Blocked · server/WAF",
+  error: "Not verified",
+};
+function crawlerColor(b) {
+  if (b.status === "allowed") return "var(--good)";
+  if (b.status === "error") return "var(--txt-mid)";
+  return b.critical ? "var(--bad)" : "var(--warn)";   // a block
+}
+
+function CrawlerAccessPanel({ data }) {
+  if (!data) return null;   // null for old scans / when the check is disabled
+  const bots = data.bots || [];
+  const fixes = (data.findings || []).filter((f) => f.bot && f.remediation);
+  return (
+    <div className="d-panel" style={{ marginTop: 14 }}>
+      <div className="d-panel-h">
+        <Bot size={14} style={{ color: "var(--accent)" }} /> AI Crawler Access
+        <span className="sub">can the AI crawlers you need actually read this site?</span>
+      </div>
+      {data.site_unreachable ? (
+        <div className="d-dim" style={{ fontSize: 12.5, display: "flex", alignItems: "center", gap: 6 }}>
+          <AlertTriangle size={12} style={{ color: "var(--warn)" }} /> The site was unreachable during the last check — crawler access couldn't be verified.
+        </div>
+      ) : (
+        <div className="ca-list">
+          {bots.map((b) => (
+            <div key={b.key} className="ca-row">
+              <span className="ca-dot" style={{ background: crawlerColor(b) }} />
+              <span className="ca-name">
+                {b.name}
+                {b.critical && <span className="ca-crit">critical</span>}
+              </span>
+              <span className="ca-prov d-dim">{b.provider}</span>
+              <span className="ca-status" style={{ color: crawlerColor(b) }}>
+                {b.status === "allowed" && <CheckCircle size={11} />} {CRAWLER_STATUS_LABEL[b.status] || b.status}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+      {fixes.length > 0 && (
+        <div className="ca-fixes">
+          {fixes.map((f, i) => (
+            <div key={i} className="ca-fix">
+              <Wrench size={11} style={{ color: "var(--accent)" }} />
+              <span><b>{f.bot_name}:</b> {f.remediation}</span>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

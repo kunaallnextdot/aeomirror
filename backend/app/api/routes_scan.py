@@ -64,7 +64,7 @@ def _families_payload(report) -> list[dict]:
 
 
 def _report_payload(scan_id: str, report, signals: dict, scanned_at: str,
-                    duration_ms: int) -> dict:
+                    duration_ms: int, crawler_access: dict | None = None) -> dict:
     """JSON-serializable representation cached in Redis and reused to build the
     response. No live objects are cached (JSON only, never pickle)."""
     return {
@@ -78,6 +78,7 @@ def _report_payload(scan_id: str, report, signals: dict, scanned_at: str,
         "scanned_at": scanned_at,
         "duration_ms": duration_ms,
         "sections": signals["sections"],
+        "crawler_access": crawler_access,
         # Single-page scans are complete the moment they return (only site scans run
         # in the background), so the response carries the terminal status directly.
         "status": SCAN_COMPLETED,
@@ -122,7 +123,7 @@ def build_scan_response(row: Scan, remaining: int = 0, *,
         scanned_at=r.get("scanned_at"), duration_ms=r.get("duration_ms"),
         sections=[] if hide else r.get("sections", []), bulk=bulk,
         status=getattr(row, "status", SCAN_COMPLETED), progress=row.progress,
-        error=r.get("error"),
+        error=r.get("error"), crawler_access=r.get("crawler_access"),
     )
 
 
@@ -157,6 +158,18 @@ def _persist_from_payload(db: Session, payload: dict, ip: str,
     return row
 
 
+async def _crawler_access_for(safe_url: str) -> dict | None:
+    """Run the AI-crawler access check, best-effort. Returns None when the feature is
+    disabled or the check errors — the scan must never fail because of it."""
+    if not settings.crawler_access_enabled:
+        return None
+    try:
+        from app.services.crawler_access import check_crawler_access
+        return await check_crawler_access(safe_url)
+    except Exception:   # noqa: BLE001 — a crawler-check failure must not break the scan
+        return None
+
+
 async def run_scan(db: Session, safe_url: str, ip: str,
                    org_id: str | None = None, user_id: str | None = None) -> dict:
     """Fetch, score, run signals, persist a NEW scan row, cache, return the payload.
@@ -183,6 +196,10 @@ async def run_scan(db: Session, safe_url: str, ip: str,
     # headline always reflects the checks (incl. failures) shown beneath it. The legacy
     # 6-family `ars` is kept in the payload for reference but is no longer the headline.
     signals = run_signals(page)
+    # AI crawler access check (single-page + monitor scans only; never bulk). Best-effort
+    # and gated by a flag so it can be disabled without a deploy. Null for old rows / when
+    # disabled — the API reads it null-safely.
+    crawler_access = await _crawler_access_for(safe_url)
     scanned_at = datetime.now(timezone.utc).isoformat()
     duration_ms = int((time.perf_counter() - started) * 1000)
 
@@ -196,6 +213,7 @@ async def run_scan(db: Session, safe_url: str, ip: str,
             "scanner_version": signals["scanner_version"],
             "scanned_at": scanned_at, "duration_ms": duration_ms,
             "sections": signals["sections"],
+            "crawler_access": crawler_access,
         },
         requester_ip_hash=_ip_hash(ip),
         organization_id=org_id, user_id=user_id,
@@ -204,7 +222,7 @@ async def run_scan(db: Session, safe_url: str, ip: str,
     db.commit()
     db.refresh(row)
 
-    payload = _report_payload(row.id, report, signals, scanned_at, duration_ms)
+    payload = _report_payload(row.id, report, signals, scanned_at, duration_ms, crawler_access)
     scan_cache.set(normalized, payload)
     return payload
 

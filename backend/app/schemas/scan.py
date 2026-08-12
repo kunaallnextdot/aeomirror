@@ -90,6 +90,9 @@ class ScanResponse(BaseModel):
     # result["error"]. None for healthy scans. Only this string is exposed — never the
     # whole internal result dict.
     error: str | None = None
+    # --- AI Crawler Access Check (additive). Structured per-bot result: robots/WAF
+    # status per crawler + findings. None for bulk scans, old rows, or when disabled.
+    crawler_access: dict | None = None
 
 
 class LeadRequest(BaseModel):

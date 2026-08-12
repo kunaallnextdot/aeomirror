@@ -4,7 +4,7 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   Radar, Plus, Play, Pause, Trash2, ArrowUpRight, ArrowDownRight, Minus,
-  Bell, AlertTriangle, CheckCircle2, Clock, ChevronRight, Lock, RefreshCw,
+  Bell, AlertTriangle, CheckCircle2, Clock, ChevronRight, Lock, RefreshCw, Bot,
 } from "lucide-react";
 import {
   listMonitors, createMonitor, runMonitor, updateMonitor, deleteMonitor,
@@ -238,6 +238,11 @@ function MonitorCard({ m, busy, canRun, canDelete, onOpen, onRun, onToggle, onDe
         <TrendBadge trend={m.trend} />
         <span className="mon-freq">{m.frequency}</span>
         {m.open_alert_count > 0 && <span className="mon-alertcount"><Bell size={11} /> {m.open_alert_count}</span>}
+        {m.critical_crawler_blocked && (
+          <span className="mon-crawlerbadge" title="A critical AI crawler is blocked on this site">
+            <Bot size={11} /> Crawler blocked
+          </span>
+        )}
       </div>
       <div className="mon-card-times">
         <span><Clock size={11} /> last {m.last_scan_at ? fmtDate(m.last_scan_at) : "—"}</span>
