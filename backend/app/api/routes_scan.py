@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import hashlib
+import logging
 from dataclasses import asdict
 
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -170,8 +171,46 @@ async def _crawler_access_for(safe_url: str) -> dict | None:
         return None
 
 
+_snapshot_log = logging.getLogger("app.api.scan")
+
+
+def _prepare_snapshot(db: Session, page, crawler_access: dict | None,
+                      monitor_id: str | None) -> tuple[dict | None, dict | None]:
+    """For a MONITOR scan, build this page's deterministic snapshot and capture the
+    monitor's PREVIOUS snapshot payload as the diff baseline (before the new one is
+    persisted). Returns (new_payload, prev_payload). ( None, None ) for non-monitor scans
+    or on any build failure — attribution must never break a scan."""
+    if not monitor_id:
+        return None, None
+    try:
+        from app.services import snapshot as snap
+        payload = snap.build_snapshot(page, crawler_access)
+        prev = snap.previous_snapshot(db, monitor_id)
+        return payload, (prev.payload if prev else None)
+    except Exception:   # noqa: BLE001 — snapshot build is best-effort
+        _snapshot_log.exception("snapshot build failed for monitor %s", monitor_id)
+        return None, None
+
+
+def _safe_diff(prev_payload: dict | None, curr_payload: dict, monitor_id: str | None) -> list:
+    """Diff, but NEVER raise: a schema_version mismatch (or any diff error) yields an
+    empty change set and a WARNING — the new snapshot has already been persisted as the
+    baseline, so the monitor self-recovers on the next scan instead of deadlocking."""
+    from app.services.snapshot_diff import SnapshotVersionMismatch, diff_snapshots
+    try:
+        return diff_snapshots(prev_payload, curr_payload)
+    except SnapshotVersionMismatch as e:
+        _snapshot_log.warning("snapshot version mismatch for monitor %s (%s); baseline "
+                              "advanced, empty change set", monitor_id, e)
+        return []
+    except Exception:   # noqa: BLE001 — a diff bug must not block the baseline
+        _snapshot_log.warning("snapshot diff failed for monitor %s", monitor_id)
+        return []
+
+
 async def run_scan(db: Session, safe_url: str, ip: str,
-                   org_id: str | None = None, user_id: str | None = None) -> dict:
+                   org_id: str | None = None, user_id: str | None = None,
+                   monitor_id: str | None = None) -> dict:
     """Fetch, score, run signals, persist a NEW scan row, cache, return the payload.
     Single source of truth for executing a scan (used by create_scan and rerun).
     When org_id/user_id are given the scan is private to that organization;
@@ -200,6 +239,10 @@ async def run_scan(db: Session, safe_url: str, ip: str,
     # and gated by a flag so it can be disabled without a deploy. Null for old rows / when
     # disabled — the API reads it null-safely.
     crawler_access = await _crawler_access_for(safe_url)
+    # Change attribution (monitor scans only): build this page's snapshot and capture the
+    # previous baseline. The DIFF runs later — AFTER the new snapshot is persisted — so a
+    # version mismatch can never skip persistence and deadlock the monitor.
+    snapshot_payload, prev_payload = _prepare_snapshot(db, page, crawler_access, monitor_id)
     scanned_at = datetime.now(timezone.utc).isoformat()
     duration_ms = int((time.perf_counter() - started) * 1000)
 
@@ -214,6 +257,7 @@ async def run_scan(db: Session, safe_url: str, ip: str,
             "scanned_at": scanned_at, "duration_ms": duration_ms,
             "sections": signals["sections"],
             "crawler_access": crawler_access,
+            "change_set": [],   # filled below, only after the snapshot baseline is safe
         },
         requester_ip_hash=_ip_hash(ip),
         organization_id=org_id, user_id=user_id,
@@ -221,6 +265,21 @@ async def run_scan(db: Session, safe_url: str, ip: str,
     db.add(row)
     db.commit()
     db.refresh(row)
+
+    change_set: list = []
+    if monitor_id and snapshot_payload is not None:
+        # (a) Persist the new snapshot FIRST so the baseline always advances...
+        try:
+            from app.services.snapshot import create_snapshot
+            create_snapshot(db, scan_id=row.id, monitor_id=monitor_id,
+                            org_id=org_id, payload=snapshot_payload)
+        except Exception:   # noqa: BLE001 — never fail a scan on snapshot persistence
+            db.rollback()
+        # (b) ...THEN diff (never raises: mismatch/error -> [] + WARNING), and record it.
+        change_set = _safe_diff(prev_payload, snapshot_payload, monitor_id)
+        if change_set:
+            row.result = {**row.result, "change_set": change_set}
+            db.commit()
 
     payload = _report_payload(row.id, report, signals, scanned_at, duration_ms, crawler_access)
     scan_cache.set(normalized, payload)

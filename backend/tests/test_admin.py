@@ -120,7 +120,7 @@ def test_admin_delete_org_purges_disposable_retains_financial():
 
     from app.db.models import (
         AiContentInsight, Invitation, Invoice, NotificationLog, Payment, ReportShare,
-        Scan, Subscription, UsageEvent,
+        Scan, ScanSnapshot, Subscription, UsageEvent,
     )
     from app.db.session import SessionLocal
     admin, _ = admin_client()
@@ -140,6 +140,8 @@ def test_admin_delete_org_purges_disposable_retains_financial():
             NotificationLog(organization_id=oid, kind="weekly_summary", status="sent"),
             ReportShare(token=f"purge-share-{oid}", scan_id="s-purge", organization_id=oid,
                         expires_at=datetime.utcnow() + timedelta(days=1)),
+            ScanSnapshot(scan_id="s-purge", monitor_id=None, organization_id=oid,
+                         schema_version=1, payload={"schema_version": 1}),
             Subscription(organization_id=oid, plan_code="pro"),
             Payment(organization_id=oid, kind="subscription"),
             Invoice(organization_id=oid, number=f"INV-PURGE-{oid}"),
@@ -157,6 +159,7 @@ def test_admin_delete_org_purges_disposable_retains_financial():
         # disposable → purged
         assert n(Scan) == 0 and n(UsageEvent) == 0 and n(AiContentInsight) == 0
         assert n(Invitation) == 0 and n(NotificationLog) == 0 and n(ReportShare) == 0
+        assert n(ScanSnapshot) == 0                       # FIX 1: snapshots purged with the org
         # financial → retained
         assert n(Subscription) == 1 and n(Payment) == 1 and n(Invoice) == 1
     finally:

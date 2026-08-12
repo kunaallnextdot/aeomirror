@@ -4,7 +4,7 @@
 import React, { useCallback, useEffect, useState } from "react";
 import {
   ChevronLeft, Play, Pause, Trash2, FileText, ArrowUpRight, ArrowDownRight,
-  AlertTriangle, CheckCircle2, Bell, Clock, Bot, Wrench, CheckCircle,
+  AlertTriangle, CheckCircle2, Bell, Clock, Bot, Wrench, CheckCircle, History,
 } from "lucide-react";
 import {
   Area, AreaChart, Line, LineChart, Bar, BarChart, CartesianGrid, Legend,
@@ -121,6 +121,9 @@ export default function MonitorDetail({ monitorId, onBack, onOpenReport }) {
         </div>
       )}
 
+      {/* Change attribution — what moved the score since the last scan */}
+      <ChangeAttribution changes={detail.change_set} />
+
       {/* AI crawler access (from the latest scan) */}
       <CrawlerAccessPanel data={detail.crawler_access} />
 
@@ -233,6 +236,57 @@ export default function MonitorDetail({ monitorId, onBack, onOpenReport }) {
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+const CHANGE_SEV_COLOR = { CRITICAL: "var(--bad)", WARNING: "var(--warn)", INFO: "var(--accent)" };
+const CHANGE_SEV_ORDER = ["CRITICAL", "WARNING", "INFO"];
+
+function fmtChangeVal(v) {
+  if (v === null || v === undefined) return "—";
+  const s = String(v);
+  return s.length > 60 ? s.slice(0, 57) + "…" : s;
+}
+
+function ChangeAttribution({ changes }) {
+  if (!changes) return null;   // undefined for pre-feature monitors
+  if (changes.length === 0) {
+    return (
+      <div className="d-panel" style={{ marginTop: 14 }}>
+        <div className="d-panel-h"><History size={14} /> What changed <span className="sub">since the last scan</span></div>
+        <div className="d-dim" style={{ fontSize: 12.5, display: "flex", alignItems: "center", gap: 6 }}>
+          <CheckCircle size={12} style={{ color: "var(--good)" }} /> No changes detected since last scan.
+        </div>
+      </div>
+    );
+  }
+  const groups = CHANGE_SEV_ORDER
+    .map((sev) => ({ sev, items: changes.filter((c) => c.severity === sev) }))
+    .filter((g) => g.items.length);
+  return (
+    <div className="d-panel" style={{ marginTop: 14 }}>
+      <div className="d-panel-h"><History size={14} /> What changed <span className="sub">since the last scan</span></div>
+      {groups.map((g) => (
+        <div key={g.sev} className="cha-group">
+          <div className="cha-sev" style={{ color: CHANGE_SEV_COLOR[g.sev] }}>{g.sev} · {g.items.length}</div>
+          {g.items.map((c, i) => (
+            <div key={i} className="cha-row">
+              <span className="cha-dot" style={{ background: CHANGE_SEV_COLOR[g.sev] }} />
+              <span className="cha-label">
+                <b>{c.category}</b> · {c.path} <span className="d-dim">({c.change_type})</span>
+              </span>
+              <span className="cha-ba">
+                {c.change_type === "modified" && (
+                  <><span className="cha-old">{fmtChangeVal(c.old_value)}</span> → <span className="cha-new">{fmtChangeVal(c.new_value)}</span></>
+                )}
+                {c.change_type === "removed" && <span className="cha-old">{fmtChangeVal(c.old_value)}</span>}
+                {c.change_type === "added" && <span className="cha-new">{fmtChangeVal(c.new_value)}</span>}
+              </span>
+            </div>
+          ))}
+        </div>
+      ))}
     </div>
   );
 }

@@ -24,8 +24,8 @@ from app.db.models import (
     ALERT_OPEN, CONTACT_STATUSES, JOB_FAILED, MONITOR_ACTIVE, MONITOR_PAUSED,
     AiContentInsight, Alert, Contact, EmailVerification, Invitation, Monitor,
     MonitorHistory, NotificationLog, Organization, OrganizationMember, PasswordReset,
-    Report, ReportExport, ReportShare, Scan, ScheduledJob, Session as SessionModel,
-    UsageEvent, User,
+    Report, ReportExport, ReportShare, Scan, ScanSnapshot, ScheduledJob,
+    Session as SessionModel, UsageEvent, User,
 )
 from app.db.session import get_db
 from app.monitoring import runner, scheduler
@@ -244,8 +244,8 @@ def admin_delete_org(org_id: str, request: Request, admin: User = Depends(get_ad
     # accounting / dispute-handling and invoice-number sequence integrity; the admin
     # surface has no cross-org financial aggregate, so they never skew a count.
     for model in (Monitor, MonitorHistory, Alert, Report, ReportExport, ReportShare,
-                  OrganizationMember, Scan, UsageEvent, AiContentInsight, Invitation,
-                  NotificationLog):
+                  ScanSnapshot, OrganizationMember, Scan, UsageEvent, AiContentInsight,
+                  Invitation, NotificationLog):
         db.query(model).filter(model.organization_id == o.id).delete(synchronize_session=False)
     db.query(ScheduledJob).filter(ScheduledJob.organization_id == o.id).delete(synchronize_session=False)
     db.delete(o)

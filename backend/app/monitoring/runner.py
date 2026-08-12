@@ -38,7 +38,8 @@ async def run_scan_for_monitor(db: Session, monitor: Monitor) -> dict:
     safe_url = validate_url(monitor.url)  # raises UnsafeUrlError on a bad URL
     # A synthetic requester id (not rate-limited: run_scan doesn't apply the limiter).
     payload = await run_scan(db, safe_url, ip="scheduler",
-                             org_id=monitor.organization_id, user_id=monitor.user_id)
+                             org_id=monitor.organization_id, user_id=monitor.user_id,
+                             monitor_id=monitor.id)
 
     from app.admin import flags   # feature-flag gate (lazy import)
 

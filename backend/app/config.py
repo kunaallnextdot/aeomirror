@@ -50,6 +50,10 @@ class Settings(BaseSettings):
     bulk_concurrency: int = 5                  # simultaneous page fetches
     bulk_page_timeout_seconds: int = 12        # per-URL wall-clock cap (reuses the fetch budget)
     bulk_total_budget_seconds: int = 600       # whole-job wall-clock budget; finalize partial with truncated=true
+    # --- Change attribution (scan snapshots) ---
+    snapshot_retention_days: int = 90           # delete snapshots older than this (keeps each active
+                                                # monitor's most recent snapshot regardless of age)
+
     # --- AI crawler access check (runs on single-page + monitor scans, not bulk) ---
     crawler_access_enabled: bool = True         # issue live per-UA GETs to detect robots/WAF blocks
     crawler_access_timeout_seconds: int = 10    # per-request timeout

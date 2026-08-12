@@ -228,6 +228,27 @@ class ReportShare(Base):
     last_viewed_at = Column(DateTime, nullable=True)
 
 
+# ==================== Change Attribution (scan snapshots) ====================
+class ScanSnapshot(Base):
+    """A normalised, deterministic snapshot of a scanned page, captured so a later scan's
+    score movement can be EXPLAINED (the diff engine compares consecutive snapshots for
+    the same monitor). `schema_version` gates the diff — the engine refuses to compare
+    across incompatible payload shapes rather than emit garbage. Columns follow the
+    codebase convention (plain indexed String references, portable JSON payload)."""
+    __tablename__ = "scan_snapshots"
+    __table_args__ = (
+        # Supports "the previous snapshot for this monitor" (order by created_at desc).
+        Index("ix_scan_snapshots_monitor_created", "monitor_id", "created_at"),
+    )
+    id = Column(String, primary_key=True, default=_uuid)
+    scan_id = Column(String, index=True, nullable=False)
+    monitor_id = Column(String, index=True, nullable=True)     # null for non-monitor scans
+    organization_id = Column(String, index=True, nullable=False)
+    schema_version = Column(Integer, nullable=False, default=1)
+    payload = Column(JSON, nullable=False)                     # deterministic snapshot dict
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
 # ==================== AI Content Insights (Pro-only, per page) ====================
 class AiContentInsight(Base):
     """Cached AI content-quality analysis for one page of a scan (Feature B). Generated

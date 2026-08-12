@@ -54,12 +54,17 @@ def _trend(db: Session, monitor_id: str) -> str:
     return "up" if d > 0 else "down" if d < 0 else "flat"
 
 
+def _latest_scan_result(db: Session, m: Monitor) -> dict:
+    """The stored result dict of this monitor's latest scan (empty when none)."""
+    if not m.latest_scan_id:
+        return {}
+    scan = db.get(Scan, m.latest_scan_id)
+    return (scan.result or {}) if scan else {}
+
+
 def _latest_crawler_access(db: Session, m: Monitor) -> dict | None:
     """The AI-crawler access result from this monitor's latest scan (null-safe)."""
-    if not m.latest_scan_id:
-        return None
-    scan = db.get(Scan, m.latest_scan_id)
-    return (scan.result or {}).get("crawler_access") if scan else None
+    return _latest_scan_result(db, m).get("crawler_access")
 
 
 def _monitor_out(db: Session, m: Monitor) -> dict:
@@ -203,6 +208,8 @@ def get_monitor(monitor_id: str,
         "alerts": [_alert_out(a) for a in alerts],
         "trends": trends,
         "crawler_access": _latest_crawler_access(db, m),   # AI Crawler Access panel
+        # Change attribution for the latest scan (what moved the score since last time).
+        "change_set": _latest_scan_result(db, m).get("change_set", []),
     }
 
 
