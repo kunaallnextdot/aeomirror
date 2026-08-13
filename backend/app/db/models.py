@@ -4,7 +4,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 
-from sqlalchemy import JSON, Boolean, Column, DateTime, Index, Integer, String
+from sqlalchemy import JSON, Boolean, Column, DateTime, Float, Index, Integer, String, Text
 
 from app.db.session import Base
 
@@ -589,3 +589,86 @@ class Contact(Base):
     # Hashed requester IP (never the raw IP) — for spam triage / rate-limit audit.
     ip_hash = Column(String, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow, index=True)
+
+
+# =====================================================================
+# AI Answer Tracking (Part A) — data model only. Measures whether AI
+# assistants mention/cite a brand. This layer executes prompts and stores
+# raw responses; it performs NO analysis (mention detection, sentiment,
+# Share of Voice, etc. are Part B). No FK constraints (codebase convention):
+# links are plain indexed String columns. Every table carries organization_id
+# so admin_delete_org can purge it.
+# =====================================================================
+# prompt_runs.status lifecycle:
+RUN_PENDING = "pending"
+RUN_RUNNING = "running"
+RUN_COMPLETED = "completed"     # every call succeeded
+RUN_FAILED = "failed"           # every call failed
+RUN_PARTIAL = "partial"         # some calls failed; successful results ARE persisted
+PROMPT_RUN_STATUSES = (RUN_PENDING, RUN_RUNNING, RUN_COMPLETED, RUN_FAILED, RUN_PARTIAL)
+
+
+class PromptSet(Base):
+    """A named collection of prompts tracked for one org (optionally tied to a
+    monitor, which supplies the brand/domain for the provisional mention check)."""
+    __tablename__ = "prompt_sets"
+    __table_args__ = (Index("ix_prompt_sets_org", "organization_id"),)
+    id = Column(String, primary_key=True, default=_uuid)
+    organization_id = Column(String, index=True, nullable=False)
+    monitor_id = Column(String, index=True, nullable=True)   # optional link to a Monitor
+    name = Column(String, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class TrackedPrompt(Base):
+    """One prompt string within a set. Executed multiple times per run (see run_index)."""
+    __tablename__ = "tracked_prompts"
+    __table_args__ = (Index("ix_tracked_prompts_set", "prompt_set_id"),)
+    id = Column(String, primary_key=True, default=_uuid)
+    prompt_set_id = Column(String, index=True, nullable=False)
+    organization_id = Column(String, index=True, nullable=False)
+    text = Column(Text, nullable=False)
+    is_active = Column(Boolean, nullable=False, default=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class PromptRun(Base):
+    """One execution of a prompt set: every active prompt x enabled provider x
+    run_index. Aggregates call counts and an estimated cost; per-call detail lives
+    in prompt_results."""
+    __tablename__ = "prompt_runs"
+    __table_args__ = (Index("ix_prompt_runs_set_created", "prompt_set_id", "created_at"),)
+    id = Column(String, primary_key=True, default=_uuid)
+    organization_id = Column(String, index=True, nullable=False)
+    prompt_set_id = Column(String, index=True, nullable=False)
+    started_at = Column(DateTime, nullable=True)
+    completed_at = Column(DateTime, nullable=True)
+    status = Column(String, nullable=False, default=RUN_PENDING)
+    total_calls = Column(Integer, nullable=False, default=0)
+    failed_calls = Column(Integer, nullable=False, default=0)
+    estimated_cost_usd = Column(Float, nullable=False, default=0.0)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class PromptResult(Base):
+    """A single provider call. A FAILED call is data, not a gap — it is persisted
+    with its `error` set. `citations = None` means the provider CANNOT report
+    citations; an empty list means it searched and cited nothing (never conflate)."""
+    __tablename__ = "prompt_results"
+    __table_args__ = (Index("ix_prompt_results_run_prompt", "run_id", "prompt_id"),)
+    id = Column(String, primary_key=True, default=_uuid)
+    run_id = Column(String, index=True, nullable=False)
+    prompt_id = Column(String, index=True, nullable=False)
+    organization_id = Column(String, index=True, nullable=False)
+    provider = Column(String, nullable=False)
+    model = Column(String, nullable=False)          # exact model string (never a floating alias)
+    run_index = Column(Integer, nullable=False)     # 0..runs_per_prompt-1 (base); == runs_per_prompt for adaptive
+    is_adaptive_run = Column(Boolean, nullable=False, default=False)
+    search_enabled = Column(Boolean, nullable=False, default=True)
+    raw_response = Column(Text, nullable=True)
+    citations = Column(JSON, nullable=True)         # None = can't report; [] = searched, cited nothing
+    latency_ms = Column(Integer, nullable=True)
+    token_usage = Column(JSON, nullable=True)
+    error = Column(String, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)

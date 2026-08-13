@@ -156,6 +156,43 @@ class Settings(BaseSettings):
     # terminates quickly instead of burning tokens after we've returned 504.
     content_insight_ai_timeout_seconds: int = 20
 
+    # --- AI Answer Tracking (Part A) ---
+    # Measures whether AI assistants mention/cite a brand. All values are env-overridable;
+    # NOTHING here is hardcoded in the execution path. These are OPERATIONAL limits only —
+    # NOT plan/tier gating (that business decision is deferred; see the summary).
+    answer_tracking_max_prompts: int = 10          # hard cap on prompts per set (service layer)
+    answer_tracking_runs_per_prompt: int = 2       # base samples per prompt x provider
+    answer_tracking_adaptive_third_run: bool = True  # one extra run when base runs disagree on mention
+    # Scheduling cadence: weekly (7d) | biweekly (14d) | monthly (30d). "biweekly" means
+    # EVERY 14 DAYS from the prompt set's first run — NOT twice per week.
+    answer_tracking_frequency: str = "biweekly"
+    answer_tracking_max_concurrency: int = 5       # simultaneous provider calls per run
+    answer_tracking_query_timeout_seconds: int = 60  # per-call wall-clock cap
+    answer_tracking_min_run_interval_hours: int = 72  # dedupe: min gap between runs of one set
+    answer_tracking_monthly_run_limit: int = 8     # per-org runs / calendar month (config only, NOT a plan tier)
+    answer_tracking_enable_search: bool = True      # record search_enabled per result from this
+    # Providers enabled for a run (comma-separated). A provider listed here but missing its
+    # API key or model is logged at WARNING and skipped — never crashes, never silently runs
+    # with fewer providers than expected.
+    answer_tracking_providers: str = "anthropic,openai,perplexity"
+    # Exact model strings come from env ONLY (never a floating alias like "latest"). Empty =>
+    # that provider is skipped (with a warning), so historical results stay interpretable.
+    answer_tracking_model_anthropic: str = ""
+    answer_tracking_model_openai: str = ""
+    answer_tracking_model_perplexity: str = ""
+    answer_tracking_model_gemini: str = ""
+    # Per-provider flat estimated USD per call, used for the pre-run estimate and the
+    # stored estimated_cost_usd. Placeholder defaults — tune against real provider billing.
+    answer_tracking_rate_anthropic_usd: float = 0.010
+    answer_tracking_rate_openai_usd: float = 0.010
+    answer_tracking_rate_perplexity_usd: float = 0.010
+    answer_tracking_rate_gemini_usd: float = 0.010
+    # Provider API keys — BACKEND-ONLY secrets. Never prefix VITE_ (that would ship them to
+    # the browser). anthropic_api_key is defined above (shared with the AI narrative path).
+    openai_api_key: str | None = None
+    perplexity_api_key: str | None = None
+    gemini_api_key: str | None = None
+
     # --- Phase 9: billing + subscriptions ---
     # Master switch for plan enforcement. When False (e.g. tests), every org has
     # full access regardless of plan — subscriptions/payments still work, only the
@@ -241,6 +278,16 @@ class Settings(BaseSettings):
 
     def admin_email_list(self) -> list[str]:
         return [e.strip().lower() for e in self.admin_emails.split(",") if e.strip()]
+
+    def answer_tracking_provider_list(self) -> list[str]:
+        """Enabled answer-tracking providers, normalized (lowercased, de-blanked)."""
+        return [p.strip().lower() for p in self.answer_tracking_providers.split(",") if p.strip()]
+
+    @property
+    def answer_tracking_frequency_days(self) -> int:
+        """Cadence in days. biweekly == every 14 days (NOT twice a week)."""
+        return {"weekly": 7, "biweekly": 14, "monthly": 30}.get(
+            self.answer_tracking_frequency.strip().lower(), 14)
 
     @property
     def is_production(self) -> bool:

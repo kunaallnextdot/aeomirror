@@ -3,7 +3,7 @@
 import React, { useCallback, useEffect, useState } from "react";
 import {
   Radar, LayoutDashboard, ScanLine, GitCompare, Globe, ArrowLeft, FileText,
-  Activity, User, Users, Building2, LogOut, Shield, CreditCard,
+  Activity, User, Users, Building2, LogOut, Shield, CreditCard, MessageSquare,
 } from "lucide-react";
 import { getDashboard, getScans, getScanDetail, compareScans, deleteScan, rerunScan, bulkScanUrls, ScanError } from "../api.js";
 import { StatsSkeleton, TableSkeleton, EmptyState, ErrorState, MiniEmpty, ScoreRing, scoreColor, fmtDate } from "./ui.jsx";
@@ -14,6 +14,7 @@ import Compare from "./Compare.jsx";
 import ReportView from "./ReportView.jsx";
 import Monitoring from "./Monitoring.jsx";
 import MonitorDetail from "./MonitorDetail.jsx";
+import AnswerTracking from "./AnswerTracking.jsx";
 import BillingView from "./BillingView.jsx";
 import { UpgradeProvider, useUpgrade } from "./UpgradeModal.jsx";
 import { useAuth } from "../auth/AuthContext.jsx";
@@ -27,6 +28,7 @@ const NAV = [
   { id: "home", label: "Dashboard", icon: LayoutDashboard },
   { id: "scans", label: "Recent Scans", icon: ScanLine },
   { id: "monitoring", label: "Monitoring", icon: Activity },
+  { id: "answer-tracking", label: "Answer Tracking", icon: MessageSquare },
   { id: "report", label: "AI Visibility Report", icon: FileText },
   { id: "compare", label: "Compare", icon: GitCompare },
   { id: "summary", label: "Website Summary", icon: Globe },
@@ -42,6 +44,7 @@ const TITLES = {
   scans: ["Recent Scans", "Every scan you have run"],
   monitoring: ["Monitoring", "Track AI visibility over time and get alerted on changes"],
   "monitoring-detail": ["Monitor", "Historical timeline, trends, changes and alerts"],
+  "answer-tracking": ["AI Answer Tracking", "Track whether AI assistants mention and cite your brand"],
   report: ["AI Visibility Report", "What's wrong, why it matters, and how to fix it"],
   compare: ["Compare Scans", "Diff two scans signal by signal"],
   summary: ["Website Summary", "Per-domain rollup"],
@@ -223,6 +226,8 @@ function DashboardBody({ onRunScan, onExit }) {
             <OrganizationPage />
           ) : view === "monitoring" ? (
             <Monitoring onOpenMonitor={openMonitor} />
+          ) : view === "answer-tracking" ? (
+            <AnswerTracking />
           ) : view === "monitoring-detail" ? (
             <MonitorDetail monitorId={monitorId} onBack={() => setView("monitoring")} onOpenReport={openReport} />
           ) : (

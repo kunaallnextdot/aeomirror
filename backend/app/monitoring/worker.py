@@ -39,6 +39,17 @@ def _maybe_send_digests(db) -> int:
         return 0
 
 
+async def _maybe_run_answer_tracking(db) -> int:
+    """Best-effort scheduled answer-tracking dispatch. Runs AFTER scan processing and
+    never raises into the tick — it must never touch or block the scan pipeline."""
+    try:
+        from app.services.answer_tracking.scheduling import run_scheduled
+        return await run_scheduled(db)
+    except Exception:   # noqa: BLE001 — answer tracking is a side feature; never break the tick
+        logger.exception("answer-tracking dispatch failed")
+        return 0
+
+
 def _maybe_purge_snapshots(db) -> int:
     """Best-effort retention cleanup, throttled to ~hourly. Never raises."""
     global _last_snapshot_purge
@@ -68,9 +79,11 @@ async def tick() -> dict:
             processed += 1
         summaries = notifications.maybe_send_summaries(db)
         digests = _maybe_send_digests(db)
+        answer_runs = await _maybe_run_answer_tracking(db)
         purged = _maybe_purge_snapshots(db)
         return {"enqueued": enqueued, "processed": processed, "summaries": summaries,
-                "digests": digests, "snapshots_purged": purged}
+                "digests": digests, "answer_tracking_runs": answer_runs,
+                "snapshots_purged": purged}
     finally:
         db.close()
 

@@ -345,6 +345,39 @@ export function getMonitorHistory(id, { days } = {}) {
 }
 
 /* =====================================================================
+   AI Answer Tracking (Part A). Prompt-set + prompt management, cost
+   estimate, run trigger, and run status. NO results surface (Part B).
+   ===================================================================== */
+export function listPromptSets() { return request(`/prompt-sets`); }
+export function createPromptSet({ name, monitor_id } = {}) {
+  return request(`/prompt-sets`, { method: "POST", body: JSON.stringify({ name, monitor_id }) });
+}
+export function getPromptSet(id) { return request(`/prompt-sets/${encodeURIComponent(id)}`); }
+export function updatePromptSet(id, patch) {
+  return request(`/prompt-sets/${encodeURIComponent(id)}`, { method: "PATCH", body: JSON.stringify(patch) });
+}
+export function deletePromptSet(id) {
+  return request(`/prompt-sets/${encodeURIComponent(id)}`, { method: "DELETE" });
+}
+export function addPrompt(setId, text) {
+  return request(`/prompt-sets/${encodeURIComponent(setId)}/prompts`, { method: "POST", body: JSON.stringify({ text }) });
+}
+export function updatePrompt(id, patch) {
+  return request(`/prompts/${encodeURIComponent(id)}`, { method: "PATCH", body: JSON.stringify(patch) });
+}
+export function deletePrompt(id) {
+  return request(`/prompts/${encodeURIComponent(id)}`, { method: "DELETE" });
+}
+export function estimatePromptSet(id) {
+  return request(`/prompt-sets/${encodeURIComponent(id)}/estimate`);
+}
+export function runPromptSet(id, { override } = {}) {
+  const qs = override ? `?override=true` : "";
+  return request(`/prompt-sets/${encodeURIComponent(id)}/run${qs}`, { method: "POST" });
+}
+export function getPromptRun(id) { return request(`/prompt-runs/${encodeURIComponent(id)}`); }
+
+/* =====================================================================
    Admin platform (Phase 8). All under /admin; require a platform admin.
    ===================================================================== */
 function qs(params = {}) {

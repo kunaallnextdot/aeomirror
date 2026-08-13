@@ -24,8 +24,8 @@ from app.db.models import (
     ALERT_OPEN, CONTACT_STATUSES, JOB_FAILED, MONITOR_ACTIVE, MONITOR_PAUSED,
     AiContentInsight, Alert, Contact, EmailVerification, Invitation, Monitor,
     MonitorHistory, NotificationLog, Organization, OrganizationMember, PasswordReset,
-    Report, ReportExport, ReportShare, Scan, ScanSnapshot, ScheduledJob,
-    Session as SessionModel, UsageEvent, User,
+    PromptResult, PromptRun, PromptSet, Report, ReportExport, ReportShare, Scan,
+    ScanSnapshot, ScheduledJob, Session as SessionModel, TrackedPrompt, UsageEvent, User,
 )
 from app.db.session import get_db
 from app.monitoring import runner, scheduler
@@ -245,7 +245,8 @@ def admin_delete_org(org_id: str, request: Request, admin: User = Depends(get_ad
     # surface has no cross-org financial aggregate, so they never skew a count.
     for model in (Monitor, MonitorHistory, Alert, Report, ReportExport, ReportShare,
                   ScanSnapshot, OrganizationMember, Scan, UsageEvent, AiContentInsight,
-                  Invitation, NotificationLog):
+                  Invitation, NotificationLog,
+                  PromptSet, TrackedPrompt, PromptRun, PromptResult):
         db.query(model).filter(model.organization_id == o.id).delete(synchronize_session=False)
     db.query(ScheduledJob).filter(ScheduledJob.organization_id == o.id).delete(synchronize_session=False)
     db.delete(o)
@@ -548,3 +549,44 @@ def digest_preflight(body: DigestPreflightRequest, db: Session = Depends(get_db)
     res = email_backend.send(to=body.to, subject=f"[preflight] {subject}", text=text,
                              html=html_body, headers={"List-Unsubscribe": f"<{unsub}>"})
     return {"to": body.to, "used_sample": used_sample, "result": res}
+
+
+# ------------------------------- answer-tracking preflight -------------------------------
+@router.get("/answer-tracking/preflight")
+async def answer_tracking_preflight(db: Session = Depends(get_db)):
+    """For each CONFIGURED provider (ANSWER_TRACKING_PROVIDERS), issue one trivial query
+    and report readiness: key present, auth ok, model responding, citations returned,
+    latency, estimated cost. Runnable BEFORE any real run so misconfiguration surfaces on
+    day one. Admin-only (router gate). Never raises — a failing provider is reported, not
+    thrown."""
+    from app.services.answer_tracking import providers as provider_registry
+    from app.services.answer_tracking.providers import ProviderError
+
+    timeout = settings.answer_tracking_query_timeout_seconds
+    checks = []
+    for name in provider_registry.configured_provider_names():
+        key_present = bool(provider_registry._api_key_for(name))
+        model = provider_registry._model_for(name)
+        entry = {"provider": name, "key_present": key_present, "model": model or None,
+                 "auth_ok": False, "model_responding": False, "citations_returned": False,
+                 "latency_ms": None, "estimated_cost_usd": provider_registry.rate_for(name),
+                 "error": None}
+        instances = {p.name: p for p in provider_registry.enabled_providers()}
+        provider = instances.get(name)
+        if provider is None:
+            entry["error"] = "not configured (missing key or model) or not implemented"
+            checks.append(entry)
+            continue
+        try:
+            res = await provider.query("Reply with the single word: ok.", timeout=timeout)
+            entry.update(auth_ok=True, model_responding=bool(res.text),
+                         citations_returned=bool(res.citations), latency_ms=res.latency_ms)
+        except ProviderError as exc:
+            # 401/403 => auth failed; other statuses => reachable but erroring.
+            entry["auth_ok"] = exc.status_code not in (401, 403)
+            entry["error"] = f"{exc}"[:300]
+        except Exception as exc:  # noqa: BLE001
+            entry["error"] = f"{type(exc).__name__}"[:300]
+        checks.append(entry)
+    return {"providers": checks,
+            "enabled": [p.name for p in provider_registry.enabled_providers()]}

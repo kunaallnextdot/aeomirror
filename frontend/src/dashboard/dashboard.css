@@ -538,3 +538,48 @@
 /* Score-history timeline: selected-marker change detail */
 .ts-detail{margin-top:12px;padding-top:10px;border-top:1px solid var(--line)}
 .ts-detail-h{display:flex;justify-content:space-between;align-items:center;font-size:12.5px;font-weight:600;margin-bottom:6px}
+
+/* ===== AI Answer Tracking (Part A) — prompt management ===== */
+.at-explainer{display:flex;gap:9px;align-items:flex-start;background:var(--panel);border:1px solid var(--line);
+  border-radius:10px;padding:11px 13px;font-size:12.5px;color:var(--txt-mid);line-height:1.5}
+.at-explainer svg{flex:none;margin-top:1px;color:var(--accent)}
+.d-input{background:var(--panel);border:1px solid var(--line-2);border-radius:8px;padding:8px 11px;
+  color:var(--txt);font-size:13px;outline:none;width:100%}
+.d-input:focus{border-color:var(--accent)}
+.d-input:disabled{opacity:.55;cursor:not-allowed}
+.d-btn{display:inline-flex;align-items:center;gap:6px;background:var(--panel-2,var(--panel));
+  border:1px solid var(--line-2);border-radius:8px;padding:8px 13px;color:var(--txt);font-size:13px;
+  font-weight:600;cursor:pointer;white-space:nowrap}
+.d-btn:hover:not(:disabled){border-color:var(--accent)}
+.d-btn:disabled{opacity:.5;cursor:not-allowed}
+.d-btn.primary{background:var(--accent);color:#04222a;border-color:var(--accent)}
+.d-iconbtn.danger{color:var(--bad)}
+.spin{animation:at-spin 1s linear infinite}
+@keyframes at-spin{to{transform:rotate(360deg)}}
+.at-create,.at-add{display:flex;gap:8px;margin:10px 0 4px}
+.at-list{list-style:none;margin:8px 0 0;padding:0;display:flex;flex-direction:column;gap:6px}
+.at-list li{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:9px 11px;
+  border:1px solid var(--line);border-radius:8px;cursor:pointer}
+.at-list li:hover{border-color:var(--line-2)}
+.at-list li.on{border-color:var(--accent);background:var(--panel)}
+.at-list-name{font-size:13px;font-weight:600;color:var(--txt)}
+.at-list-meta{font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--txt-dim);white-space:nowrap}
+.at-detail-h{display:flex;justify-content:space-between;align-items:center}
+.at-prompts{list-style:none;margin:8px 0 0;padding:0;display:flex;flex-direction:column;gap:6px}
+.at-prompt{display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid var(--line);border-radius:8px}
+.at-prompt.off{opacity:.55}
+.at-prompt-text{flex:1;font-size:13px;color:var(--txt);overflow:hidden;text-overflow:ellipsis}
+.at-prompt-actions{display:flex;gap:4px;flex:none}
+.at-note{margin-top:6px;font-size:12px;color:var(--warn)}
+.at-err,.at-run-err{margin-top:8px;font-size:12.5px;color:var(--bad)}
+.at-run-ok{margin-top:8px;font-size:12.5px;color:var(--good)}
+.at-runbar{display:flex;align-items:center;gap:12px;margin-top:12px;flex-wrap:wrap}
+.at-est{font-size:12.5px;color:var(--txt-mid)}
+.at-est b{color:var(--txt)}
+.at-est-warn{color:var(--warn)}
+.at-runs{margin-top:14px;border-top:1px solid var(--line);padding-top:10px}
+.at-runs-h{font-size:12.5px;font-weight:600;color:var(--txt-mid);margin-bottom:6px}
+.at-run-row{display:flex;align-items:center;gap:10px;padding:5px 0;font-size:12.5px}
+.at-run-status{font-weight:600;min-width:82px}
+.at-run-meta{flex:1;color:var(--txt-mid);font-family:'IBM Plex Mono',monospace;font-size:11px}
+.at-run-date{color:var(--txt-dim);font-size:11px;white-space:nowrap}
