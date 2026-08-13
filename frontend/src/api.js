@@ -376,6 +376,19 @@ export function runPromptSet(id, { override } = {}) {
   return request(`/prompt-sets/${encodeURIComponent(id)}/run${qs}`, { method: "POST" });
 }
 export function getPromptRun(id) { return request(`/prompt-runs/${encodeURIComponent(id)}`); }
+export function getPromptRunSummary(id) {
+  return request(`/prompt-runs/${encodeURIComponent(id)}/summary`);
+}
+export function getPromptSetTrend(id, { n } = {}) {
+  const qs = n ? `?n=${encodeURIComponent(n)}` : "";
+  return request(`/prompt-sets/${encodeURIComponent(id)}/trend${qs}`);
+}
+export function getPromptRunResults(id) {
+  return request(`/prompt-runs/${encodeURIComponent(id)}/results`);
+}
+export function reanalysePromptRun(id) {
+  return request(`/prompt-runs/${encodeURIComponent(id)}/reanalyse`, { method: "POST" });
+}
 
 /* =====================================================================
    Admin platform (Phase 8). All under /admin; require a platform admin.

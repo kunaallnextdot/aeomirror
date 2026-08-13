@@ -17,6 +17,7 @@ from app.admin import audit, flags, health
 from app.admin import settings_store as settings_svc
 from app.api.deps import get_admin
 from app.api.routes_scan import _client_ip, _ip_hash, _normalize, run_scan
+from app.config import settings
 from app.core.observability import metrics
 from app.core.security import generate_token, hash_token, token_expiry
 from app.core.ssrf import UnsafeUrlError, validate_url
@@ -24,8 +25,9 @@ from app.db.models import (
     ALERT_OPEN, CONTACT_STATUSES, JOB_FAILED, MONITOR_ACTIVE, MONITOR_PAUSED,
     AiContentInsight, Alert, Contact, EmailVerification, Invitation, Monitor,
     MonitorHistory, NotificationLog, Organization, OrganizationMember, PasswordReset,
-    PromptResult, PromptRun, PromptSet, Report, ReportExport, ReportShare, Scan,
-    ScanSnapshot, ScheduledJob, Session as SessionModel, TrackedPrompt, UsageEvent, User,
+    PromptResult, PromptResultAnalysis, PromptRun, PromptSet, Report, ReportExport,
+    ReportShare, Scan, ScanSnapshot, ScheduledJob, Session as SessionModel, TrackedPrompt,
+    UsageEvent, User,
 )
 from app.db.session import get_db
 from app.monitoring import runner, scheduler
@@ -246,7 +248,7 @@ def admin_delete_org(org_id: str, request: Request, admin: User = Depends(get_ad
     for model in (Monitor, MonitorHistory, Alert, Report, ReportExport, ReportShare,
                   ScanSnapshot, OrganizationMember, Scan, UsageEvent, AiContentInsight,
                   Invitation, NotificationLog,
-                  PromptSet, TrackedPrompt, PromptRun, PromptResult):
+                  PromptSet, TrackedPrompt, PromptRun, PromptResult, PromptResultAnalysis):
         db.query(model).filter(model.organization_id == o.id).delete(synchronize_session=False)
     db.query(ScheduledJob).filter(ScheduledJob.organization_id == o.id).delete(synchronize_session=False)
     db.delete(o)

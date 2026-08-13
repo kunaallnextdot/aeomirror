@@ -606,17 +606,33 @@ RUN_COMPLETED = "completed"     # every call succeeded
 RUN_FAILED = "failed"           # every call failed
 RUN_PARTIAL = "partial"         # some calls failed; successful results ARE persisted
 PROMPT_RUN_STATUSES = (RUN_PENDING, RUN_RUNNING, RUN_COMPLETED, RUN_FAILED, RUN_PARTIAL)
+_RUN_TERMINAL = (RUN_COMPLETED, RUN_FAILED, RUN_PARTIAL)   # answer phase finished
+
+# prompt_runs.extraction_status lifecycle (Part B — the analysis phase). Distinct from
+# `status` (the answer phase) so the UI can show "Running" -> "Analysing" -> "Complete".
+EXTRACTION_PENDING = "pending"
+EXTRACTION_RUNNING = "running"
+EXTRACTION_COMPLETE = "complete"
+EXTRACTION_FAILED = "failed"
 
 
 class PromptSet(Base):
     """A named collection of prompts tracked for one org (optionally tied to a
-    monitor, which supplies the brand/domain for the provisional mention check)."""
+    monitor, which seeds the brand identity). Brand fields (Part B) drive the LLM
+    extraction; they are seeded from the linked monitor but independently editable
+    (the legal entity name and the marketed brand name often differ)."""
     __tablename__ = "prompt_sets"
     __table_args__ = (Index("ix_prompt_sets_org", "organization_id"),)
     id = Column(String, primary_key=True, default=_uuid)
     organization_id = Column(String, index=True, nullable=False)
     monitor_id = Column(String, index=True, nullable=True)   # optional link to a Monitor
     name = Column(String, nullable=False)
+    # Part B — brand identity for extraction (mention detection is the LLM's job, not
+    # substring matching; aliases are supplied to the model as context).
+    brand_name = Column(String, nullable=True)
+    brand_domain = Column(String, nullable=True)
+    brand_aliases = Column(JSON, nullable=True)              # list[str]
+    competitor_domains = Column(JSON, nullable=True)         # list[str], max 5
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
@@ -648,6 +664,8 @@ class PromptRun(Base):
     total_calls = Column(Integer, nullable=False, default=0)
     failed_calls = Column(Integer, nullable=False, default=0)
     estimated_cost_usd = Column(Float, nullable=False, default=0.0)
+    # Part B — the analysis phase, tracked separately from the answer phase above.
+    extraction_status = Column(String, nullable=False, default=EXTRACTION_PENDING)
     created_at = Column(DateTime, default=datetime.utcnow)
 
 
@@ -671,4 +689,31 @@ class PromptResult(Base):
     latency_ms = Column(Integer, nullable=True)
     token_usage = Column(JSON, nullable=True)
     error = Column(String, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class PromptResultAnalysis(Base):
+    """Part B — the structured extraction for ONE prompt_results row. Kept separate from
+    prompt_results so extraction can be re-run against stored raw responses without
+    re-calling the expensive answer providers.
+
+    `extraction_failed=true` means the LLM output could not be parsed — it is NOT a
+    negative result. A failed extraction is EXCLUDED from mention-rate denominators;
+    never conflate it with brand_mentioned=false. `raw_output` keeps the unparseable
+    text for debugging/re-analysis."""
+    __tablename__ = "prompt_result_analysis"
+    __table_args__ = (Index("ix_prompt_result_analysis_run", "run_id"),)
+    id = Column(String, primary_key=True, default=_uuid)
+    result_id = Column(String, index=True, nullable=False)
+    run_id = Column(String, index=True, nullable=False)
+    organization_id = Column(String, index=True, nullable=False)
+    brand_mentioned = Column(Boolean, nullable=True)          # null when extraction_failed
+    mention_context = Column(Text, nullable=True)             # the sentence containing the mention
+    sentiment = Column(String, nullable=True)                 # positive | neutral | negative | null
+    brand_urls_cited = Column(JSON, nullable=True)            # list[str]
+    competitors_mentioned = Column(JSON, nullable=True)       # list[{name, domain_if_stated}]
+    position = Column(Integer, nullable=True)                 # 1-based rank in a list answer, else null
+    extraction_failed = Column(Boolean, nullable=False, default=False)
+    extraction_model = Column(String, nullable=False)         # exact model string used to extract
+    raw_output = Column(Text, nullable=True)                  # unparseable LLM output (on failure)
     created_at = Column(DateTime, default=datetime.utcnow)

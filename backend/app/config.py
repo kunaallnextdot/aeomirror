@@ -192,6 +192,12 @@ class Settings(BaseSettings):
     openai_api_key: str | None = None
     perplexity_api_key: str | None = None
     gemini_api_key: str | None = None
+    # Part B — extraction/analysis. One cheap LLM call per stored answer to produce the
+    # structured extraction. Provider is a NAME (not a model string); the model comes from
+    # env, and when unset falls back to the existing cheap AI model (ai_model) so nothing is
+    # hardcoded here and extraction works out of the box wherever ai_model is configured.
+    answer_tracking_extraction_provider: str = "anthropic"
+    answer_tracking_extraction_model: str = ""      # empty => resolves to ai_model (see property)
 
     # --- Phase 9: billing + subscriptions ---
     # Master switch for plan enforcement. When False (e.g. tests), every org has
@@ -288,6 +294,12 @@ class Settings(BaseSettings):
         """Cadence in days. biweekly == every 14 days (NOT twice a week)."""
         return {"weekly": 7, "biweekly": 14, "monthly": 30}.get(
             self.answer_tracking_frequency.strip().lower(), 14)
+
+    @property
+    def answer_tracking_extraction_model_resolved(self) -> str:
+        """Exact extraction model: ANSWER_TRACKING_EXTRACTION_MODEL if set, else the
+        existing cheap ai_model. Never a hardcoded-here literal."""
+        return (self.answer_tracking_extraction_model or "").strip() or self.ai_model
 
     @property
     def is_production(self) -> bool:

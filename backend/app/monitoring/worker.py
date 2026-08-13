@@ -50,6 +50,17 @@ async def _maybe_run_answer_tracking(db) -> int:
         return 0
 
 
+async def _maybe_run_extractions(db) -> int:
+    """Best-effort Part B analysis: extract meaning from runs whose answer phase is
+    terminal but whose extraction is still pending. Never raises into the tick."""
+    try:
+        from app.services.answer_tracking.extraction import run_pending_extractions
+        return await run_pending_extractions(db)
+    except Exception:   # noqa: BLE001 — analysis is a side feature; never break the tick
+        logger.exception("answer-tracking extraction failed")
+        return 0
+
+
 def _maybe_purge_snapshots(db) -> int:
     """Best-effort retention cleanup, throttled to ~hourly. Never raises."""
     global _last_snapshot_purge
@@ -80,10 +91,11 @@ async def tick() -> dict:
         summaries = notifications.maybe_send_summaries(db)
         digests = _maybe_send_digests(db)
         answer_runs = await _maybe_run_answer_tracking(db)
+        extractions = await _maybe_run_extractions(db)
         purged = _maybe_purge_snapshots(db)
         return {"enqueued": enqueued, "processed": processed, "summaries": summaries,
                 "digests": digests, "answer_tracking_runs": answer_runs,
-                "snapshots_purged": purged}
+                "answer_tracking_extractions": extractions, "snapshots_purged": purged}
     finally:
         db.close()
 

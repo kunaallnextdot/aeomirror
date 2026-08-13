@@ -1,0 +1,357 @@
+"""AI Answer Tracking (Part B): extraction (defensive parse + retry + failure handling),
+citation merge (provider vs LLM, None vs []), Share-of-Voice aggregation across all
+samples, trend model-change flag, reanalyse (no answer-provider calls), cross-org
+isolation, and admin_delete_org cleanup. No real network — the extractor is faked.
+"""
+from __future__ import annotations
+
+import asyncio
+from datetime import datetime, timedelta
+
+from app.config import settings
+from app.db.models import (
+    EXTRACTION_COMPLETE, EXTRACTION_PENDING, RUN_COMPLETED,
+    Organization, PromptResult, PromptResultAnalysis, PromptRun, PromptSet,
+    TrackedPrompt, User,
+)
+from app.db.session import SessionLocal
+from app.main import app
+from app.services.answer_tracking import aggregation, extraction
+from app.services.answer_tracking import providers as at_providers
+from app.services.answer_tracking.providers.base import ProviderResult
+from fastapi.testclient import TestClient
+from tests.authutil import auth_client
+
+VALID = ('{"brand_mentioned": true, "mention_context": "Acme is great.", '
+         '"sentiment": "positive", "brand_urls_cited": ["https://acme.com/llm"], '
+         '"competitors_mentioned": [{"name": "Beta", "domain_if_stated": "beta.com"}], '
+         '"position": 1}')
+FENCED = "```json\n" + VALID + "\n```"
+
+
+# ------------------------------- fake extractor -------------------------------
+class FakeExtractor:
+    """Stand-in for the extraction provider. `script` = per-call return strings;
+    `always` = same string every call. Counts calls so retries are observable."""
+    supports_citations = False
+
+    def __init__(self, name="anthropic", model="fake-extract-1", *, script=None, always=VALID):
+        self.name = name
+        self.model = model
+        self._script = script
+        self._always = always
+        self.calls = 0
+
+    async def query(self, prompt, *, timeout):
+        i = self.calls
+        self.calls += 1
+        text = self._script[min(i, len(self._script) - 1)] if self._script is not None else self._always
+        return ProviderResult(text=text, citations=None, model=self.model, tokens=None, latency_ms=1)
+
+
+def _patch_extractor(monkeypatch, fake):
+    monkeypatch.setattr(at_providers, "extraction_provider", lambda: fake)
+
+
+# ------------------------------- builders -------------------------------
+def _set(db, org, *, brand_name="Acme", brand_domain="acme.com", aliases=None,
+         competitors=None, prompts=("What is best?",)):
+    ps = PromptSet(organization_id=org, name="S", brand_name=brand_name,
+                   brand_domain=brand_domain, brand_aliases=aliases, competitor_domains=competitors)
+    db.add(ps); db.commit(); db.refresh(ps)
+    made = []
+    for t in prompts:
+        p = TrackedPrompt(prompt_set_id=ps.id, organization_id=org, text=t)
+        db.add(p); made.append(p)
+    db.commit()
+    for p in made:
+        db.refresh(p)
+    return ps, made
+
+
+def _run(db, ps, org, *, when=None):
+    run = PromptRun(organization_id=org, prompt_set_id=ps.id, status=RUN_COMPLETED,
+                    extraction_status=EXTRACTION_PENDING, total_calls=0, estimated_cost_usd=0.0)
+    if when is not None:
+        run.created_at = when
+    db.add(run); db.commit(); db.refresh(run)
+    return run
+
+
+def _result(db, run, prompt_id, org, *, provider="anthropic", model="ans-m1", run_index=0,
+            raw="Acme is a great option.", citations=None, error=None):
+    r = PromptResult(run_id=run.id, prompt_id=prompt_id, organization_id=org, provider=provider,
+                     model=model, run_index=run_index, raw_response=raw, citations=citations, error=error)
+    db.add(r); db.commit(); db.refresh(r)
+    return r
+
+
+def _analysis(db, run, result_id, org, *, mentioned=True, failed=False, sentiment="positive",
+              urls=None, competitors=None, position=None, model="fake-extract-1"):
+    a = PromptResultAnalysis(
+        result_id=result_id, run_id=run.id, organization_id=org,
+        brand_mentioned=(None if failed else mentioned), extraction_failed=failed,
+        sentiment=(None if failed else sentiment), brand_urls_cited=urls,
+        competitors_mentioned=competitors, position=position, extraction_model=model)
+    db.add(a); db.commit()
+    return a
+
+
+# =====================================================================
+# extraction: parse + retry + failure
+# =====================================================================
+def test_extraction_parses_fenced_json(monkeypatch):
+    _, body = auth_client()
+    org = body["organization"]["id"]
+    _patch_extractor(monkeypatch, FakeExtractor(always=FENCED))    # fenced but valid
+    db = SessionLocal()
+    try:
+        ps, prompts = _set(db, org)
+        run = _run(db, ps, org)
+        _result(db, run, prompts[0].id, org)
+        asyncio.run(extraction.extract_for_run(db, run))
+        a = db.query(PromptResultAnalysis).filter(PromptResultAnalysis.run_id == run.id).one()
+        assert a.extraction_failed is False and a.brand_mentioned is True
+        assert a.sentiment == "positive" and a.position == 1
+        assert run.extraction_status == EXTRACTION_COMPLETE
+    finally:
+        db.close()
+
+
+def test_extraction_retries_on_malformed_then_succeeds(monkeypatch):
+    _, body = auth_client()
+    org = body["organization"]["id"]
+    fake = FakeExtractor(script=["this is not json at all", VALID])   # recover on retry
+    _patch_extractor(monkeypatch, fake)
+    db = SessionLocal()
+    try:
+        ps, prompts = _set(db, org)
+        run = _run(db, ps, org)
+        _result(db, run, prompts[0].id, org)
+        asyncio.run(extraction.extract_for_run(db, run))
+        a = db.query(PromptResultAnalysis).filter(PromptResultAnalysis.run_id == run.id).one()
+        assert fake.calls == 2                       # retried once
+        assert a.extraction_failed is False and a.brand_mentioned is True
+    finally:
+        db.close()
+
+
+def test_repeated_parse_failure_marks_failed_not_negative(monkeypatch):
+    _, body = auth_client()
+    org = body["organization"]["id"]
+    fake = FakeExtractor(always="never valid json")   # both attempts fail
+    _patch_extractor(monkeypatch, fake)
+    db = SessionLocal()
+    try:
+        ps, prompts = _set(db, org)
+        run = _run(db, ps, org)
+        _result(db, run, prompts[0].id, org)
+        asyncio.run(extraction.extract_for_run(db, run))
+        a = db.query(PromptResultAnalysis).filter(PromptResultAnalysis.run_id == run.id).one()
+        assert fake.calls == 2
+        assert a.extraction_failed is True
+        assert a.brand_mentioned is None              # NOT False — a failure is not a negative
+        assert a.raw_output == "never valid json"     # raw kept for debugging/re-analysis
+    finally:
+        db.close()
+
+
+# =====================================================================
+# citations: provider preferred, LLM only when None; None vs [] distinct
+# =====================================================================
+def test_provider_citations_preferred_llm_only_when_none(monkeypatch):
+    _, body = auth_client()
+    org = body["organization"]["id"]
+    _patch_extractor(monkeypatch, FakeExtractor(always=VALID))   # LLM says acme.com/llm
+    db = SessionLocal()
+    try:
+        ps, prompts = _set(db, org, brand_domain="acme.com")
+        run = _run(db, ps, org)
+        # provider returned structured citations -> prefer them (filtered to brand domain)
+        r_present = _result(db, run, prompts[0].id, org, run_index=0,
+                            citations=[{"url": "https://acme.com/provider", "title": None},
+                                       {"url": "https://other.com/x", "title": None}])
+        # provider cannot report citations (None) -> fall back to the LLM's URLs
+        r_none = _result(db, run, prompts[0].id, org, run_index=1, citations=None)
+        asyncio.run(extraction.extract_for_run(db, run))
+        by_result = {a.result_id: a for a in
+                     db.query(PromptResultAnalysis).filter(PromptResultAnalysis.run_id == run.id)}
+        assert by_result[r_present.id].brand_urls_cited == ["https://acme.com/provider"]  # provider, brand only
+        assert by_result[r_none.id].brand_urls_cited == ["https://acme.com/llm"]          # LLM fallback
+    finally:
+        db.close()
+
+
+def test_citations_none_vs_empty_distinct(monkeypatch):
+    _, body = auth_client()
+    org = body["organization"]["id"]
+    _patch_extractor(monkeypatch, FakeExtractor(always=VALID))
+    db = SessionLocal()
+    try:
+        ps, prompts = _set(db, org, brand_domain="acme.com")
+        run = _run(db, ps, org)
+        r_empty = _result(db, run, prompts[0].id, org, run_index=0, citations=[])   # searched, cited nothing
+        r_none = _result(db, run, prompts[0].id, org, run_index=1, citations=None)  # cannot report
+        asyncio.run(extraction.extract_for_run(db, run))
+        by_result = {a.result_id: a for a in
+                     db.query(PromptResultAnalysis).filter(PromptResultAnalysis.run_id == run.id)}
+        assert by_result[r_empty.id].brand_urls_cited == []                  # [] preserved (not LLM)
+        assert by_result[r_none.id].brand_urls_cited == ["https://acme.com/llm"]   # None -> LLM
+    finally:
+        db.close()
+
+
+# =====================================================================
+# aggregation: mention rate across samples, failures excluded, competitors
+# =====================================================================
+def test_mention_rate_across_all_samples_excludes_failures():
+    _, body = auth_client()
+    org = body["organization"]["id"]
+    db = SessionLocal()
+    try:
+        ps, prompts = _set(db, org)
+        run = _run(db, ps, org)
+        # 3 samples of one prompt: mentioned, mentioned, not; + 1 extraction failure
+        r = [_result(db, run, prompts[0].id, org, run_index=i) for i in range(4)]
+        _analysis(db, run, r[0].id, org, mentioned=True)
+        _analysis(db, run, r[1].id, org, mentioned=True)
+        _analysis(db, run, r[2].id, org, mentioned=False)
+        _analysis(db, run, r[3].id, org, failed=True)          # excluded from denominator
+        s = aggregation.run_summary(db, run)
+        assert s["analyzed_count"] == 3 and s["excluded_extraction_failures"] == 1
+        assert s["mention_rate"] == 66.7                        # 2 of 3, not a binary yes
+        assert s["per_prompt"][0]["mention_rate"] == 66.7
+    finally:
+        db.close()
+
+
+def test_competitor_counted_once_per_sample(monkeypatch):
+    _, body = auth_client()
+    org = body["organization"]["id"]
+    # extractor returns the SAME competitor twice in one answer
+    dup = ('{"brand_mentioned": true, "mention_context": null, "sentiment": "neutral", '
+           '"brand_urls_cited": [], "competitors_mentioned": '
+           '[{"name": "Beta", "domain_if_stated": null}, {"name": "Beta", "domain_if_stated": null}], '
+           '"position": null}')
+    _patch_extractor(monkeypatch, FakeExtractor(always=dup))
+    db = SessionLocal()
+    try:
+        ps, prompts = _set(db, org)
+        run = _run(db, ps, org)
+        _result(db, run, prompts[0].id, org, run_index=0)
+        _result(db, run, prompts[0].id, org, run_index=1)
+        asyncio.run(extraction.extract_for_run(db, run))
+        # each stored analysis lists Beta once (deduped at storage)
+        for a in db.query(PromptResultAnalysis).filter(PromptResultAnalysis.run_id == run.id):
+            assert len(a.competitors_mentioned) == 1
+        s = aggregation.run_summary(db, run)
+        beta = next(c for c in s["competitors"] if c["name"] == "Beta")
+        assert beta["mentions"] == 2 and beta["mention_rate"] == 100.0   # 2 samples, once each
+    finally:
+        db.close()
+
+
+def test_trend_flags_model_change():
+    _, body = auth_client()
+    org = body["organization"]["id"]
+    db = SessionLocal()
+    try:
+        ps, prompts = _set(db, org)
+        now = datetime(2026, 3, 1, 12, 0, 0)
+        run1 = _run(db, ps, org, when=now - timedelta(days=2))
+        r1 = _result(db, run1, prompts[0].id, org, model="ans-m1")
+        _analysis(db, run1, r1.id, org, mentioned=True, model="e1")
+        run2 = _run(db, ps, org, when=now - timedelta(days=1))
+        r2 = _result(db, run2, prompts[0].id, org, model="ans-m2")   # answer model changed
+        _analysis(db, run2, r2.id, org, mentioned=True, model="e1")
+        t = aggregation.set_trend(db, ps, n=10)
+        assert [p["model_changed"] for p in t["runs"]] == [False, True]
+    finally:
+        db.close()
+
+
+# =====================================================================
+# reanalyse: no answer-provider calls; API; cross-org; delete-org
+# =====================================================================
+def test_reanalyse_reruns_extraction_without_answer_calls(monkeypatch):
+    client, body = auth_client()
+    org = body["organization"]["id"]
+    fake = FakeExtractor(always=VALID)
+    _patch_extractor(monkeypatch, fake)
+    # spy: the answer providers must NEVER be queried during reanalyse
+    calls = {"answer": 0}
+    def spy_enabled():
+        calls["answer"] += 1
+        return []
+    monkeypatch.setattr(at_providers, "enabled_providers", spy_enabled)
+    db = SessionLocal()
+    try:
+        ps, prompts = _set(db, org)
+        run = _run(db, ps, org)
+        _result(db, run, prompts[0].id, org)
+        run_id = run.id
+    finally:
+        db.close()
+
+    r = client.post(f"/prompt-runs/{run_id}/reanalyse")
+    assert r.status_code == 200 and r.json()["analyzed"] == 1
+    assert calls["answer"] == 0                     # zero answer-provider calls
+    assert fake.calls >= 1                           # extraction did run
+    db = SessionLocal()
+    try:
+        assert db.query(PromptResultAnalysis).filter(PromptResultAnalysis.run_id == run_id).count() == 1
+    finally:
+        db.close()
+
+
+def test_summary_api_and_cross_org_isolation(monkeypatch):
+    client_a, abody = auth_client()
+    client_b, _ = auth_client()
+    org_a = abody["organization"]["id"]
+    db = SessionLocal()
+    try:
+        ps, prompts = _set(db, org_a)
+        run = _run(db, ps, org_a)
+        r = _result(db, run, prompts[0].id, org_a)
+        _analysis(db, run, r.id, org_a, mentioned=True)
+        run_id, set_id = run.id, ps.id
+    finally:
+        db.close()
+
+    ok = client_a.get(f"/prompt-runs/{run_id}/summary")
+    assert ok.status_code == 200 and ok.json()["mention_rate"] == 100.0
+
+    # every new endpoint must 404 for another org (never leak existence)
+    assert client_b.get(f"/prompt-runs/{run_id}/summary").status_code == 404
+    assert client_b.get(f"/prompt-runs/{run_id}/results").status_code == 404
+    assert client_b.get(f"/prompt-sets/{set_id}/trend").status_code == 404
+    assert client_b.post(f"/prompt-runs/{run_id}/reanalyse").status_code == 404
+
+
+def test_admin_delete_org_removes_analysis():
+    from app.api.deps import get_admin
+    _, body = auth_client()
+    org_id = body["organization"]["id"]
+    db = SessionLocal()
+    try:
+        ps, prompts = _set(db, org_id)
+        run = _run(db, ps, org_id)
+        r = _result(db, run, prompts[0].id, org_id)
+        _analysis(db, run, r.id, org_id, mentioned=True)
+        owner = db.get(User, db.get(Organization, org_id).owner_id)
+    finally:
+        db.close()
+
+    admin_client = TestClient(app)
+    app.dependency_overrides[get_admin] = lambda: owner
+    try:
+        assert admin_client.delete(f"/admin/organizations/{org_id}").status_code == 200
+    finally:
+        app.dependency_overrides.pop(get_admin, None)
+
+    db = SessionLocal()
+    try:
+        assert db.query(PromptResultAnalysis).filter(
+            PromptResultAnalysis.organization_id == org_id).count() == 0
+    finally:
+        db.close()

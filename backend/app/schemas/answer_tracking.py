@@ -8,11 +8,20 @@ from pydantic import BaseModel, Field
 class CreatePromptSetRequest(BaseModel):
     name: str = Field(min_length=1, max_length=120)
     monitor_id: str | None = None          # optional link to a Monitor (must be same org)
+    # Part B — brand identity (seeded from the monitor when omitted; see the route).
+    brand_name: str | None = Field(default=None, max_length=200)
+    brand_domain: str | None = Field(default=None, max_length=255)
+    brand_aliases: list[str] | None = None
+    competitor_domains: list[str] | None = Field(default=None, max_length=5)   # max 5 items
 
 
 class UpdatePromptSetRequest(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=120)
     monitor_id: str | None = None          # set/clear the linked monitor
+    brand_name: str | None = Field(default=None, max_length=200)
+    brand_domain: str | None = Field(default=None, max_length=255)
+    brand_aliases: list[str] | None = None
+    competitor_domains: list[str] | None = Field(default=None, max_length=5)
 
 
 class CreatePromptRequest(BaseModel):

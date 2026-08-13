@@ -52,6 +52,26 @@ def configured_provider_names() -> list[str]:
     return settings.answer_tracking_provider_list()
 
 
+def extraction_provider() -> BaseProvider | None:
+    """The provider used for Part B extraction (ANSWER_TRACKING_EXTRACTION_PROVIDER +
+    the resolved extraction model). Returns None (logged) when unknown/unconfigured so
+    the caller can mark extraction failed rather than crash."""
+    name = (settings.answer_tracking_extraction_provider or "").strip().lower()
+    cls = _REGISTRY.get(name)
+    if cls is None:
+        log.warning("answer-tracking: extraction provider %r is not implemented", name)
+        return None
+    key = _api_key_for(name)
+    if not key:
+        log.warning("answer-tracking: extraction provider %r has no API key", name)
+        return None
+    model = settings.answer_tracking_extraction_model_resolved
+    if not model:
+        log.warning("answer-tracking: no extraction model configured")
+        return None
+    return cls(api_key=key, model=model)
+
+
 def enabled_providers() -> list[BaseProvider]:
     """Instantiate every requested provider that is implemented AND configured. Skips
     (with a WARNING) unknown names, missing API keys, and missing model strings."""
@@ -75,6 +95,6 @@ def enabled_providers() -> list[BaseProvider]:
 
 __all__ = [
     "BaseProvider", "ProviderError", "ProviderResult", "is_transient", "post_json",
-    "enabled_providers", "configured_provider_names", "rate_for",
+    "enabled_providers", "extraction_provider", "configured_provider_names", "rate_for",
     "AnthropicProvider", "OpenAIProvider", "PerplexityProvider", "GeminiProvider",
 ]
