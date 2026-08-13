@@ -28,6 +28,10 @@ services:
     plan: starter
     healthCheckPath: /healthz
     autoDeploy: true
+    # Apply DB migrations ONCE per deploy, before the new version starts serving.
+    # Race-free (runs before any instance boots) and the single source of schema
+    # truth, so a released image never queries columns/tables that don't exist yet.
+    preDeployCommand: alembic upgrade head
     envVars:
       - key: ENVIRONMENT
         value: production
