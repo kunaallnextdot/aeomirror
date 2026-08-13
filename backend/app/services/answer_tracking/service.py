@@ -50,9 +50,10 @@ def prompt_count(db: Session, prompt_set_id: str) -> int:
 
 # --------------------------- estimate ---------------------------
 def estimate_run(db: Session, prompt_set: PromptSet) -> dict:
-    """Projected call count + estimated USD for ONE run of this set, from the
-    per-provider rate table. Counts BASE runs only (the adaptive third run is
-    conditional and cannot be projected)."""
+    """Projected call count + estimated USD for ONE run of this set. Includes BOTH phases:
+    the answer-provider calls AND the extraction pass (one extraction call per stored
+    answer). Counts BASE runs only — the adaptive third run is conditional and cannot be
+    projected, so actual cost may run slightly higher (documented tolerance)."""
     prompts = active_prompts(db, prompt_set.id)
     providers = provider_registry.enabled_providers()
     runs_per = max(1, settings.answer_tracking_runs_per_prompt)
@@ -62,17 +63,30 @@ def estimate_run(db: Session, prompt_set: PromptSet) -> dict:
          "cost_usd": round(calls_per_provider * provider_registry.rate_for(p.name), 6)}
         for p in providers
     ]
-    total_calls = calls_per_provider * len(providers)
-    total_cost = round(sum(pp["cost_usd"] for pp in per_provider), 6)
+    answer_calls = calls_per_provider * len(providers)
+    answer_cost = round(sum(pp["cost_usd"] for pp in per_provider), 6)
+
+    # Extraction: ONE call per stored answer (FIX3 — this was previously ignored, making
+    # the estimate ~half the real cost). Priced at the extraction provider's rate.
+    ex_provider = settings.answer_tracking_extraction_provider.strip().lower()
+    extraction_calls = answer_calls
+    extraction_cost = round(extraction_calls * provider_registry.rate_for(ex_provider), 6)
+    total_cost = round(answer_cost + extraction_cost, 6)
+
     return {
         "prompt_set_id": prompt_set.id,
         "active_prompts": len(prompts),
         "runs_per_prompt": runs_per,
         "providers": [p.name for p in providers],
-        "call_count": total_calls,
-        "estimated_cost_usd": total_cost,
+        "call_count": answer_calls,                 # answer-provider calls
+        "answer_cost_usd": answer_cost,
+        "extraction_calls": extraction_calls,
+        "extraction_provider": ex_provider,
+        "extraction_cost_usd": extraction_cost,
+        "estimated_cost_usd": total_cost,           # answer + extraction (the real total)
         "per_provider": per_provider,
-        "note": "Base runs only; the adaptive third run is conditional and not included.",
+        "note": "Base runs only; the adaptive third run is conditional and not included, "
+                "so actual cost may be a little higher.",
     }
 
 

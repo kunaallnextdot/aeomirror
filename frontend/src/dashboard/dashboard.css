@@ -624,3 +624,6 @@
 .at-url{color:var(--accent);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .at-url-n{flex:none;font-family:'IBM Plex Mono',monospace;color:var(--txt-dim)}
 .at-chart{height:180px;margin-top:4px}
+.at-est-cost{margin-top:3px;font-size:12px;color:var(--txt-mid)}
+.at-est-cost b{color:var(--txt)}
+.at-cite-why{margin-top:4px;font-size:11px;color:var(--warn);max-width:220px;line-height:1.4}

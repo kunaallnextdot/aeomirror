@@ -254,8 +254,14 @@ function PromptSetDetail({ setId, canRun, canDelete, onChanged, onDeleted }) {
               <span className="at-est-warn">No providers configured — a run would make 0 calls.</span>
             ) : (
               <>Estimated this run: <b>{estCalls}</b> provider call{estCalls === 1 ? "" : "s"}
-                {estCost != null && <> · <b>${estCost.toFixed(2)}</b></>}
                 {estimate?.providers?.length ? <> across {estimate.providers.join(", ")}</> : null}
+                {estCost != null && (
+                  <div className="at-est-cost">
+                    answers <b>${(estimate.answer_cost_usd ?? 0).toFixed(2)}</b>
+                    {" + "}analysis <b>${(estimate.extraction_cost_usd ?? 0).toFixed(2)}</b>
+                    {" = "}<b>${estCost.toFixed(2)}</b> total
+                  </div>
+                )}
               </>
             )}
           </div>
@@ -336,6 +342,20 @@ const SENT_COLOR = { positive: "var(--good)", neutral: "var(--txt-mid)", negativ
 const AXIS = { fill: "var(--txt-dim)", fontSize: 10 };
 
 function pct(v) { return v == null ? "—" : `${v}%`; }
+
+// FIX4 — a bare "0 citations" is ambiguous; explain WHICH zero this is.
+function citationWhy(diag) {
+  switch (diag && diag.status) {
+    case "no_provider_reports_citations":
+      return "No configured provider can report citations — add a search-grounded provider (e.g. Perplexity) to measure this.";
+    case "search_disabled":
+      return "Search was disabled on these calls — enable search to measure citations.";
+    case "searched_not_cited":
+      return "Providers searched but did not cite your brand.";
+    default:
+      return null;
+  }
+}
 
 function ResultsPanel({ setId, runs }) {
   const latest = runs && runs.length ? runs[0] : null;
@@ -425,6 +445,9 @@ function ResultsPanel({ setId, runs }) {
             <div className="at-metric">
               <div className="at-metric-v">{summary.citation_count}</div>
               <div className="at-metric-l">Brand citations</div>
+              {summary.citation_count === 0 && (
+                <div className="at-cite-why">{citationWhy(summary.citation_diagnosis)}</div>
+              )}
             </div>
             {summary.average_position != null && (
               <div className="at-metric">

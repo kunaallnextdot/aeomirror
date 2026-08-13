@@ -233,7 +233,9 @@ def test_cost_estimate_matches_actual_call_count(monkeypatch):
         run = service.create_run(db, ps)
         asyncio.run(runner.execute_run(db, run))
         assert est["call_count"] == 4 == run.total_calls           # 2 prompts x 1 provider x 2 runs
-        assert abs(est["estimated_cost_usd"] - run.estimated_cost_usd) < 1e-9
+        # execute_run charges the ANSWER phase only (extraction runs later), so compare to
+        # the estimate's answer_cost. The estimate's TOTAL additionally projects extraction.
+        assert abs(est["answer_cost_usd"] - run.estimated_cost_usd) < 1e-9
         assert run.estimated_cost_usd == 0.04
     finally:
         db.close()

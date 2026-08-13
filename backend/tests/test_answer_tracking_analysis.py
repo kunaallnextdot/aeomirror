@@ -79,9 +79,10 @@ def _run(db, ps, org, *, when=None):
 
 
 def _result(db, run, prompt_id, org, *, provider="anthropic", model="ans-m1", run_index=0,
-            raw="Acme is a great option.", citations=None, error=None):
+            raw="Acme is a great option.", citations=None, error=None, search_enabled=True):
     r = PromptResult(run_id=run.id, prompt_id=prompt_id, organization_id=org, provider=provider,
-                     model=model, run_index=run_index, raw_response=raw, citations=citations, error=error)
+                     model=model, run_index=run_index, raw_response=raw, citations=citations,
+                     error=error, search_enabled=search_enabled)
     db.add(r); db.commit(); db.refresh(r)
     return r
 
@@ -353,5 +354,146 @@ def test_admin_delete_org_removes_analysis():
     try:
         assert db.query(PromptResultAnalysis).filter(
             PromptResultAnalysis.organization_id == org_id).count() == 0
+    finally:
+        db.close()
+
+
+# =====================================================================
+# FIX1 — AI platforms excluded from competitor Share of Voice
+# =====================================================================
+def test_ai_platforms_excluded_from_competitors_but_kept_in_raw():
+    _, body = auth_client()
+    org = body["organization"]["id"]
+    db = SessionLocal()
+    try:
+        ps, prompts = _set(db, org)
+        run = _run(db, ps, org)
+        r = _result(db, run, prompts[0].id, org)
+        # extraction surfaced an AI platform AND a real competitor
+        _analysis(db, run, r.id, org, mentioned=True, competitors=[
+            {"name": "ChatGPT", "domain_if_stated": None},
+            {"name": "Beta", "domain_if_stated": "beta.com"}])
+        s = aggregation.run_summary(db, run)
+        assert [c["name"] for c in s["competitors"]] == ["Beta"]   # ChatGPT excluded from SoV
+        # raw extraction row is untouched — still holds both
+        a = db.query(PromptResultAnalysis).filter(PromptResultAnalysis.run_id == run.id).one()
+        assert {c["name"] for c in a.competitors_mentioned} == {"ChatGPT", "Beta"}
+    finally:
+        db.close()
+
+
+def test_excluded_entity_does_not_block_brand_detection():
+    """A brand whose name collides with an excluded term is still detected as mentioned —
+    the exclusion touches competitor aggregation ONLY."""
+    _, body = auth_client()
+    org = body["organization"]["id"]
+    db = SessionLocal()
+    try:
+        ps, prompts = _set(db, org, brand_name="ChatGPT")   # brand collides with an excluded term
+        run = _run(db, ps, org)
+        r = _result(db, run, prompts[0].id, org)
+        _analysis(db, run, r.id, org, mentioned=True)        # brand_mentioned recorded normally
+        s = aggregation.run_summary(db, run)
+        assert s["mention_rate"] == 100.0                    # brand detection unaffected
+    finally:
+        db.close()
+
+
+# =====================================================================
+# FIX2 — provider breakdown reflects STORED results, not current config
+# =====================================================================
+def test_per_provider_reflects_stored_results_not_config(monkeypatch):
+    # current config trims to two providers...
+    monkeypatch.setattr(settings, "answer_tracking_providers", "anthropic,openai")
+    _, body = auth_client()
+    org = body["organization"]["id"]
+    db = SessionLocal()
+    try:
+        ps, prompts = _set(db, org)
+        run = _run(db, ps, org)
+        # ...but this historical run stored THREE providers — all must still render
+        for prov in ("anthropic", "openai", "perplexity"):
+            r = _result(db, run, prompts[0].id, org, provider=prov)
+            _analysis(db, run, r.id, org, mentioned=True)
+        s = aggregation.run_summary(db, run)
+        assert sorted(p["provider"] for p in s["per_provider"]) == ["anthropic", "openai", "perplexity"]
+    finally:
+        db.close()
+
+
+# =====================================================================
+# FIX3 — estimate includes extraction cost; total ~ actual run cost
+# =====================================================================
+def test_estimate_total_matches_actual_within_tolerance(monkeypatch):
+    from app.services.answer_tracking import runner, service
+    _, body = auth_client()
+    org = body["organization"]["id"]
+    monkeypatch.setattr(settings, "answer_tracking_runs_per_prompt", 2)
+    monkeypatch.setattr(settings, "answer_tracking_rate_anthropic_usd", 0.01)
+    monkeypatch.setattr(settings, "answer_tracking_extraction_provider", "anthropic")
+    answerer = FakeExtractor("anthropic", model="ans", always="Acme is a good pick.")
+    monkeypatch.setattr(at_providers, "enabled_providers", lambda: [answerer])
+    _patch_extractor(monkeypatch, FakeExtractor("anthropic", model="ext", always=VALID))
+    db = SessionLocal()
+    try:
+        ps, _ = _set(db, org, prompts=("q1", "q2"))          # 2 prompts, no monitor -> no adaptive
+        est = service.estimate_run(db, ps)
+        assert est["answer_cost_usd"] == 0.04                # 2 prompts x 1 provider x 2 runs x $0.01
+        assert est["extraction_cost_usd"] == 0.04            # 4 answers x 1 extraction x $0.01
+        assert est["estimated_cost_usd"] == 0.08             # total includes extraction (was missing)
+        run = service.create_run(db, ps)
+        asyncio.run(runner.execute_run(db, run))             # answer phase: $0.04
+        asyncio.run(extraction.extract_for_run(db, run))     # + extraction: $0.04
+        assert abs(est["estimated_cost_usd"] - run.estimated_cost_usd) <= 0.01   # documented tolerance
+    finally:
+        db.close()
+
+
+# =====================================================================
+# FIX4 — zero-citation diagnosis distinguishes the three causes
+# =====================================================================
+def _zero_citation_run(db, org, *, citations, search_enabled):
+    ps, prompts = _set(db, org)
+    run = _run(db, ps, org)
+    for prov in ("anthropic", "openai"):
+        r = _result(db, run, prompts[0].id, org, provider=prov,
+                    citations=citations, search_enabled=search_enabled)
+        _analysis(db, run, r.id, org, mentioned=True, urls=[])   # 0 brand URLs
+    return run
+
+
+def test_citation_diagnosis_no_provider_reports():
+    _, body = auth_client()
+    org = body["organization"]["id"]
+    db = SessionLocal()
+    try:
+        run = _zero_citation_run(db, org, citations=None, search_enabled=True)  # None => cannot report
+        s = aggregation.run_summary(db, run)
+        assert s["citation_count"] == 0
+        assert s["citation_diagnosis"]["status"] == "no_provider_reports_citations"
+    finally:
+        db.close()
+
+
+def test_citation_diagnosis_searched_not_cited():
+    _, body = auth_client()
+    org = body["organization"]["id"]
+    db = SessionLocal()
+    try:
+        run = _zero_citation_run(db, org, citations=[], search_enabled=True)    # [] => searched, none
+        s = aggregation.run_summary(db, run)
+        assert s["citation_diagnosis"]["status"] == "searched_not_cited"
+    finally:
+        db.close()
+
+
+def test_citation_diagnosis_search_disabled():
+    _, body = auth_client()
+    org = body["organization"]["id"]
+    db = SessionLocal()
+    try:
+        run = _zero_citation_run(db, org, citations=[], search_enabled=False)   # capable but search off
+        s = aggregation.run_summary(db, run)
+        assert s["citation_diagnosis"]["status"] == "search_disabled"
     finally:
         db.close()

@@ -58,6 +58,7 @@ def build_extraction_prompt(brand: dict, prompt_text: str, answer_text: str, *,
                             strict: bool = False) -> str:
     aliases = ", ".join(brand["aliases"]) or "(none)"
     competitors = ", ".join(brand["competitors"]) or "(none provided)"
+    excluded = ", ".join(settings.answer_tracking_excluded_entity_names())
     strict_note = (
         "\n\nYOUR PREVIOUS REPLY WAS NOT VALID JSON. Reply with ONLY the JSON object — no "
         "markdown, no code fences, no commentary before or after."
@@ -70,7 +71,9 @@ def build_extraction_prompt(brand: dict, prompt_text: str, answer_text: str, *,
         f"BRAND NAME: {brand['name'] or '(unknown)'}\n"
         f"BRAND DOMAIN: {brand['domain'] or '(unknown)'}\n"
         f"BRAND ALIASES: {aliases}\n"
-        f"KNOWN COMPETITOR DOMAINS: {competitors}\n\n"
+        f"KNOWN COMPETITOR DOMAINS: {competitors}\n"
+        f"NOT COMPETITORS — never list these as competitors (they are AI assistants / search "
+        f"engines, not competing brands): {excluded}\n\n"
         f"THE QUESTION ASKED:\n{prompt_text}\n\n"
         f"THE ASSISTANT'S ANSWER:\n{answer_text}\n\n"
         "Return a single JSON object with EXACTLY these keys:\n"

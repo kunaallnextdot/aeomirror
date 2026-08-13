@@ -174,7 +174,7 @@ class Settings(BaseSettings):
     # Providers enabled for a run (comma-separated). A provider listed here but missing its
     # API key or model is logged at WARNING and skipped — never crashes, never silently runs
     # with fewer providers than expected.
-    answer_tracking_providers: str = "anthropic,openai,perplexity"
+    answer_tracking_providers: str = "anthropic,openai"
     # Exact model strings come from env ONLY (never a floating alias like "latest"). Empty =>
     # that provider is skipped (with a warning), so historical results stay interpretable.
     answer_tracking_model_anthropic: str = ""
@@ -198,6 +198,14 @@ class Settings(BaseSettings):
     # hardcoded here and extraction works out of the box wherever ai_model is configured.
     answer_tracking_extraction_provider: str = "anthropic"
     answer_tracking_extraction_model: str = ""      # empty => resolves to ai_model (see property)
+    # Entities excluded from COMPETITOR aggregation (the AI assistants / search engines the
+    # tracked prompts name explicitly, which the extractor otherwise mis-classifies as
+    # competing brands). Applied at aggregation time only — raw extractions stay intact and
+    # this list can change without re-running extraction. Never affects brand detection.
+    answer_tracking_excluded_entities: str = (
+        "ChatGPT,OpenAI,Claude,Anthropic,Gemini,Google,Bard,Perplexity,Copilot,Bing,"
+        "Grok,DeepSeek,Meta AI"
+    )
 
     # --- Phase 9: billing + subscriptions ---
     # Master switch for plan enforcement. When False (e.g. tests), every org has
@@ -288,6 +296,14 @@ class Settings(BaseSettings):
     def answer_tracking_provider_list(self) -> list[str]:
         """Enabled answer-tracking providers, normalized (lowercased, de-blanked)."""
         return [p.strip().lower() for p in self.answer_tracking_providers.split(",") if p.strip()]
+
+    def answer_tracking_excluded_entity_names(self) -> list[str]:
+        """The excluded-entity display names, de-blanked (order preserved for prompts)."""
+        return [e.strip() for e in self.answer_tracking_excluded_entities.split(",") if e.strip()]
+
+    def answer_tracking_excluded_entity_set(self) -> set[str]:
+        """Excluded entities normalized to lowercase for matching at aggregation time."""
+        return {e.lower() for e in self.answer_tracking_excluded_entity_names()}
 
     @property
     def answer_tracking_frequency_days(self) -> int:

@@ -6,14 +6,55 @@ EXCLUDED from the denominator and reported separately (a failure is not a negati
 """
 from __future__ import annotations
 
-from collections import Counter, defaultdict
+from collections import Counter
 
 from sqlalchemy.orm import Session
 
+from app.config import settings
 from app.db.models import (
     _RUN_TERMINAL,
     PromptResult, PromptResultAnalysis, PromptRun, PromptSet, TrackedPrompt,
 )
+
+
+def _is_excluded_competitor(name: str, domain: str | None, excluded: set[str]) -> bool:
+    """True when a detected 'competitor' is actually an AI assistant / search engine we
+    exclude from Share of Voice (matched by name or domain root, case-insensitive)."""
+    if (name or "").strip().lower() in excluded:
+        return True
+    d = (domain or "").strip().lower()
+    if d:
+        root = d.replace("www.", "").split("/")[0].split(".")[0]
+        if root and root in excluded:
+            return True
+    return False
+
+
+def _citation_diagnosis(results: list[PromptResult], citation_count: int) -> dict:
+    """Explain a citation count (esp. zero): can any provider report citations at all, and
+    was search on? Distinguishes 'no provider can report' (None) from 'searched, not cited'
+    from 'search disabled'."""
+    per: dict[str, dict] = {}
+    for r in results:
+        d = per.setdefault(r.provider, {"can_report_citations": False, "search_enabled": False})
+        if r.citations is not None:            # None = cannot report; [] or list = can report
+            d["can_report_citations"] = True
+        if r.search_enabled:
+            d["search_enabled"] = True
+    reporting = [p for p, d in per.items() if d["can_report_citations"]]
+    reporting_and_searching = [p for p in reporting if per[p]["search_enabled"]]
+    if citation_count > 0:
+        status = "has_citations"
+    elif not per:
+        status = "no_data"
+    elif not reporting:
+        status = "no_provider_reports_citations"   # every provider returned citations=None
+    elif not reporting_and_searching:
+        status = "search_disabled"                 # a capable provider ran, but search was off
+    else:
+        status = "searched_not_cited"              # capable + searched, brand genuinely not cited
+    return {"status": status,
+            "per_provider": [{"provider": p, **d} for p, d in sorted(per.items())]}
 
 
 def _results_by_id(db: Session, run_id: str) -> dict[str, PromptResult]:
@@ -64,13 +105,21 @@ def run_metrics(db: Session, run: PromptRun) -> dict:
     citation_count = sum(url_freq.values())
 
     # competitor share of voice (each competitor counted once per sample — already deduped
-    # at storage; dedupe again defensively)
+    # at storage; dedupe again defensively). AI assistants / search engines named in the
+    # prompts are EXCLUDED here at aggregation time (FIX1) — raw extractions keep them.
+    excluded_entities = settings.answer_tracking_excluded_entity_set()
     comp_hit: Counter = Counter()
     for a in successful:
         seen = set()
         for c in (a.competitors_mentioned or []):
-            nm = (c.get("name") if isinstance(c, dict) else str(c)).strip()
-            if nm and nm.lower() not in seen:
+            if isinstance(c, dict):
+                nm = (c.get("name") or "").strip()
+                dom = c.get("domain_if_stated")
+            else:
+                nm, dom = str(c).strip(), None
+            if not nm or _is_excluded_competitor(nm, dom, excluded_entities):
+                continue
+            if nm.lower() not in seen:
                 seen.add(nm.lower())
                 comp_hit[nm] += 1
 
@@ -96,6 +145,7 @@ def run_metrics(db: Session, run: PromptRun) -> dict:
         ],
         "per_prompt": _per_prompt(db, run, prompt_total, prompt_hit, _rate),
         "citation_count": citation_count,
+        "citation_diagnosis": _citation_diagnosis(list(results.values()), citation_count),
         "cited_urls": [{"url": u, "count": n} for u, n in url_freq.most_common()],
         "competitors": [
             {"name": nm, "mentions": n, "mention_rate": _rate(n, denom)}
