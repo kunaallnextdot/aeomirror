@@ -361,6 +361,15 @@ const AXIS = { fill: "var(--txt-dim)", fontSize: 10 };
 
 function pct(v) { return v == null ? "—" : `${v}%`; }
 
+/* Count (not %) of prompts that never mention the brand. Reads correctly at zero. */
+export function gapCountLabel(rows) {
+  const total = (rows || []).length;
+  const gaps = (rows || []).filter((r) => r.is_gap).length;
+  if (total === 0) return "no prompts yet";
+  if (gaps === 0) return `you're mentioned in all ${total} prompt${total === 1 ? "" : "s"}`;
+  return `${gaps} of ${total} prompt${total === 1 ? "" : "s"} never mention you`;
+}
+
 // FIX4 — a bare "0 citations" is ambiguous; explain WHICH zero this is.
 function citationWhy(diag) {
   switch (diag && diag.status) {
@@ -388,6 +397,7 @@ function ResultsPanel({ setId, runs, selectedRunId }) {
   const [trend, setTrend] = useState(null);
   const [results, setResults] = useState(null);
   const [expanded, setExpanded] = useState(null);
+  const [filterEntity, setFilterEntity] = useState(null);   // leaderboard row -> filters prompts
   const [error, setError] = useState(null);
 
   // Poll the target run until its extraction phase completes, then load the analysis.
@@ -533,11 +543,25 @@ function ResultsPanel({ setId, runs, selectedRunId }) {
             </div>
           )}
 
+          {/* run-level competitive leaderboard — who is beating you, and where you're absent */}
+          <Leaderboard summary={summary} filterEntity={filterEntity}
+                       onSelect={(e) => setFilterEntity(
+                         filterEntity && filterEntity.name === e.name ? null : e)} />
+
           {/* per-prompt table — gaps first, click to expand raw responses */}
           <div className="at-block">
-            <div className="at-block-h">By prompt <span className="d-dim">· 0% rows are your gaps</span></div>
+            <div className="at-block-h">By prompt <span className="d-dim">· {gapCountLabel(summary.per_prompt)}</span></div>
+            {filterEntity && (
+              <div className="at-lb-filter">
+                Showing prompts where <b>{filterEntity.name}</b> appears
+                <button className="at-lb-clear" onClick={() => setFilterEntity(null)}>clear</button>
+              </div>
+            )}
             <div className="at-ptable">
-              {summary.per_prompt.map((row) => (
+              {(filterEntity
+                ? summary.per_prompt.filter((r) => (filterEntity.prompt_ids || []).includes(r.prompt_id))
+                : summary.per_prompt
+              ).map((row) => (
                 <PromptResultRow key={row.prompt_id} row={row}
                                  open={expanded === row.prompt_id}
                                  onToggle={() => setExpanded(expanded === row.prompt_id ? null : row.prompt_id)}
@@ -564,6 +588,88 @@ function ResultsPanel({ setId, runs, selectedRunId }) {
         </>
       )}
     </div>
+  );
+}
+
+/* "Who's winning your category" — the run-level competitive leaderboard. Rows are ranked by
+   appearance rate; the tracked brand's row is visually distinct and always rendered. Clicking a
+   row filters the prompt list below to the prompts where that entity appeared. head_to_head is
+   the actionable column: prompts the entity holds where the brand is absent. */
+export function Leaderboard({ summary, filterEntity, onSelect }) {
+  const board = summary.leaderboard || [];
+  const excluded = summary.leaderboard_excluded || 0;
+  const minApp = summary.leaderboard_min_appearances;
+  if (board.length === 0) {
+    return (
+      <div className="at-block">
+        <div className="at-block-h">Who’s winning your category</div>
+        <div className="d-dim" style={{ fontSize: 12 }}>
+          No entity was recommended in at least {minApp} samples yet
+          {excluded > 0
+            ? ` — ${excluded} ${excluded === 1 ? "entity" : "entities"} appeared too rarely to rank.`
+            : "."}
+        </div>
+      </div>
+    );
+  }
+  const maxRate = Math.max(...board.map((e) => e.appearance_rate || 0), 1);
+  return (
+    <div className="at-block">
+      <div className="at-block-h">Who’s winning your category
+        <span className="d-dim"> · click a row to filter prompts below</span></div>
+      <div className="at-lb">
+        <div className="at-lb-head">
+          <span className="at-lb-rank">#</span>
+          <span className="at-lb-name">Entity</span>
+          <span className="at-lb-delta" title="rank change vs previous run">Δ</span>
+          <span className="at-lb-bar" />
+          <span className="at-lb-rate">Rate</span>
+          <span className="at-lb-cov" title="distinct prompts it appears in">Prompts</span>
+          <span className="at-lb-h2h" title="prompts where it appears but you do not">Vs you</span>
+        </div>
+        {board.map((e) => {
+          const active = filterEntity && filterEntity.name === e.name;
+          return (
+            <button key={e.name} type="button"
+                    className={`at-lb-row${e.is_you ? " you" : ""}${active ? " active" : ""}`}
+                    onClick={() => onSelect(e)}>
+              <span className="at-lb-rank">#{e.rank}</span>
+              <span className="at-lb-name">
+                {e.name}{e.is_you && <span className="at-lb-tag">you</span>}
+              </span>
+              <RankDelta d={e.rank_delta} />
+              <span className="at-lb-bar">
+                <span className="at-lb-fill"
+                      style={{ width: `${Math.max(2, (e.appearance_rate || 0) / maxRate * 100)}%` }} />
+              </span>
+              <span className="at-lb-rate">{pct(e.appearance_rate)}</span>
+              <span className="at-lb-cov">{e.prompt_coverage}</span>
+              <span className={`at-lb-h2h${e.head_to_head > 0 && !e.is_you ? " hot" : ""}`}>
+                {e.head_to_head > 0 ? e.head_to_head : "—"}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+      {excluded > 0 && (
+        <div className="d-dim" style={{ fontSize: 11, marginTop: 6 }}>
+          {excluded} more {excluded === 1 ? "entity" : "entities"} below the {minApp}-sample
+          threshold not shown.
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* Rank movement vs the previous run: up = toward #1 (good). Null when new or no prior run. */
+function RankDelta({ d }) {
+  if (d == null) return <span className="at-lb-delta flat">·</span>;
+  if (d === 0) return <span className="at-lb-delta flat"><Minus size={10} /></span>;
+  const up = d > 0;
+  return (
+    <span className={`at-lb-delta ${up ? "up" : "down"}`}>
+      {up ? <ArrowUpRight size={10} /> : <ArrowDownRight size={10} />}{Math.abs(d)}
+    </span>
   );
 }
 
@@ -612,7 +718,120 @@ function PromptResultRow({ row, open, onToggle, results }) {
             </div>
           )}
           {row.gap && <GapToAction gap={row.gap} />}
-          {group && group.results.map((r, i) => <SampleVerdict key={i} r={r} />)}
+          {group && groupByProvider(group.results).map((g) => <ProviderGroup key={g.provider} g={g} />)}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* Collapse a prompt's individual samples into ONE block per provider. Same provider run
+   N times => one row, not N. When the samples DISAGREE we surface the fraction ("Named in
+   2 of 3"), never a lossy yes/no. Providers where the brand was named are ordered first. */
+export function groupByProvider(samples) {
+  const order = [];
+  const byProvider = new Map();
+  for (const r of samples || []) {
+    if (!byProvider.has(r.provider)) { byProvider.set(r.provider, []); order.push(r.provider); }
+    byProvider.get(r.provider).push(r);
+  }
+  const groups = order.map((provider) => {
+    const rs = byProvider.get(provider);
+    const total = rs.length;
+    const named = rs.filter((r) => r.brand_mentioned === true);
+    const allExtractionFailed = rs.every((r) => r.extraction_failed === true);
+
+    // Reference sample for recommended-entity ORDER: the sample where the brand ranked
+    // highest (lowest position number); if never named, the first sample.
+    let ref = rs[0];
+    if (named.length) {
+      ref = named.reduce((best, r) => {
+        const bp = best.position == null ? Infinity : best.position;
+        const rp = r.position == null ? Infinity : r.position;
+        return rp < bp ? r : best;
+      }, named[0]);
+    }
+    // Recommended entities deduped by name (case-insensitive), ref's order first.
+    const seenE = new Set();
+    const recommended = [];
+    const pushEntities = (list) => {
+      for (const e of (list || [])) {
+        const key = (e.name || "").trim().toLowerCase();
+        if (key && !seenE.has(key)) { seenE.add(key); recommended.push(e); }
+      }
+    };
+    pushEntities(ref.recommended_entities);
+    for (const r of rs) if (r !== ref) pushEntities(r.recommended_entities);
+
+    // Mention sentence from a sample where the brand WAS named.
+    const namedWithCtx = named.find((r) => r.mention_context);
+    // Citations (brand URLs) deduped across all samples, first-seen order.
+    const seenU = new Set();
+    const citations = [];
+    for (const r of rs) for (const u of (r.brand_urls_cited || [])) {
+      if (u && !seenU.has(u)) { seenU.add(u); citations.push(u); }
+    }
+    const namedWithSent = named.find((r) => r.sentiment);
+    // A provider's samples all share a search mode; note if any sample lacked web search.
+    const searchOff = rs.some((r) => r.search_enabled === false);
+
+    return {
+      provider, samples: rs, total, namedCount: named.length,
+      anyNamed: named.length > 0, allExtractionFailed,
+      sentence: namedWithCtx ? namedWithCtx.mention_context : null,
+      recommended, citations,
+      sentiment: namedWithSent ? namedWithSent.sentiment : null,
+      position: named.length ? ref.position : null,
+      searchOff,
+    };
+  });
+  // Named-first, otherwise keep discovery order (stable).
+  return groups.sort((a, b) => (b.anyNamed === a.anyNamed ? 0 : b.anyNamed ? 1 : -1));
+}
+
+/* One provider's result for a prompt, aggregated across its samples. Individual samples
+   remain available behind the "View full response" expander. */
+function ProviderGroup({ g }) {
+  const [showRaw, setShowRaw] = useState(false);
+  return (
+    <div className="at-verdict">
+      <div className="at-verdict-h">
+        <b>{g.provider}</b>
+        {g.allExtractionFailed
+          ? <span className="at-tag warn">extraction failed</span>
+          : g.namedCount > 0
+            ? <span className="at-tag ok">Named in {g.namedCount} of {g.total}</span>
+            : <span className="at-tag no">Not named in any of {g.total}</span>}
+        {g.sentiment && <span className="at-tag" style={{ color: SENT_COLOR[g.sentiment] }}>{g.sentiment}</span>}
+        {g.position != null && <span className="at-tag">#{g.position}</span>}
+        {g.searchOff && <span className="at-tag warn" title="These samples ran without web search — citations may be unavailable">no web search</span>}
+      </div>
+      {g.namedCount > 0 && g.sentence && (
+        <div className="at-verdict-body"><div className="at-quote">“{g.sentence}”</div></div>
+      )}
+      {g.citations.length > 0 && (
+        <div className="at-verdict-body">
+          {g.citations.map((u) => (
+            <a key={u} className="at-cite" href={u} target="_blank" rel="noreferrer">{u}</a>
+          ))}
+        </div>
+      )}
+      {g.recommended.length > 0 && (
+        <div className="at-verdict-body">
+          <div className="at-instead">
+            <span className="d-dim">{g.namedCount > 0 ? "Also recommended:" : "Recommended instead:"}</span>{" "}
+            {g.recommended.map((e, idx) => (
+              <span key={idx} className="at-chip">{idx + 1}. {e.name}</span>
+            ))}
+          </div>
+        </div>
+      )}
+      <button className="at-rawtoggle" onClick={() => setShowRaw((s) => !s)}>
+        {showRaw ? "Hide" : "View"} full response ({g.total} sample{g.total === 1 ? "" : "s"})
+      </button>
+      {showRaw && (
+        <div className="at-verdict-samples">
+          {g.samples.map((r, i) => <SampleVerdict key={i} r={r} />)}
         </div>
       )}
     </div>
@@ -696,9 +915,13 @@ function RawText({ text, error, highlight }) {
 
 function TrendChart({ trend }) {
   const data = trend.runs.map((r, i) => ({
-    i: i + 1, rate: r.mention_rate, changed: r.model_changed,
+    i: i + 1, rate: r.mention_rate,
+    // A model OR web-search change makes this point not comparable to the prior one.
+    changed: r.model_changed || r.search_changed,
+    searchChanged: r.search_changed,
     date: fmtDate(r.created_at),
   }));
+  const anySearchChange = data.some((d) => d.searchChanged);
   const renderDot = ({ cx, cy, payload }) => (
     payload.changed
       ? <rect x={cx - 4} y={cy - 4} width={8} height={8} fill="var(--warn)" stroke="var(--panel)" strokeWidth={1.5} />
@@ -706,7 +929,7 @@ function TrendChart({ trend }) {
   );
   return (
     <div className="at-block">
-      <div className="at-block-h">Trend <span className="d-dim">· ▪ marks a model change</span></div>
+      <div className="at-block-h">Trend <span className="d-dim">· ▪ marks a model{anySearchChange ? " or web-search" : ""} change</span></div>
       <div className="at-chart">
         <ResponsiveContainer width="100%" height="100%">
           <LineChart data={data} margin={{ top: 8, right: 10, bottom: 0, left: -22 }}>

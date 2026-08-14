@@ -43,8 +43,18 @@ def _model_for(name: str) -> str:
 
 
 def rate_for(name: str) -> float:
-    """Flat estimated USD per call for cost projection/accumulation."""
+    """Flat estimated USD per call (no web search) for cost projection/accumulation."""
     return float(getattr(settings, f"answer_tracking_rate_{name}_usd", 0.0) or 0.0)
+
+
+def search_rate_for(name: str) -> float:
+    """Flat estimated USD per call WITH web search enabled (higher — search is billed)."""
+    return float(getattr(settings, f"answer_tracking_search_rate_{name}_usd", 0.0) or 0.0)
+
+
+def call_rate(name: str, search_enabled: bool) -> float:
+    """Per-call rate: the search rate when the call ran with web search, else the base rate."""
+    return search_rate_for(name) if search_enabled else rate_for(name)
 
 
 def configured_provider_names() -> list[str]:
@@ -111,6 +121,6 @@ def enabled_providers() -> list[BaseProvider]:
 __all__ = [
     "BaseProvider", "ProviderError", "ProviderResult", "is_transient", "post_json",
     "enabled_providers", "extraction_provider", "gap_analysis_provider",
-    "configured_provider_names", "rate_for",
+    "configured_provider_names", "rate_for", "search_rate_for", "call_rate",
     "AnthropicProvider", "OpenAIProvider", "PerplexityProvider", "GeminiProvider",
 ]

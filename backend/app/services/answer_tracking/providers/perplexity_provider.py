@@ -17,7 +17,9 @@ class PerplexityProvider(BaseProvider):
     name = "perplexity"
     supports_citations = True       # search-grounded -> [] means "cited nothing", never None
 
-    async def query(self, prompt: str, *, timeout: int) -> ProviderResult:
+    async def query(self, prompt: str, *, timeout: int, search: bool = False) -> ProviderResult:
+        # Perplexity is always search-grounded; the `search` flag is accepted for interface
+        # parity but changes nothing here (it always returns a citations list).
         started = time.perf_counter()
         body = await post_json(
             _ENDPOINT,

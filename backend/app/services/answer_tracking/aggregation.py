@@ -6,6 +6,7 @@ EXCLUDED from the denominator and reported separately (a failure is not a negati
 """
 from __future__ import annotations
 
+import re
 from collections import Counter
 
 from sqlalchemy.orm import Session
@@ -76,6 +77,130 @@ def _answer_model_signature(results: list[PromptResult]) -> list[str]:
     return sorted({f"{r.provider}:{r.model}" for r in results})
 
 
+def _run_search_state(results: list[PromptResult]) -> str:
+    """Whether this run's answer calls used web search: 'on' (all), 'off' (none), or
+    'mixed'. Used to mark the boundary on the trend where search was turned on — results
+    with and without search are NOT comparable."""
+    flags = {bool(r.search_enabled) for r in results}
+    if not flags:
+        return "off"
+    if flags == {True}:
+        return "on"
+    if flags == {False}:
+        return "off"
+    return "mixed"
+
+
+# Entity-name suffixes stripped before merging surface forms. DELIBERATELY MINIMAL — these
+# are the only normalisations applied (lowercase, collapse whitespace, strip these). We do
+# NOT fuzzy-match: merging two genuinely different companies is a worse, invisible failure
+# than listing one company twice.
+_ENTITY_SUFFIX_WORDS = {"inc", "ai"}
+_ENTITY_TLDS = (".com", ".io")
+
+
+def _normalise_entity_key(name: str) -> str:
+    """Deterministic merge key for a recommended entity: lowercase, collapse whitespace, and
+    strip common suffixes (Inc, AI, .com, .io). Returns '' for an empty name. Never guesses —
+    'Profound', 'Profound AI', 'Profound Inc', 'Profound.com' all map to 'profound', but a
+    genuinely different surface form ('tryprofound.com' -> 'tryprofound') stays separate."""
+    s = re.sub(r"\s+", " ", (name or "").strip().lower())
+    if not s:
+        return ""
+    for tld in _ENTITY_TLDS:
+        if s.endswith(tld):
+            s = s[: -len(tld)]
+            break
+    tokens = [t for t in s.split(" ") if t]
+    while tokens and tokens[-1].strip(".,") in _ENTITY_SUFFIX_WORDS:
+        tokens.pop()
+    key = " ".join(tokens).strip(" .,-")
+    return key or s
+
+
+def _brand_keys(ps: PromptSet | None) -> set[str]:
+    """Normalised keys that identify the tracked brand (name + aliases + domain root)."""
+    keys: set[str] = set()
+    if not ps:
+        return keys
+    for v in [ps.brand_name, *(ps.brand_aliases or [])]:
+        k = _normalise_entity_key(v or "")
+        if k:
+            keys.add(k)
+    dk = _normalise_entity_key((ps.brand_domain or "").split("/")[0])
+    if dk:
+        keys.add(dk)
+    return keys
+
+
+def _leaderboard(successful, results, denom, prompt_hit, ps, excluded, min_appearances):
+    """Run-level competitive leaderboard built from stored `recommended_entities` (the ordered
+    solutions each answer put forward). Merges surface forms per `_normalise_entity_key`, drops
+    excluded AI platforms, applies the min-appearances threshold (the tracked brand is exempt so
+    the user always sees their rank), and returns (entries_sorted, excluded_below_threshold).
+
+    head_to_head is the actionable field: prompts where the entity appeared but the brand was
+    NOT mentioned — answers it holds and you don't. average_position is the mean rank ACROSS
+    SAMPLES WHOSE ANSWER WAS AN ORDERED LIST (signalled by a non-null brand position), null when
+    no such sample recommended the entity."""
+    brand_keys = _brand_keys(ps)
+    appearances: Counter = Counter()
+    prompts_by_key: dict[str, set] = {}
+    ranks: dict[str, list[int]] = {}
+    surface: dict[str, Counter] = {}
+    domain_of: dict[str, str | None] = {}
+
+    for a in successful:
+        r = results.get(a.result_id)
+        pid = r.prompt_id if r else "unknown"
+        ordered = a.position is not None          # answer was a ranked list (brand had a rank)
+        seen_keys = set()                         # count an entity ONCE per sample
+        for idx, e in enumerate(a.recommended_entities or []):
+            if isinstance(e, dict):
+                nm = (e.get("name") or "").strip()
+                dom = e.get("domain_if_stated")
+            else:
+                nm, dom = str(e).strip(), None
+            if not nm or _is_excluded_competitor(nm, dom, excluded):
+                continue
+            key = _normalise_entity_key(nm)
+            if not key or key in seen_keys:
+                continue
+            seen_keys.add(key)
+            appearances[key] += 1
+            prompts_by_key.setdefault(key, set()).add(pid)
+            if ordered:
+                ranks.setdefault(key, []).append(idx + 1)
+            surface.setdefault(key, Counter())[nm] += 1
+            if key not in domain_of and dom:
+                domain_of[key] = dom
+
+    entries = []
+    excluded_below = 0
+    for key, n in appearances.items():
+        is_you = key in brand_keys
+        if n < min_appearances and not is_you:
+            excluded_below += 1
+            continue
+        pset = prompts_by_key.get(key, set())
+        rk = ranks.get(key, [])
+        entries.append({
+            "name": surface[key].most_common(1)[0][0],   # most frequent surface form for display
+            "appearances": n,
+            "prompt_coverage": len(pset),
+            "appearance_rate": round(n / denom * 100, 1) if denom else None,
+            "average_position": round(sum(rk) / len(rk), 2) if rk else None,
+            "head_to_head": sum(1 for pid in pset if prompt_hit.get(pid, 0) == 0),
+            "is_you": is_you,
+            "domain": domain_of.get(key),
+            "prompt_ids": sorted(pset),                  # for click-to-filter on the prompt list
+        })
+    entries.sort(key=lambda x: (-(x["appearance_rate"] or 0), -x["appearances"], x["name"].lower()))
+    for i, e in enumerate(entries):
+        e["rank"] = i + 1
+    return entries, excluded_below
+
+
 def run_metrics(db: Session, run: PromptRun) -> dict:
     """Core Share-of-Voice metrics for one run. Shared by the summary and the trend."""
     results = _results_by_id(db, run.id)
@@ -107,9 +232,18 @@ def run_metrics(db: Session, run: PromptRun) -> dict:
         if a.brand_mentioned:
             prompt_hit[pid] += 1
 
-    # citations: brand URLs ranked by frequency
+    # citations: brand URLs ranked by frequency. Results captured WITHOUT web search measure
+    # training-data recall, not live citation behaviour — they are EXCLUDED from citation
+    # metrics (never mixed with search-grounded results) and counted separately.
     url_freq: Counter = Counter()
+    citation_search_samples = 0
+    citation_excluded_no_search = 0
     for a in successful:
+        r = results.get(a.result_id)
+        if r is not None and not r.search_enabled:
+            citation_excluded_no_search += 1
+            continue
+        citation_search_samples += 1
         for u in (a.brand_urls_cited or []):
             url_freq[u] += 1
     citation_count = sum(url_freq.values())
@@ -168,6 +302,12 @@ def run_metrics(db: Session, run: PromptRun) -> dict:
     positions = [a.position for a in successful if a.position is not None]
     avg_position = round(sum(positions) / len(positions), 2) if positions else None
 
+    # run-level competitive leaderboard (who is beating the brand, and where it is absent)
+    leaderboard, leaderboard_excluded = _leaderboard(
+        successful, results, denom, prompt_hit, ps, excluded_entities,
+        settings.answer_tracking_leaderboard_min_appearances,
+    )
+
     def _rate(hit, total):
         return round(hit / total * 100, 1) if total else None
 
@@ -185,6 +325,9 @@ def run_metrics(db: Session, run: PromptRun) -> dict:
         "per_prompt": _per_prompt(db, run, prompt_total, prompt_hit, _rate,
                                   prompt_recommended, prompt_has_solution),
         "citation_count": citation_count,
+        "citation_search_samples": citation_search_samples,
+        "citation_excluded_no_search": citation_excluded_no_search,
+        "search_enabled": _run_search_state(list(results.values())),
         "citation_diagnosis": _citation_diagnosis(list(results.values()), citation_count),
         "cited_urls": [{"url": u, "count": n} for u, n in url_freq.most_common()],
         "competitors": [
@@ -194,6 +337,9 @@ def run_metrics(db: Session, run: PromptRun) -> dict:
         ],
         "sentiment": dict(sentiment),
         "average_position": avg_position,
+        "leaderboard": leaderboard,
+        "leaderboard_excluded": leaderboard_excluded,
+        "leaderboard_min_appearances": settings.answer_tracking_leaderboard_min_appearances,
         "answer_models": _answer_model_signature(list(results.values())),
         "extraction_models": sorted({a.extraction_model for a in analyses if a.extraction_model}),
     }
@@ -226,10 +372,35 @@ def _per_prompt(db, run, prompt_total, prompt_hit, rate_fn,
     return rows
 
 
+def _previous_terminal_run(db: Session, run: PromptRun) -> PromptRun | None:
+    """The most recent terminal run of the same set BEFORE this one (for run-over-run deltas)."""
+    return (db.query(PromptRun)
+            .filter(PromptRun.prompt_set_id == run.prompt_set_id,
+                    PromptRun.status.in_(_RUN_TERMINAL),
+                    PromptRun.created_at < run.created_at)
+            .order_by(PromptRun.created_at.desc())
+            .first())
+
+
+def _attach_rank_delta(db: Session, run: PromptRun, leaderboard: list[dict]) -> None:
+    """Annotate each leaderboard entry with its rank in the previous run and the delta
+    (positive = moved UP toward #1). null when there is no prior run or the entity is new."""
+    prev = _previous_terminal_run(db, run)
+    prev_rank = {}
+    if prev is not None:
+        prev_rank = {_normalise_entity_key(e["name"]): e["rank"]
+                     for e in run_metrics(db, prev)["leaderboard"]}
+    for e in leaderboard:
+        pr = prev_rank.get(_normalise_entity_key(e["name"]))
+        e["prev_rank"] = pr
+        e["rank_delta"] = (pr - e["rank"]) if pr is not None else None
+
+
 def run_summary(db: Session, run: PromptRun) -> dict:
     """Full Share-of-Voice summary for one run, with each zero-mention prompt's gap-to-action
     attached (from stored gap analysis — no LLM call here)."""
     m = run_metrics(db, run)
+    _attach_rank_delta(db, run, m["leaderboard"])
     gaps = {g.prompt_id: {"why": g.why, "actions": g.actions or [], "has_signal": g.has_signal}
             for g in db.query(PromptGapAnalysis).filter(PromptGapAnalysis.run_id == run.id).all()}
     for row in m["per_prompt"]:
@@ -256,19 +427,28 @@ def set_trend(db: Session, ps: PromptSet, *, n: int = 10) -> dict:
 
     points = []
     prev_sig = None
+    prev_search = None
     for run in runs:
         m = run_metrics(db, run)
         sig = (tuple(m["answer_models"]), tuple(m["extraction_models"]))
         model_changed = prev_sig is not None and sig != prev_sig
+        # Mark where web search was turned on/off — a search change makes citation counts
+        # (and often mention rate) not comparable to the prior run.
+        search_changed = prev_search is not None and m["search_enabled"] != prev_search
+        brand_rank = next((e["rank"] for e in m["leaderboard"] if e["is_you"]), None)
         points.append({
             "run_id": run.id,
             "created_at": run.created_at,
             "mention_rate": m["mention_rate"],
             "citation_count": m["citation_count"],
             "competitors": m["competitors"],
+            "brand_rank": brand_rank,           # the brand's leaderboard position this run
             "answer_models": m["answer_models"],
             "extraction_models": m["extraction_models"],
-            "model_changed": model_changed,   # vs the previous run in this series
+            "search_enabled": m["search_enabled"],
+            "model_changed": model_changed,     # vs the previous run in this series
+            "search_changed": search_changed,   # web search toggled vs the previous run
         })
         prev_sig = sig
+        prev_search = m["search_enabled"]
     return {"prompt_set_id": ps.id, "runs": points}

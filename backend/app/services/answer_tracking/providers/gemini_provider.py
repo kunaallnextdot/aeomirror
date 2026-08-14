@@ -13,7 +13,7 @@ from .base import BaseProvider, ProviderError, ProviderResult
 
 class GeminiProvider(BaseProvider):
     name = "gemini"
-    supports_citations = True       # Gemini can return grounding citations (Part B)
+    supports_citations = False      # stub — search/grounding not wired yet, so cannot report
 
-    async def query(self, prompt: str, *, timeout: int) -> ProviderResult:
+    async def query(self, prompt: str, *, timeout: int, search: bool = False) -> ProviderResult:
         raise ProviderError("gemini provider not implemented", transient=False)

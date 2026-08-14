@@ -37,10 +37,12 @@ class FakeProvider:
         self._citations = citations
         self._fail_first = fail_first     # raise this on the FIRST call only, then succeed
         self.calls = 0
+        self.search_calls = []            # records the `search` flag runner passed each call
 
-    async def query(self, prompt, *, timeout):
+    async def query(self, prompt, *, timeout, search=False):
         idx = self.calls
         self.calls += 1
+        self.search_calls.append(search)
         if self._fail_first is not None and idx == 0:
             raise self._fail_first
         if self._error is not None:
@@ -224,6 +226,7 @@ def test_cost_estimate_matches_actual_call_count(monkeypatch):
     _, body = auth_client()
     org = body["organization"]["id"]
     monkeypatch.setattr(settings, "answer_tracking_runs_per_prompt", 2)
+    monkeypatch.setattr(settings, "answer_tracking_enable_search", False)   # base-rate path
     monkeypatch.setattr(settings, "answer_tracking_rate_anthropic_usd", 0.01)
     _patch_providers(monkeypatch, [FakeProvider("anthropic", responses=["a"])])
     db = SessionLocal()

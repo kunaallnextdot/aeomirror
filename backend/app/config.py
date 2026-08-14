@@ -162,6 +162,10 @@ class Settings(BaseSettings):
     # NOT plan/tier gating (that business decision is deferred; see the summary).
     answer_tracking_max_prompts: int = 10          # hard cap on prompts per set (service layer)
     answer_tracking_runs_per_prompt: int = 2       # base samples per prompt x provider
+    # Run-level competitive leaderboard: an entity must be recommended in at least this many
+    # prompt x provider samples to appear (below this is noise, not a competitor). The tracked
+    # brand is always shown regardless, so the user sees their own rank.
+    answer_tracking_leaderboard_min_appearances: int = 2
     answer_tracking_adaptive_third_run: bool = True  # one extra run when base runs disagree on mention
     # Scheduling cadence: weekly (7d) | biweekly (14d) | monthly (30d). "biweekly" means
     # EVERY 14 DAYS from the prompt set's first run — NOT twice per week.
@@ -187,6 +191,17 @@ class Settings(BaseSettings):
     answer_tracking_rate_openai_usd: float = 0.010
     answer_tracking_rate_perplexity_usd: float = 0.010
     answer_tracking_rate_gemini_usd: float = 0.010
+    # Higher per-call rate when the answer call runs with SERVER-SIDE WEB SEARCH enabled
+    # (Anthropic bills ~$10/1k searches, OpenAI similarly, plus more result tokens). Used for
+    # answer calls only when search is on; extraction always uses the base rate above.
+    answer_tracking_search_rate_anthropic_usd: float = 0.020
+    answer_tracking_search_rate_openai_usd: float = 0.020
+    answer_tracking_search_rate_perplexity_usd: float = 0.015
+    answer_tracking_search_rate_gemini_usd: float = 0.020
+    # Anthropic web-search tool version. Default is the basic/direct tool (widest model
+    # support incl. Haiku); set web_search_20260209/_20260318 for 4.6+ models with dynamic
+    # filtering. Verified against docs.claude.com (web-search-tool).
+    answer_tracking_anthropic_search_tool: str = "web_search_20250305"
     # Provider API keys — BACKEND-ONLY secrets. Never prefix VITE_ (that would ship them to
     # the browser). anthropic_api_key is defined above (shared with the AI narrative path).
     openai_api_key: str | None = None

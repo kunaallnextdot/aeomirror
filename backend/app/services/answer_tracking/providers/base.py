@@ -75,5 +75,8 @@ class BaseProvider:
         self.api_key = api_key
         self.model = model
 
-    async def query(self, prompt: str, *, timeout: int) -> ProviderResult:
+    async def query(self, prompt: str, *, timeout: int, search: bool = False) -> ProviderResult:
+        """`search=True` asks the provider to run its server-side web search tool so it can
+        return real citations (live behaviour); `search=False` is a plain completion from
+        training data (citations=None). Extraction always calls with search=False."""
         raise NotImplementedError

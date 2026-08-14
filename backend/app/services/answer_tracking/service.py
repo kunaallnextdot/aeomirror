@@ -57,10 +57,13 @@ def estimate_run(db: Session, prompt_set: PromptSet) -> dict:
     prompts = active_prompts(db, prompt_set.id)
     providers = provider_registry.enabled_providers()
     runs_per = max(1, settings.answer_tracking_runs_per_prompt)
+    search = settings.answer_tracking_enable_search
     calls_per_provider = len(prompts) * runs_per
+    # Answer calls use the SEARCH rate when web search is enabled (FIX: search is billed);
+    # extraction (below) always uses the base rate.
     per_provider = [
         {"provider": p.name, "model": p.model, "calls": calls_per_provider,
-         "cost_usd": round(calls_per_provider * provider_registry.rate_for(p.name), 6)}
+         "cost_usd": round(calls_per_provider * provider_registry.call_rate(p.name, search), 6)}
         for p in providers
     ]
     answer_calls = calls_per_provider * len(providers)
@@ -79,6 +82,7 @@ def estimate_run(db: Session, prompt_set: PromptSet) -> dict:
         "runs_per_prompt": runs_per,
         "providers": [p.name for p in providers],
         "call_count": answer_calls,                 # answer-provider calls
+        "search_enabled": search,                   # answer calls priced with search when true
         "answer_cost_usd": answer_cost,
         "extraction_calls": extraction_calls,
         "extraction_provider": ex_provider,

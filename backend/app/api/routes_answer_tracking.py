@@ -308,7 +308,8 @@ def run_results(run_id: str,
         a = analyses.get(r.id)
         g["results"].append({
             "provider": r.provider, "model": r.model, "run_index": r.run_index,
-            "is_adaptive_run": r.is_adaptive_run, "raw_response": r.raw_response, "error": r.error,
+            "is_adaptive_run": r.is_adaptive_run, "search_enabled": r.search_enabled,
+            "citations": r.citations, "raw_response": r.raw_response, "error": r.error,
             # structured verdict (Task 1) — the UI renders this and keeps raw_response collapsed
             "brand_mentioned": (a.brand_mentioned if a else None),
             "mention_context": (a.mention_context if a else None),

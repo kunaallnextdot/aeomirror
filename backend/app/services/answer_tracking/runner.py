@@ -88,7 +88,7 @@ async def _one_call(provider, prompt: TrackedPrompt, *, run_index: int,
     async with sem:
         for attempt in range(2):        # initial try + at most one retry
             try:
-                res = await provider.query(prompt.text, timeout=timeout)
+                res = await provider.query(prompt.text, timeout=timeout, search=search)
                 rec.update(raw_response=res.text, text=res.text or "", citations=res.citations,
                            latency_ms=res.latency_ms, token_usage=res.tokens,
                            model=res.model or provider.model, ok=True, error=None)
@@ -173,7 +173,7 @@ async def execute_run(db: Session, run: PromptRun) -> PromptRun:
             raw_response=rec["raw_response"], citations=rec["citations"],
             latency_ms=rec["latency_ms"], token_usage=rec["token_usage"], error=rec["error"],
         ))
-        total_cost += provider_registry.rate_for(rec["provider"])
+        total_cost += provider_registry.call_rate(rec["provider"], rec["search_enabled"])
 
     total = len(all_records)
     failed = sum(1 for r in all_records if r["error"])
