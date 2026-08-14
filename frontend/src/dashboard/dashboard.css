@@ -642,3 +642,27 @@
 .at-est-cost{margin-top:3px;font-size:12px;color:var(--txt-mid)}
 .at-est-cost b{color:var(--txt)}
 .at-cite-why{margin-top:4px;font-size:11px;color:var(--warn);max-width:220px;line-height:1.4}
+
+/* ===== Answer Tracking — structured verdict + gap-to-action + guidance ===== */
+.at-guide{margin-top:6px;font-size:11.5px;color:var(--txt-mid);line-height:1.7}
+.at-guide-good,.at-guide-bad{display:inline-block;margin:0 4px;padding:1px 7px;border-radius:5px;font-family:'IBM Plex Mono',monospace;font-size:11px}
+.at-guide-good{background:rgba(52,211,224,.10);color:var(--accent)}
+.at-guide-bad{background:var(--bad-dim,rgba(240,90,90,.12));color:var(--bad)}
+.at-hint{background:var(--bad-dim,rgba(240,90,90,.10));border:1px solid var(--line);border-radius:8px;padding:9px 11px;font-size:12px;color:var(--txt-mid);margin-bottom:10px}
+.at-verdict{border:1px solid var(--line);border-radius:8px;padding:10px 11px;margin-bottom:8px}
+.at-verdict-h{display:flex;align-items:center;gap:7px;font-size:12.5px;flex-wrap:wrap}
+.at-verdict-body{margin-top:7px}
+.at-quote{font-size:12.5px;color:var(--txt);border-left:2px solid var(--accent);padding-left:9px;margin-bottom:5px}
+.at-cite{display:block;font-size:11px;color:var(--accent);font-family:'IBM Plex Mono',monospace;text-decoration:none;word-break:break-all}
+.at-cite:hover{text-decoration:underline}
+.at-instead{font-size:12.5px;color:var(--txt);display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.at-chip{background:var(--panel-2,var(--panel));border:1px solid var(--line-2);border-radius:12px;padding:2px 9px;font-size:11.5px}
+.at-rawtoggle{margin-top:8px;background:none;border:none;color:var(--txt-dim);font-size:11.5px;cursor:pointer;padding:0;text-decoration:underline}
+.at-rawtoggle:hover{color:var(--txt-mid)}
+.at-gap{background:var(--panel);border:1px solid var(--accent);border-radius:8px;padding:10px 12px;margin-bottom:10px}
+.at-gap-h{font-size:12.5px;font-weight:600;color:var(--accent);margin-bottom:5px}
+.at-gap-why{font-size:12.5px;color:var(--txt);margin-bottom:7px;line-height:1.5}
+.at-gap-actions{margin:0;padding-left:18px;font-size:12.5px;color:var(--txt);line-height:1.6}
+.at-gap-actions li{margin-bottom:3px}
+.at-comp-group{margin-top:8px}
+.at-comp-sub{font-size:11px;font-weight:600;color:var(--txt-dim);text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px}

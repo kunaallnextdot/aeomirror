@@ -76,12 +76,21 @@ def build_extraction_prompt(brand: dict, prompt_text: str, answer_text: str, *,
         f"engines, not competing brands): {excluded}\n\n"
         f"THE QUESTION ASKED:\n{prompt_text}\n\n"
         f"THE ASSISTANT'S ANSWER:\n{answer_text}\n\n"
+        "Distinguish HOW each other brand/product appears:\n"
+        "- A 'recommendation' or 'comparison' = the answer puts it forward as a SOLUTION or "
+        "option for THIS query (what the asker should use/consider).\n"
+        "- An 'example', 'news' or 'other' = it is merely referenced (a case study, an "
+        "anecdote, a news subject) and is NOT being recommended as a solution.\n"
+        "`recommended_entities` must list ONLY the entities recommended/compared as solutions, "
+        "IN THE ORDER they appear in the answer. Never include examples/news there.\n\n"
         "Return a single JSON object with EXACTLY these keys:\n"
         '{"brand_mentioned": true|false, '
         '"mention_context": "the sentence containing the mention" or null, '
         '"sentiment": "positive"|"neutral"|"negative"|null, '
         '"brand_urls_cited": ["https://..."], '
-        '"competitors_mentioned": [{"name": "...", "domain_if_stated": "..."|null}], '
+        '"recommended_entities": [{"name": "...", "domain_if_stated": "..."|null}], '
+        '"competitors_mentioned": [{"name": "...", "domain_if_stated": "..."|null, '
+        '"mention_type": "recommendation"|"comparison"|"example"|"news"|"other"}], '
         '"position": 1-based rank if the answer is a ranked list, else null}\n'
         "Respond with ONLY that JSON object and nothing else." + strict_note
     )
@@ -120,19 +129,37 @@ def _normalize(parsed: dict, brand: dict, result: PromptResult, model: str) -> d
         position = None
 
     # competitors: coerce + dedupe within THIS sample (counted once per sample later).
+    # mention_type is preserved so aggregation counts ONLY solution-type entities.
+    _MENTION_TYPES = ("recommendation", "comparison", "example", "news", "other")
     competitors, seen = [], set()
     for c in (parsed.get("competitors_mentioned") or []):
         if isinstance(c, dict):
             nm = (c.get("name") or "").strip()
             dom = c.get("domain_if_stated")
+            mt = c.get("mention_type")
         elif isinstance(c, str):
-            nm, dom = c.strip(), None
+            nm, dom, mt = c.strip(), None, None
         else:
             continue
+        mt = mt if mt in _MENTION_TYPES else None
         key = (nm.lower(), (dom or "").lower())
         if nm and key not in seen:
             seen.add(key)
-            competitors.append({"name": nm, "domain_if_stated": (dom or None)})
+            competitors.append({"name": nm, "domain_if_stated": (dom or None), "mention_type": mt})
+
+    # recommended_entities: ORDERED solutions (dedupe by name, preserve first-seen order).
+    recommended, rseen = [], set()
+    for e in (parsed.get("recommended_entities") or []):
+        if isinstance(e, dict):
+            nm = (e.get("name") or "").strip()
+            dom = e.get("domain_if_stated")
+        elif isinstance(e, str):
+            nm, dom = e.strip(), None
+        else:
+            continue
+        if nm and nm.lower() not in rseen:
+            rseen.add(nm.lower())
+            recommended.append({"name": nm, "domain_if_stated": (dom or None)})
 
     # citations: prefer provider structured citations (present => list or []), fall back
     # to LLM-extracted URLs ONLY when the provider cannot report citations (None).
@@ -149,6 +176,7 @@ def _normalize(parsed: dict, brand: dict, result: PromptResult, model: str) -> d
         "sentiment": sentiment,
         "brand_urls_cited": urls,
         "competitors_mentioned": competitors,
+        "recommended_entities": recommended,
         "position": position,
         "extraction_failed": False,
         "extraction_model": model,
@@ -161,9 +189,9 @@ def _failed(model: str, raw_output: str | None) -> dict:
     """A failed extraction: NOT a negative result — brand_mentioned stays null."""
     return {
         "brand_mentioned": None, "mention_context": None, "sentiment": None,
-        "brand_urls_cited": None, "competitors_mentioned": None, "position": None,
-        "extraction_failed": True, "extraction_model": model, "raw_output": raw_output,
-        "calls": 0,
+        "brand_urls_cited": None, "competitors_mentioned": None, "recommended_entities": None,
+        "position": None, "extraction_failed": True, "extraction_model": model,
+        "raw_output": raw_output, "calls": 0,
     }
 
 
@@ -240,7 +268,8 @@ async def extract_for_run(db: Session, run: PromptRun) -> dict:
             result_id=r.id, run_id=run.id, organization_id=run.organization_id,
             brand_mentioned=rec["brand_mentioned"], mention_context=rec["mention_context"],
             sentiment=rec["sentiment"], brand_urls_cited=rec["brand_urls_cited"],
-            competitors_mentioned=rec["competitors_mentioned"], position=rec["position"],
+            competitors_mentioned=rec["competitors_mentioned"],
+            recommended_entities=rec["recommended_entities"], position=rec["position"],
             extraction_failed=rec["extraction_failed"], extraction_model=rec["extraction_model"],
             raw_output=rec["raw_output"],
         ))
@@ -261,10 +290,13 @@ async def run_pending_extractions(db: Session) -> int:
            .filter(PromptRun.status.in_(_RUN_TERMINAL),
                    PromptRun.extraction_status == EXTRACTION_PENDING)
            .all())
+    from .gap_analysis import run_gap_analysis_for_run   # lazy: gap_analysis imports from here
+
     done = 0
     for run in due:
         try:
             await extract_for_run(db, run)
+            await run_gap_analysis_for_run(db, run)   # gap-to-action for zero-mention prompts
             done += 1
         except Exception:   # noqa: BLE001 — isolate this run
             log.exception("answer-tracking: extraction failed run=%s", run.id)

@@ -25,7 +25,8 @@ from app.db.models import (
     ALERT_OPEN, CONTACT_STATUSES, JOB_FAILED, MONITOR_ACTIVE, MONITOR_PAUSED,
     AiContentInsight, Alert, Contact, EmailVerification, Invitation, Monitor,
     MonitorHistory, NotificationLog, Organization, OrganizationMember, PasswordReset,
-    PromptResult, PromptResultAnalysis, PromptRun, PromptSet, Report, ReportExport,
+    PromptGapAnalysis, PromptResult, PromptResultAnalysis, PromptRun, PromptSet, Report,
+    ReportExport,
     ReportShare, Scan, ScanSnapshot, ScheduledJob, Session as SessionModel, TrackedPrompt,
     UsageEvent, User,
 )
@@ -248,7 +249,8 @@ def admin_delete_org(org_id: str, request: Request, admin: User = Depends(get_ad
     for model in (Monitor, MonitorHistory, Alert, Report, ReportExport, ReportShare,
                   ScanSnapshot, OrganizationMember, Scan, UsageEvent, AiContentInsight,
                   Invitation, NotificationLog,
-                  PromptSet, TrackedPrompt, PromptRun, PromptResult, PromptResultAnalysis):
+                  PromptSet, TrackedPrompt, PromptRun, PromptResult, PromptResultAnalysis,
+                  PromptGapAnalysis):
         db.query(model).filter(model.organization_id == o.id).delete(synchronize_session=False)
     db.query(ScheduledJob).filter(ScheduledJob.organization_id == o.id).delete(synchronize_session=False)
     db.delete(o)

@@ -711,9 +711,32 @@ class PromptResultAnalysis(Base):
     mention_context = Column(Text, nullable=True)             # the sentence containing the mention
     sentiment = Column(String, nullable=True)                 # positive | neutral | negative | null
     brand_urls_cited = Column(JSON, nullable=True)            # list[str]
-    competitors_mentioned = Column(JSON, nullable=True)       # list[{name, domain_if_stated}]
+    # competitors_mentioned: list[{name, domain_if_stated, mention_type}] — mention_type is
+    # "recommendation"|"comparison"|"example"|"news"|"other". Only solution types count as
+    # competitors (an entity named as an example/case study/news subject is NOT a competitor).
+    competitors_mentioned = Column(JSON, nullable=True)
+    # recommended_entities: ORDERED list[{name, domain_if_stated}] the model surfaced as
+    # SOLUTIONS for this query — the "who was recommended instead" when the brand is absent.
+    recommended_entities = Column(JSON, nullable=True)
     position = Column(Integer, nullable=True)                 # 1-based rank in a list answer, else null
     extraction_failed = Column(Boolean, nullable=False, default=False)
     extraction_model = Column(String, nullable=False)         # exact model string used to extract
     raw_output = Column(Text, nullable=True)                  # unparseable LLM output (on failure)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class PromptGapAnalysis(Base):
+    """Part B — gap-to-action for a zero-mention prompt in a run. ONE cheap LLM call per
+    prompt per run (never per sample), grounded in the site's own scan findings. Cached
+    here so it is not regenerated except on reanalyse."""
+    __tablename__ = "prompt_gap_analysis"
+    __table_args__ = (Index("ix_prompt_gap_analysis_run", "run_id"),)
+    id = Column(String, primary_key=True, default=_uuid)
+    run_id = Column(String, index=True, nullable=False)
+    prompt_id = Column(String, index=True, nullable=False)
+    organization_id = Column(String, index=True, nullable=False)
+    why = Column(Text, nullable=True)                # 2 sentences max, or a plain "not enough signal"
+    actions = Column(JSON, nullable=True)            # list[str], 2-4 concrete actions (may be empty)
+    has_signal = Column(Boolean, nullable=False, default=True)   # False => said "not enough signal"
+    model = Column(String, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow)

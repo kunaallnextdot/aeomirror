@@ -19,7 +19,7 @@ from app.db.session import get_db
 from app.schemas.answer_tracking import (
     CreatePromptRequest, CreatePromptSetRequest, UpdatePromptRequest, UpdatePromptSetRequest,
 )
-from app.services.answer_tracking import aggregation, extraction, runner, service
+from app.services.answer_tracking import aggregation, extraction, gap_analysis, runner, service
 from app.services.answer_tracking.errors import RunRefused
 
 router = APIRouter(tags=["answer-tracking"])
@@ -309,9 +309,13 @@ def run_results(run_id: str,
         g["results"].append({
             "provider": r.provider, "model": r.model, "run_index": r.run_index,
             "is_adaptive_run": r.is_adaptive_run, "raw_response": r.raw_response, "error": r.error,
+            # structured verdict (Task 1) — the UI renders this and keeps raw_response collapsed
             "brand_mentioned": (a.brand_mentioned if a else None),
             "mention_context": (a.mention_context if a else None),
             "sentiment": (a.sentiment if a else None),
+            "brand_urls_cited": (a.brand_urls_cited if a else None),
+            "position": (a.position if a else None),
+            "recommended_entities": (a.recommended_entities if a else None),
             "extraction_failed": (a.extraction_failed if a else None),
         })
     return {"run_id": run.id, "prompts": list(grouped.values())}
@@ -341,5 +345,6 @@ async def reanalyse_run(run_id: str,
     run.extraction_status = EXTRACTION_PENDING
     db.commit()
     result = await extraction.extract_for_run(db, run)
+    gap = await gap_analysis.run_gap_analysis_for_run(db, run)   # regenerate gap-to-action too
     return {"run_id": run.id, "extraction_status": run.extraction_status,
-            "analyzed": result.get("analyzed", 0)}
+            "analyzed": result.get("analyzed", 0), "gap_analyses": gap.get("generated", 0)}

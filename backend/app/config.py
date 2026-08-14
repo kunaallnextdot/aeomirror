@@ -198,6 +198,11 @@ class Settings(BaseSettings):
     # hardcoded here and extraction works out of the box wherever ai_model is configured.
     answer_tracking_extraction_provider: str = "anthropic"
     answer_tracking_extraction_model: str = ""      # empty => resolves to ai_model (see property)
+    # Gap-to-action analysis (Part B): ONE cheap LLM call per zero-mention prompt per run
+    # (never per sample), grounded in the site's own scan findings. Uses the extraction
+    # provider; model resolves to ANSWER_TRACKING_GAP_ANALYSIS_MODEL, else the extraction model.
+    answer_tracking_gap_analysis_enabled: bool = True
+    answer_tracking_gap_analysis_model: str = ""    # empty => resolves to the extraction model
     # Entities excluded from COMPETITOR aggregation (the AI assistants / search engines the
     # tracked prompts name explicitly, which the extractor otherwise mis-classifies as
     # competing brands). Applied at aggregation time only — raw extractions stay intact and
@@ -316,6 +321,13 @@ class Settings(BaseSettings):
         """Exact extraction model: ANSWER_TRACKING_EXTRACTION_MODEL if set, else the
         existing cheap ai_model. Never a hardcoded-here literal."""
         return (self.answer_tracking_extraction_model or "").strip() or self.ai_model
+
+    @property
+    def answer_tracking_gap_analysis_model_resolved(self) -> str:
+        """Gap-analysis model: ANSWER_TRACKING_GAP_ANALYSIS_MODEL if set, else the
+        extraction model (which itself falls back to ai_model)."""
+        return (self.answer_tracking_gap_analysis_model or "").strip() \
+            or self.answer_tracking_extraction_model_resolved
 
     @property
     def is_production(self) -> bool:

@@ -234,15 +234,25 @@ function PromptSetDetail({ setId, selectedRunId, canRun, canDelete, onChanged, o
       </ul>
 
       {canRun && (
-        <div className="at-add">
-          <input className="d-input" placeholder={atMax ? "Prompt limit reached" : "Add a prompt…"}
-                 value={text} maxLength={2000} disabled={atMax}
-                 onChange={(e) => setText(e.target.value)}
-                 onKeyDown={(e) => e.key === "Enter" && add()} />
-          <button className="d-btn" disabled={busy || atMax || !text.trim()} onClick={add}>
-            <Plus size={15} /> Add
-          </button>
-        </div>
+        <>
+          <div className="at-add">
+            <input className="d-input" placeholder={atMax ? "Prompt limit reached" : "Add a prompt…"}
+                   value={text} maxLength={2000} disabled={atMax}
+                   onChange={(e) => setText(e.target.value)}
+                   onKeyDown={(e) => e.key === "Enter" && add()} />
+            <button className="d-btn" disabled={busy || atMax || !text.trim()} onClick={add}>
+              <Plus size={15} /> Add
+            </button>
+          </div>
+          <div className="at-guide">
+            Track <b>category queries</b> a buyer would ask — where you’d want to appear:
+            <span className="at-guide-good">“best {"<category>"} tools for {"<audience>"}”</span>
+            <span className="at-guide-good">“{"<category>"} software compared”</span>
+            Avoid general-knowledge questions unrelated to your category
+            <span className="at-guide-bad">“what is agentic AI?”</span>
+            — those show 0% with noisy, irrelevant competitors.
+          </div>
+        </>
       )}
       {atMax && (
         <div className="at-note">
@@ -479,13 +489,34 @@ function ResultsPanel({ setId, runs, selectedRunId }) {
             </div>
           )}
 
-          {/* competitor share of voice: brand vs competitors */}
+          {/* competitor share of voice: brand vs competitors. A user's configured
+              competitor set (tracked) is the more trustworthy signal, so it's shown apart
+              from other entities the model surfaced. */}
           <div className="at-block">
             <div className="at-block-h">Share of voice</div>
-            <Bar label={`${summary.mentions ? "Your brand" : "Your brand"}`} value={summary.mention_rate} highlight />
+            <Bar label="Your brand" value={summary.mention_rate} highlight />
             {summary.competitors.length === 0 ? (
-              <div className="d-dim" style={{ fontSize: 12 }}>No competitors detected in these answers.</div>
-            ) : summary.competitors.map((c) => <Bar key={c.name} label={c.name} value={c.mention_rate} />)}
+              <div className="d-dim" style={{ fontSize: 12 }}>No competitors recommended in these answers.</div>
+            ) : (
+              <>
+                {summary.competitors.some((c) => c.tracked) && (
+                  <div className="at-comp-group">
+                    <div className="at-comp-sub">Tracked competitors</div>
+                    {summary.competitors.filter((c) => c.tracked).map((c) => (
+                      <Bar key={c.name} label={c.name} value={c.mention_rate} />
+                    ))}
+                  </div>
+                )}
+                {summary.competitors.some((c) => !c.tracked) && (
+                  <div className="at-comp-group">
+                    <div className="at-comp-sub">Other entities detected</div>
+                    {summary.competitors.filter((c) => !c.tracked).map((c) => (
+                      <Bar key={c.name} label={c.name} value={c.mention_rate} />
+                    ))}
+                  </div>
+                )}
+              </>
+            )}
           </div>
 
           {/* sentiment */}
@@ -566,27 +597,88 @@ function PromptResultRow({ row, open, onToggle, results }) {
       <button className="at-prow-head" onClick={onToggle}>
         {open ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
         <span className="at-prow-text">{row.text}</span>
+        {row.irrelevant_hint && <span className="at-tag warn" title="No mentions and no category competitors">off-category?</span>}
         <span className="at-prow-rate" style={{ color: row.is_gap ? "var(--bad)" : "var(--txt)" }}>
           {pct(row.mention_rate)}
         </span>
         <span className="at-prow-n">{row.mentions}/{row.samples}</span>
       </button>
-      {open && group && (
+      {open && (
         <div className="at-prow-body">
-          {group.results.map((r, i) => (
-            <div key={i} className="at-raw">
-              <div className="at-raw-h">
-                <b>{r.provider}</b>
-                <span className="d-dim"> · sample {r.run_index}{r.is_adaptive_run ? " (adaptive)" : ""}</span>
-                {r.brand_mentioned === true && <span className="at-tag ok">mentioned</span>}
-                {r.brand_mentioned === false && <span className="at-tag no">not mentioned</span>}
-                {r.extraction_failed && <span className="at-tag warn">extraction failed</span>}
-                {r.sentiment && <span className="at-tag" style={{ color: SENT_COLOR[r.sentiment] }}>{r.sentiment}</span>}
-              </div>
-              <RawText text={r.raw_response} error={r.error} highlight={r.mention_context} />
+          {row.irrelevant_hint && (
+            <div className="at-hint">
+              This prompt returned no mentions and no category competitors — it may not be a
+              category query for your brand. We won’t change it; that’s your call.
             </div>
+          )}
+          {row.gap && <GapToAction gap={row.gap} />}
+          {group && group.results.map((r, i) => <SampleVerdict key={i} r={r} />)}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* One prompt×provider sample as a structured VERDICT — not a wall of prose. The full raw
+   response is available behind an explicit expander, closed by default. */
+function SampleVerdict({ r }) {
+  const [showRaw, setShowRaw] = useState(false);
+  const mentioned = r.brand_mentioned === true;
+  return (
+    <div className="at-verdict">
+      <div className="at-verdict-h">
+        <b>{r.provider}</b>
+        <span className="d-dim"> · sample {r.run_index}{r.is_adaptive_run ? " (adaptive)" : ""}</span>
+        {r.extraction_failed
+          ? <span className="at-tag warn">extraction failed</span>
+          : mentioned
+            ? <span className="at-tag ok">MENTIONED</span>
+            : <span className="at-tag no">NOT MENTIONED</span>}
+        {!r.extraction_failed && mentioned && r.sentiment
+          && <span className="at-tag" style={{ color: SENT_COLOR[r.sentiment] }}>{r.sentiment}</span>}
+        {!r.extraction_failed && mentioned && r.position != null && <span className="at-tag">#{r.position}</span>}
+      </div>
+      {!r.extraction_failed && mentioned && (
+        <div className="at-verdict-body">
+          {r.mention_context && <div className="at-quote">“{r.mention_context}”</div>}
+          {(r.brand_urls_cited || []).map((u) => (
+            <a key={u} className="at-cite" href={u} target="_blank" rel="noreferrer">{u}</a>
           ))}
         </div>
+      )}
+      {!r.extraction_failed && !mentioned && (
+        <div className="at-verdict-body">
+          {(r.recommended_entities || []).length > 0 ? (
+            <div className="at-instead">
+              <span className="d-dim">Recommended instead:</span>{" "}
+              {r.recommended_entities.map((e, idx) => (
+                <span key={idx} className="at-chip">{idx + 1}. {e.name}</span>
+              ))}
+            </div>
+          ) : (
+            <div className="d-dim" style={{ fontSize: 12 }}>No specific brands were recommended for this query.</div>
+          )}
+        </div>
+      )}
+      <button className="at-rawtoggle" onClick={() => setShowRaw((s) => !s)}>
+        {showRaw ? "Hide" : "View"} full response
+      </button>
+      {showRaw && <RawText text={r.raw_response} error={r.error} highlight={r.mention_context} />}
+    </div>
+  );
+}
+
+/* Gap-to-action for a zero-mention prompt: why not you, and 2–4 grounded actions. */
+function GapToAction({ gap }) {
+  if (!gap) return null;
+  return (
+    <div className="at-gap">
+      <div className="at-gap-h">Why not you — and what to do</div>
+      {gap.why && <div className="at-gap-why">{gap.why}</div>}
+      {gap.has_signal && (gap.actions || []).length > 0 ? (
+        <ul className="at-gap-actions">{gap.actions.map((a, i) => <li key={i}>{a}</li>)}</ul>
+      ) : (
+        <div className="d-dim" style={{ fontSize: 12 }}>Not enough signal yet to give specific actions.</div>
       )}
     </div>
   );

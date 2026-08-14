@@ -11,12 +11,12 @@ from datetime import datetime, timedelta
 from app.config import settings
 from app.db.models import (
     EXTRACTION_COMPLETE, EXTRACTION_PENDING, RUN_COMPLETED,
-    Organization, PromptResult, PromptResultAnalysis, PromptRun, PromptSet,
+    Organization, PromptGapAnalysis, PromptResult, PromptResultAnalysis, PromptRun, PromptSet,
     TrackedPrompt, User,
 )
 from app.db.session import SessionLocal
 from app.main import app
-from app.services.answer_tracking import aggregation, extraction
+from app.services.answer_tracking import aggregation, extraction, gap_analysis
 from app.services.answer_tracking import providers as at_providers
 from app.services.answer_tracking.providers.base import ProviderResult
 from fastapi.testclient import TestClient
@@ -88,12 +88,13 @@ def _result(db, run, prompt_id, org, *, provider="anthropic", model="ans-m1", ru
 
 
 def _analysis(db, run, result_id, org, *, mentioned=True, failed=False, sentiment="positive",
-              urls=None, competitors=None, position=None, model="fake-extract-1"):
+              urls=None, competitors=None, recommended=None, position=None, model="fake-extract-1"):
     a = PromptResultAnalysis(
         result_id=result_id, run_id=run.id, organization_id=org,
         brand_mentioned=(None if failed else mentioned), extraction_failed=failed,
         sentiment=(None if failed else sentiment), brand_urls_cited=urls,
-        competitors_mentioned=competitors, position=position, extraction_model=model)
+        competitors_mentioned=competitors, recommended_entities=recommended,
+        position=position, extraction_model=model)
     db.add(a); db.commit()
     return a
 
@@ -495,5 +496,163 @@ def test_citation_diagnosis_search_disabled():
         run = _zero_citation_run(db, org, citations=[], search_enabled=False)   # capable but search off
         s = aggregation.run_summary(db, run)
         assert s["citation_diagnosis"]["status"] == "search_disabled"
+    finally:
+        db.close()
+
+
+# =====================================================================
+# Part B enhancement — structured verdict, recommendations, competitor
+# false-positives, gap-to-action, irrelevant-prompt hint
+# =====================================================================
+GAP_JSON = ('{"has_signal": true, "why": "The site blocks GPTBot so the model never saw it.", '
+            '"actions": ["Allow GPTBot in robots.txt", "Add JSON-LD product schema"]}')
+
+
+def _patch_gap(monkeypatch, fake):
+    monkeypatch.setattr(at_providers, "gap_analysis_provider", lambda: fake)
+
+
+def test_structured_verdict_from_stored_analysis_no_provider_call(monkeypatch):
+    """The results endpoint serves the structured verdict (context, url, position,
+    recommended_entities) straight from stored analysis — zero provider calls."""
+    def boom():   # any answer/extraction provider call is a failure here
+        raise AssertionError("no provider may be called to render a stored verdict")
+    monkeypatch.setattr(at_providers, "enabled_providers", boom)
+    monkeypatch.setattr(at_providers, "extraction_provider", boom)
+    client, body = auth_client()
+    org = body["organization"]["id"]
+    db = SessionLocal()
+    try:
+        ps, prompts = _set(db, org)
+        run = _run(db, ps, org)
+        r = _result(db, run, prompts[0].id, org)
+        _analysis(db, run, r.id, org, mentioned=False,
+                  recommended=[{"name": "Alpha", "domain_if_stated": "alpha.com"}])
+        run_id = run.id
+    finally:
+        db.close()
+    got = client.get(f"/prompt-runs/{run_id}/results").json()
+    sample = got["prompts"][0]["results"][0]
+    assert sample["brand_mentioned"] is False
+    assert sample["recommended_entities"] == [{"name": "Alpha", "domain_if_stated": "alpha.com"}]
+    assert "position" in sample and "brand_urls_cited" in sample
+
+
+def test_recommended_entities_preserve_order(monkeypatch):
+    ordered = ('{"brand_mentioned": false, "mention_context": null, "sentiment": null, '
+               '"brand_urls_cited": [], "position": null, "competitors_mentioned": [], '
+               '"recommended_entities": [{"name": "First"}, {"name": "Second"}, {"name": "Third"}]}')
+    _patch_extractor(monkeypatch, FakeExtractor(always=ordered))
+    _, body = auth_client()
+    org = body["organization"]["id"]
+    db = SessionLocal()
+    try:
+        ps, prompts = _set(db, org)
+        run = _run(db, ps, org)
+        _result(db, run, prompts[0].id, org)
+        asyncio.run(extraction.extract_for_run(db, run))
+        a = db.query(PromptResultAnalysis).filter(PromptResultAnalysis.run_id == run.id).one()
+        assert [e["name"] for e in a.recommended_entities] == ["First", "Second", "Third"]
+    finally:
+        db.close()
+
+
+def test_example_not_competitor_but_recommendation_is():
+    _, body = auth_client()
+    org = body["organization"]["id"]
+    db = SessionLocal()
+    try:
+        ps, prompts = _set(db, org)
+        run = _run(db, ps, org)
+        r = _result(db, run, prompts[0].id, org)
+        _analysis(db, run, r.id, org, mentioned=False, competitors=[
+            {"name": "Air Canada", "domain_if_stated": None, "mention_type": "example"},
+            {"name": "Rival", "domain_if_stated": "rival.com", "mention_type": "recommendation"}])
+        s = aggregation.run_summary(db, run)
+        assert [c["name"] for c in s["competitors"]] == ["Rival"]   # example dropped, solution kept
+    finally:
+        db.close()
+
+
+def test_gap_analysis_once_per_zero_mention_prompt_not_per_sample(monkeypatch):
+    fake = FakeExtractor(always=GAP_JSON)
+    _patch_gap(monkeypatch, fake)
+    _, body = auth_client()
+    org = body["organization"]["id"]
+    db = SessionLocal()
+    try:
+        ps, prompts = _set(db, org)
+        run = _run(db, ps, org)
+        # THREE samples of the SAME prompt, all zero-mention
+        for i in range(3):
+            r = _result(db, run, prompts[0].id, org, run_index=i)
+            _analysis(db, run, r.id, org, mentioned=False)
+        res = asyncio.run(gap_analysis.run_gap_analysis_for_run(db, run))
+        assert fake.calls == 1                       # once per PROMPT, not per sample
+        assert res["generated"] == 1
+        assert db.query(PromptGapAnalysis).filter(PromptGapAnalysis.run_id == run.id).count() == 1
+    finally:
+        db.close()
+
+
+def test_gap_analysis_skipped_when_flag_off(monkeypatch):
+    monkeypatch.setattr(settings, "answer_tracking_gap_analysis_enabled", False)
+    fake = FakeExtractor(always=GAP_JSON)
+    _patch_gap(monkeypatch, fake)
+    _, body = auth_client()
+    org = body["organization"]["id"]
+    db = SessionLocal()
+    try:
+        ps, prompts = _set(db, org)
+        run = _run(db, ps, org)
+        r = _result(db, run, prompts[0].id, org)
+        _analysis(db, run, r.id, org, mentioned=False)
+        res = asyncio.run(gap_analysis.run_gap_analysis_for_run(db, run))
+        assert fake.calls == 0 and res.get("skipped") == "disabled"
+        assert db.query(PromptGapAnalysis).filter(PromptGapAnalysis.run_id == run.id).count() == 0
+    finally:
+        db.close()
+
+
+def test_reanalyse_regenerates_with_zero_answer_provider_calls(monkeypatch):
+    def no_answer_calls():
+        raise AssertionError("reanalyse must NOT call the answer providers")
+    monkeypatch.setattr(at_providers, "enabled_providers", no_answer_calls)
+    _patch_extractor(monkeypatch, FakeExtractor(always=VALID))
+    _patch_gap(monkeypatch, FakeExtractor(always=GAP_JSON))
+    client, body = auth_client()                  # registrant is org owner
+    org = body["organization"]["id"]
+    db = SessionLocal()
+    try:
+        ps, prompts = _set(db, org)
+        run = _run(db, ps, org)
+        _result(db, run, prompts[0].id, org, raw="Acme is great but so is Rival.")
+        run_id = run.id
+    finally:
+        db.close()
+    r = client.post(f"/prompt-runs/{run_id}/reanalyse")
+    assert r.status_code == 200
+    db = SessionLocal()
+    try:
+        assert db.query(PromptResultAnalysis).filter(PromptResultAnalysis.run_id == run_id).count() == 1
+    finally:
+        db.close()
+
+
+def test_irrelevant_prompt_hint_and_does_not_disable():
+    _, body = auth_client()
+    org = body["organization"]["id"]
+    db = SessionLocal()
+    try:
+        ps, prompts = _set(db, org)
+        run = _run(db, ps, org)
+        r = _result(db, run, prompts[0].id, org)
+        # 0 mentions, NO competitors, NO recommendations => off-category hint
+        _analysis(db, run, r.id, org, mentioned=False, competitors=[], recommended=[])
+        s = aggregation.run_summary(db, run)
+        row = next(p for p in s["per_prompt"] if p["prompt_id"] == prompts[0].id)
+        assert row["irrelevant_hint"] is True
+        # the prompt is NEVER auto-disabled — still active in the DB
+        assert db.get(TrackedPrompt, prompts[0].id).is_active is True
     finally:
         db.close()

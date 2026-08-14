@@ -13,8 +13,18 @@ from sqlalchemy.orm import Session
 from app.config import settings
 from app.db.models import (
     _RUN_TERMINAL,
-    PromptResult, PromptResultAnalysis, PromptRun, PromptSet, TrackedPrompt,
+    PromptGapAnalysis, PromptResult, PromptResultAnalysis, PromptRun, PromptSet, TrackedPrompt,
 )
+
+# mention_type values that mean "recommended/compared as a SOLUTION" (so it counts as a
+# competitor). None = untyped legacy rows, treated as a solution for backward compatibility.
+# "example"/"news"/"other" are NOT competitors — merely referenced, not recommended.
+_SOLUTION_TYPES = ("recommendation", "comparison", None)
+
+
+def _root(domain: str | None) -> str:
+    d = (domain or "").strip().lower()
+    return d.replace("www.", "").split("/")[0].split(".")[0] if d else ""
 
 
 def _is_excluded_competitor(name: str, domain: str | None, excluded: set[str]) -> bool:
@@ -104,24 +114,53 @@ def run_metrics(db: Session, run: PromptRun) -> dict:
             url_freq[u] += 1
     citation_count = sum(url_freq.values())
 
-    # competitor share of voice (each competitor counted once per sample — already deduped
-    # at storage; dedupe again defensively). AI assistants / search engines named in the
-    # prompts are EXCLUDED here at aggregation time (FIX1) — raw extractions keep them.
+    # competitor share of voice. A competitor is counted ONCE per sample, ONLY when it is
+    # recommended/compared as a SOLUTION (mention_type) — an entity named as an example /
+    # case study / news subject is NOT a competitor (FIX: Air Canada / DPD false positives).
+    # AI assistants / search engines stay excluded (FIX1). Entities whose domain/name match
+    # the org's configured competitor_domains are flagged `tracked` (the trusted signal).
+    ps = db.get(PromptSet, run.prompt_set_id)
+    configured_roots = {_root(d) for d in (ps.competitor_domains or [])} - {""} if ps else set()
     excluded_entities = settings.answer_tracking_excluded_entity_set()
     comp_hit: Counter = Counter()
+    comp_domain: dict[str, str | None] = {}
+    prompt_has_solution: dict[str, bool] = {}
     for a in successful:
+        r = results.get(a.result_id)
+        pid = r.prompt_id if r else "unknown"
         seen = set()
         for c in (a.competitors_mentioned or []):
             if isinstance(c, dict):
                 nm = (c.get("name") or "").strip()
                 dom = c.get("domain_if_stated")
+                mt = c.get("mention_type")
             else:
-                nm, dom = str(c).strip(), None
+                nm, dom, mt = str(c).strip(), None, None
             if not nm or _is_excluded_competitor(nm, dom, excluded_entities):
                 continue
+            if mt not in _SOLUTION_TYPES:          # example / news / other -> not a competitor
+                continue
+            prompt_has_solution[pid] = True
             if nm.lower() not in seen:
                 seen.add(nm.lower())
                 comp_hit[nm] += 1
+                if nm not in comp_domain:
+                    comp_domain[nm] = dom
+
+    def _tracked(nm: str, dom: str | None) -> bool:
+        return bool(configured_roots) and (
+            _root(dom) in configured_roots or nm.strip().lower() in configured_roots)
+
+    # per-prompt ORDERED recommended entities (for "who was recommended instead").
+    prompt_recommended: dict[str, list] = {}
+    for a in successful:
+        r = results.get(a.result_id)
+        pid = r.prompt_id if r else "unknown"
+        bucket = prompt_recommended.setdefault(pid, [])
+        for e in (a.recommended_entities or []):
+            nm = (e.get("name") if isinstance(e, dict) else str(e)).strip()
+            if nm and nm not in bucket:
+                bucket.append(nm)
 
     # sentiment distribution across mentions
     sentiment = Counter(a.sentiment for a in mentioned if a.sentiment)
@@ -143,12 +182,14 @@ def run_metrics(db: Session, run: PromptRun) -> dict:
              "mention_rate": _rate(prov_hit[p], prov_total[p])}
             for p in sorted(prov_total)
         ],
-        "per_prompt": _per_prompt(db, run, prompt_total, prompt_hit, _rate),
+        "per_prompt": _per_prompt(db, run, prompt_total, prompt_hit, _rate,
+                                  prompt_recommended, prompt_has_solution),
         "citation_count": citation_count,
         "citation_diagnosis": _citation_diagnosis(list(results.values()), citation_count),
         "cited_urls": [{"url": u, "count": n} for u, n in url_freq.most_common()],
         "competitors": [
-            {"name": nm, "mentions": n, "mention_rate": _rate(n, denom)}
+            {"name": nm, "mentions": n, "mention_rate": _rate(n, denom),
+             "domain": comp_domain.get(nm), "tracked": _tracked(nm, comp_domain.get(nm))}
             for nm, n in comp_hit.most_common()
         ],
         "sentiment": dict(sentiment),
@@ -158,17 +199,27 @@ def run_metrics(db: Session, run: PromptRun) -> dict:
     }
 
 
-def _per_prompt(db, run, prompt_total, prompt_hit, rate_fn) -> list[dict]:
+def _per_prompt(db, run, prompt_total, prompt_hit, rate_fn,
+                prompt_recommended=None, prompt_has_solution=None) -> list[dict]:
+    prompt_recommended = prompt_recommended or {}
+    prompt_has_solution = prompt_has_solution or {}
     texts = {p.id: p.text for p in db.query(TrackedPrompt)
              .filter(TrackedPrompt.prompt_set_id == run.prompt_set_id).all()}
     rows = []
     for pid in prompt_total:
         rate = rate_fn(prompt_hit[pid], prompt_total[pid])
+        recommended = prompt_recommended.get(pid, [])
+        # Prompt-quality hint (Task 4): 0% mentions AND nothing recommended AND no solution
+        # competitor in the category => the prompt may simply not be a category query. This
+        # is a HINT only — the prompt is NEVER auto-disabled/deleted.
+        irrelevant_hint = (rate == 0.0) and not recommended and not prompt_has_solution.get(pid)
         rows.append({
             "prompt_id": pid, "text": texts.get(pid, ""),
             "samples": prompt_total[pid], "mentions": prompt_hit[pid],
             "mention_rate": rate,
             "is_gap": (rate == 0.0),            # 0% mentions => actionable gap
+            "recommended_entities": recommended,   # who was recommended instead (ordered)
+            "irrelevant_hint": irrelevant_hint,
         })
     # gaps first (most actionable), then by ascending mention rate
     rows.sort(key=lambda r: (not r["is_gap"], r["mention_rate"] if r["mention_rate"] is not None else 0))
@@ -176,8 +227,13 @@ def _per_prompt(db, run, prompt_total, prompt_hit, rate_fn) -> list[dict]:
 
 
 def run_summary(db: Session, run: PromptRun) -> dict:
-    """Full Share-of-Voice summary for one run (no analysis-model re-computation)."""
+    """Full Share-of-Voice summary for one run, with each zero-mention prompt's gap-to-action
+    attached (from stored gap analysis — no LLM call here)."""
     m = run_metrics(db, run)
+    gaps = {g.prompt_id: {"why": g.why, "actions": g.actions or [], "has_signal": g.has_signal}
+            for g in db.query(PromptGapAnalysis).filter(PromptGapAnalysis.run_id == run.id).all()}
+    for row in m["per_prompt"]:
+        row["gap"] = gaps.get(row["prompt_id"])   # None when the prompt was not a gap
     return {
         "run_id": run.id,
         "prompt_set_id": run.prompt_set_id,

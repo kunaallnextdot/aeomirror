@@ -72,6 +72,21 @@ def extraction_provider() -> BaseProvider | None:
     return cls(api_key=key, model=model)
 
 
+def gap_analysis_provider() -> BaseProvider | None:
+    """Provider for Part B gap-to-action (same provider as extraction, but the resolved
+    gap-analysis model). Returns None (logged) when unconfigured."""
+    name = (settings.answer_tracking_extraction_provider or "").strip().lower()
+    cls = _REGISTRY.get(name)
+    if cls is None:
+        return None
+    key = _api_key_for(name)
+    model = settings.answer_tracking_gap_analysis_model_resolved
+    if not key or not model:
+        log.warning("answer-tracking: gap analysis has no API key/model; skipping")
+        return None
+    return cls(api_key=key, model=model)
+
+
 def enabled_providers() -> list[BaseProvider]:
     """Instantiate every requested provider that is implemented AND configured. Skips
     (with a WARNING) unknown names, missing API keys, and missing model strings."""
@@ -95,6 +110,7 @@ def enabled_providers() -> list[BaseProvider]:
 
 __all__ = [
     "BaseProvider", "ProviderError", "ProviderResult", "is_transient", "post_json",
-    "enabled_providers", "extraction_provider", "configured_provider_names", "rate_for",
+    "enabled_providers", "extraction_provider", "gap_analysis_provider",
+    "configured_provider_names", "rate_for",
     "AnthropicProvider", "OpenAIProvider", "PerplexityProvider", "GeminiProvider",
 ]
