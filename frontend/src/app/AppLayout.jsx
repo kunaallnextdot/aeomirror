@@ -160,13 +160,13 @@ function LayoutBody() {
         <div className="dash-brand"><Radar size={18} /> AEOMirror</div>
         <nav className="dash-nav">
           {NAV.map((n) => (
-            <NavLink key={n.to} to={n.to} className={({ isActive }) => (isActive ? "on" : "")}>
+            <NavLink key={n.to} to={n.to} className={({ isActive }) => "dash-nav-item" + (isActive ? " on" : "")}>
               <n.icon size={16} /> <span>{n.label}</span>
             </NavLink>
           ))}
           <div style={{ height: 1, background: "var(--line)", margin: "8px 6px" }} />
           {ACCOUNT_NAV.map((n) => (
-            <NavLink key={n.to} to={n.to} className={({ isActive }) => (isActive ? "on" : "")}>
+            <NavLink key={n.to} to={n.to} className={({ isActive }) => "dash-nav-item" + (isActive ? " on" : "")}>
               <n.icon size={16} /> <span>{n.label}</span>
             </NavLink>
           ))}
