@@ -8,7 +8,10 @@ import { scanUrl, getScanById, bulkScanUrls, bulkScanFile, billing, downloadRepo
 import { UpgradeProvider, useUpgrade } from "./dashboard/UpgradeModal.jsx";
 import { setPendingScan, takePendingScan, freeScanUsed, markFreeScanUsed } from "./auth/pendingScan.js";
 import { useAuth } from "./auth/AuthContext.jsx";
-import { useLocation, navigate } from "./auth/router.jsx";
+import { Routes, Route, useParams } from "react-router-dom";
+import { navigate, RouterBridge } from "./auth/router.jsx";
+import { RequireAdmin } from "./app/guards.jsx";
+import { RouteErrorBoundary } from "./app/RouteErrorBoundary.jsx";
 import { Avatar } from "./auth/ui.jsx";
 import Login from "./auth/pages/Login.jsx";
 import Register from "./auth/pages/Register.jsx";
@@ -20,7 +23,7 @@ import { Loader2 } from "lucide-react";
 
 // Code-split the heavy authenticated bundles (charts, admin) so the public
 // marketing + auth pages stay small and fast to load.
-const Dashboard = React.lazy(() => import("./dashboard/Dashboard.jsx"));
+const AppRoot = React.lazy(() => import("./app/AppRoot.jsx"));
 const AdminApp = React.lazy(() => import("./admin/AdminApp.jsx"));
 const Contact = React.lazy(() => import("./pages/Contact.jsx"));
 const PublicReport = React.lazy(() => import("./dashboard/PublicReport.jsx"));
@@ -337,7 +340,7 @@ function FreeScanner({ compact, onFull, onScanComplete }) {
 
   // Signed-in CTAs: open this scan's full detail in the dashboard, and (Pro) export the PDF.
   const viewFullReport = () => {
-    if (report?.scan_id) navigate(`/app?scan=${encodeURIComponent(report.scan_id)}`);
+    if (report?.scan_id) navigate(`/app/scans/${encodeURIComponent(report.scan_id)}`);
   };
   const downloadPdf = async () => {
     if (!report?.scan_id || pdfBusy) return;
@@ -507,7 +510,7 @@ function BulkScanPanel({ onGate }) {
     setBusy(true);
     try {
       const res = file ? await bulkScanFile(file) : await bulkScanUrls(lines);
-      navigate(`/app?scan=${res.scan_id}`);   // 202 → live progress view
+      navigate(`/app/scans/${res.scan_id}`);   // 202 → live progress view
     } catch (e) {
       if (e && e.code === 402) { onGate?.(e.message); }
       else {
@@ -704,76 +707,56 @@ function FullScreenLoader() {
   );
 }
 
-/* Route guard (middleware): unauthenticated users are redirected to Login. The
-   redirect runs in an effect (never during render) to avoid racing state commits. */
-function Protected({ children }) {
-  const { ready, isAuthenticated } = useAuth();
-  useEffect(() => {
-    if (ready && !isAuthenticated) navigate("/login", { replace: true });
-  }, [ready, isAuthenticated]);
-  if (!ready || !isAuthenticated) return <FullScreenLoader />;
-  return children;
-}
-
-/* Admin guard: platform admins only; everyone else is bounced to the app. */
-function AdminOnly({ children }) {
-  const { user } = useAuth();
-  useEffect(() => {
-    if (user && !user.is_platform_admin) navigate("/app", { replace: true });
-  }, [user]);
-  if (!user?.is_platform_admin) return <FullScreenLoader />;
-  return children;
+/* Public shared report (/r/:token) — no dashboard shell, no auth. AuthProvider skips its
+   bootstrap for this path, so a signed-out visitor fires no auth call here. */
+function PublicReportRoute() {
+  const { token } = useParams();
+  return (
+    <Suspense fallback={<FullScreenLoader />}>
+      <PublicReport token={token} />
+    </Suspense>
+  );
 }
 
 /* ============================= ROUTER ============================= */
 function AppRouter() {
-  const { path } = useLocation();
+  return (
+    <Routes>
+      {/* public shared report — outside the app shell + auth */}
+      <Route path="/r/:token" element={<PublicReportRoute />} />
 
-  // Public shared report (/r/:token) — no dashboard shell, no auth. AuthProvider skips
-  // its bootstrap for this path, so a signed-out visitor fires no auth call here.
-  if (path.startsWith("/r/")) {
-    return (
-      <Suspense fallback={<FullScreenLoader />}>
-        <PublicReport token={decodeURIComponent(path.slice(3))} />
-      </Suspense>
-    );
-  }
+      {/* public marketing + support */}
+      <Route path="/" element={<MarketingRoot />} />
+      <Route path="/contact" element={<ContactRoot />} />
 
-  // Public contact & support page.
-  if (path === "/contact") return <ContactRoot />;
+      {/* public auth pages (paths unchanged — external links point here) */}
+      <Route path="/login" element={<Login />} />
+      <Route path="/register" element={<Register />} />
+      <Route path="/forgot-password" element={<ForgotPassword />} />
+      <Route path="/reset-password" element={<ResetPassword />} />
+      <Route path="/verify-email" element={<VerifyEmail />} />
+      <Route path="/accept-invitation" element={<AcceptInvitation />} />
 
-  // Public auth pages.
-  if (path === "/login") return <Login />;
-  if (path === "/register") return <Register />;
-  if (path === "/forgot-password") return <ForgotPassword />;
-  if (path === "/reset-password") return <ResetPassword />;
-  if (path === "/verify-email") return <VerifyEmail />;
-  if (path === "/accept-invitation") return <AcceptInvitation />;
-
-  // Internal admin platform (platform admins only).
-  if (path.startsWith("/admin")) {
-    return (
-      <Protected>
-        <AdminOnly>
+      {/* internal admin platform (platform admins only) */}
+      <Route path="/admin/*" element={
+        <RequireAdmin>
           <Suspense fallback={<FullScreenLoader />}><AdminApp /></Suspense>
-        </AdminOnly>
-      </Protected>
-    );
-  }
+        </RequireAdmin>
+      } />
 
-  // Protected app.
-  if (path.startsWith("/app")) {
-    return (
-      <Protected>
-        <Suspense fallback={<FullScreenLoader />}>
-          <Dashboard onRunScan={() => navigate("/")} onExit={() => navigate("/")} />
-        </Suspense>
-      </Protected>
-    );
-  }
+      {/* the authenticated app — a lazy chunk that guards + lays out its own nested routes.
+          The boundary catches a failed chunk load (stale tab after a deploy) and recovers
+          with a single guarded reload; see RouteErrorBoundary. */}
+      <Route path="/app/*" element={
+        <RouteErrorBoundary>
+          <Suspense fallback={<FullScreenLoader />}><AppRoot /></Suspense>
+        </RouteErrorBoundary>
+      } />
 
-  // Default: the public marketing scanner.
-  return <MarketingRoot />;
+      {/* unknown top-level path: keep the current behaviour (marketing home) */}
+      <Route path="*" element={<MarketingRoot />} />
+    </Routes>
+  );
 }
 
 /* ============================= ROOT ============================= */
@@ -783,6 +766,7 @@ export default function App() {
   return (
     <div className="root">
       <style>{CSS}</style>
+      <RouterBridge />
       <AppRouter />
     </div>
   );

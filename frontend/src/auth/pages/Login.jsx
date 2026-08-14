@@ -12,10 +12,16 @@ export default function Login() {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState(null);
 
-  // Redirect once auth state has actually committed (race-free vs. the guard). A
-  // pending homepage scan returns to the scanner (auto-runs it); else the dashboard.
+  // Redirect once auth state has actually committed (race-free vs. the guard). A pending
+  // homepage scan returns to the scanner (auto-runs it); otherwise honour the `?next`
+  // destination the auth guard preserved (internal paths only — never an open redirect),
+  // falling back to the dashboard.
   useEffect(() => {
-    if (isAuthenticated) navigate(hasPendingScan() ? "/" : "/app", { replace: true });
+    if (!isAuthenticated) return;
+    if (hasPendingScan()) { navigate("/", { replace: true }); return; }
+    const next = new URLSearchParams(window.location.search).get("next");
+    const safe = next && next.startsWith("/") && !next.startsWith("//") ? next : "/app";
+    navigate(safe, { replace: true });
   }, [isAuthenticated]);
 
   const submit = async (e) => {

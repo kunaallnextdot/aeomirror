@@ -558,10 +558,11 @@
 @keyframes at-spin{to{transform:rotate(360deg)}}
 .at-create,.at-add{display:flex;gap:8px;margin:10px 0 4px}
 .at-list{list-style:none;margin:8px 0 0;padding:0;display:flex;flex-direction:column;gap:6px}
-.at-list li{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:9px 11px;
-  border:1px solid var(--line);border-radius:8px;cursor:pointer}
+.at-list li{border:1px solid var(--line);border-radius:8px;overflow:hidden}
 .at-list li:hover{border-color:var(--line-2)}
 .at-list li.on{border-color:var(--accent);background:var(--panel)}
+/* whole row is a link — padding + layout live here so the full row is the click target */
+.at-list-link{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:9px 11px;color:inherit;text-decoration:none}
 .at-list-name{font-size:13px;font-weight:600;color:var(--txt)}
 .at-list-meta{font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--txt-dim);white-space:nowrap}
 .at-detail-h{display:flex;justify-content:space-between;align-items:center}
@@ -579,7 +580,8 @@
 .at-est-warn{color:var(--warn)}
 .at-runs{margin-top:14px;border-top:1px solid var(--line);padding-top:10px}
 .at-runs-h{font-size:12.5px;font-weight:600;color:var(--txt-mid);margin-bottom:6px}
-.at-run-row{display:flex;align-items:center;gap:10px;padding:5px 0;font-size:12.5px}
+.at-run-row{display:flex;align-items:center;gap:10px;padding:5px 0;font-size:12.5px;color:inherit;text-decoration:none}
+.at-run-row:hover .at-run-date{color:var(--txt-mid)}
 .at-run-status{font-weight:600;min-width:82px}
 .at-run-meta{flex:1;color:var(--txt-mid);font-family:'IBM Plex Mono',monospace;font-size:11px}
 .at-run-date{color:var(--txt-dim);font-size:11px;white-space:nowrap}

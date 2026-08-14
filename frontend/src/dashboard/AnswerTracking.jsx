@@ -4,6 +4,7 @@
    and competitor share of voice, per-prompt gaps, cited URLs, expandable raw responses
    with the mention highlighted, and a run-over-run trend that marks model changes. */
 import React, { useCallback, useEffect, useState } from "react";
+import { Link, useNavigate } from "react-router-dom";
 import {
   MessageSquare, Plus, Play, Trash2, Info, RefreshCw, Check, X, Pencil,
   ArrowUpRight, ArrowDownRight, Minus, AlertTriangle, ChevronRight, ChevronDown,
@@ -28,13 +29,17 @@ const RUN_STATUS_COLOR = {
   running: "var(--accent)", pending: "var(--txt-dim)",
 };
 
-export default function AnswerTracking() {
+export default function AnswerTracking({ selectedSetId = null, selectedRunId = null }) {
   const { hasPermission } = useAuth();
+  const navigate = useNavigate();
   const canRun = hasPermission("scan:run");
   const canDelete = hasPermission("scan:delete");
 
+  // The selected set + run are the URL's job (single source of truth), not local state.
+  const selectedId = selectedSetId;
+  const selectSet = useCallback((id) => navigate(`/app/answer-tracking/${encodeURIComponent(id)}`), [navigate]);
+
   const [sets, setSets] = useState(null);
-  const [selectedId, setSelectedId] = useState(null);
   const [error, setError] = useState(null);
   const [newName, setNewName] = useState("");
   const [creating, setCreating] = useState(false);
@@ -59,7 +64,7 @@ export default function AnswerTracking() {
       const ps = await createPromptSet({ name });
       setNewName("");
       await load();
-      setSelectedId(ps.id);
+      selectSet(ps.id);
     } catch (e) {
       setError(e instanceof ScanError ? e.message : "Could not create the prompt set.");
     } finally { setCreating(false); }
@@ -91,12 +96,14 @@ export default function AnswerTracking() {
         ) : (
           <ul className="at-list">
             {sets.map((s) => (
-              <li key={s.id} className={s.id === selectedId ? "on" : ""}
-                  onClick={() => setSelectedId(s.id)}>
-                <span className="at-list-name">{s.name}</span>
-                <span className="at-list-meta">
-                  {s.active_prompt_count}/{s.prompt_count} active · {s.prompt_count}/{s.max_prompts} prompts
-                </span>
+              <li key={s.id} className={s.id === selectedId ? "on" : ""}>
+                {/* whole row is the link target — cmd/ctrl/middle-click opens a new tab */}
+                <Link className="at-list-link" to={`/app/answer-tracking/${encodeURIComponent(s.id)}`}>
+                  <span className="at-list-name">{s.name}</span>
+                  <span className="at-list-meta">
+                    {s.active_prompt_count}/{s.prompt_count} active · {s.prompt_count}/{s.max_prompts} prompts
+                  </span>
+                </Link>
               </li>
             ))}
           </ul>
@@ -104,8 +111,8 @@ export default function AnswerTracking() {
       </div>
 
       {selectedId && (
-        <PromptSetDetail key={selectedId} setId={selectedId} canRun={canRun} canDelete={canDelete}
-                         onChanged={load} onDeleted={() => { setSelectedId(null); load(); }} />
+        <PromptSetDetail key={selectedId} setId={selectedId} selectedRunId={selectedRunId} canRun={canRun} canDelete={canDelete}
+                         onChanged={load} onDeleted={() => { navigate("/app/answer-tracking"); load(); }} />
       )}
     </div>
   );
@@ -125,7 +132,7 @@ function Explainer() {
   );
 }
 
-function PromptSetDetail({ setId, canRun, canDelete, onChanged, onDeleted }) {
+function PromptSetDetail({ setId, selectedRunId, canRun, canDelete, onChanged, onDeleted }) {
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
   const [estimate, setEstimate] = useState(null);
@@ -274,7 +281,8 @@ function PromptSetDetail({ setId, canRun, canDelete, onChanged, onDeleted }) {
         <div className="at-runs">
           <div className="at-runs-h">Recent runs</div>
           {data.runs.map((r) => (
-            <div key={r.id} className="at-run-row">
+            <Link key={r.id} className="at-run-row"
+                  to={`/app/answer-tracking/${encodeURIComponent(setId)}/runs/${encodeURIComponent(r.id)}`}>
               <span className="at-run-status" style={{ color: RUN_STATUS_COLOR[r.status] }}>
                 {RUN_STATUS_LABEL[r.status] || r.status}
               </span>
@@ -284,12 +292,12 @@ function PromptSetDetail({ setId, canRun, canDelete, onChanged, onDeleted }) {
                 {r.estimated_cost_usd != null ? ` · $${r.estimated_cost_usd.toFixed(2)}` : ""}
               </span>
               <span className="at-run-date">{fmtDate(r.completed_at || r.created_at)}</span>
-            </div>
+            </Link>
           ))}
         </div>
       )}
     </div>
-    <ResultsPanel setId={setId} runs={data.runs} brand={data} />
+    <ResultsPanel setId={setId} runs={data.runs} brand={data} selectedRunId={selectedRunId} />
     </>
   );
 }
@@ -357,30 +365,36 @@ function citationWhy(diag) {
   }
 }
 
-function ResultsPanel({ setId, runs }) {
-  const latest = runs && runs.length ? runs[0] : null;
-  const [run, setRun] = useState(latest);
+function ResultsPanel({ setId, runs, selectedRunId }) {
+  // The run to show comes from the URL when a run is selected (…/runs/:runId), else the
+  // latest. Deriving the target from `runs` means polling RESUMES on a direct load of a
+  // prompt-set URL — the panel picks up the in-flight run and keeps polling it.
+  const target = selectedRunId
+    ? (runs || []).find((r) => r.id === selectedRunId) || null
+    : (runs && runs.length ? runs[0] : null);
+  const targetId = target ? target.id : null;
+  const [run, setRun] = useState(target);
   const [summary, setSummary] = useState(null);
   const [trend, setTrend] = useState(null);
   const [results, setResults] = useState(null);
   const [expanded, setExpanded] = useState(null);
   const [error, setError] = useState(null);
 
-  // Poll the latest run until its extraction phase completes, then load the analysis.
+  // Poll the target run until its extraction phase completes, then load the analysis.
   useEffect(() => {
-    if (!latest) { setRun(null); setSummary(null); return; }
+    if (!targetId) { setRun(null); setSummary(null); return undefined; }
     let alive = true;
     let timer = null;
     const tick = async () => {
       try {
-        const r = await getPromptRun(latest.id);
+        const r = await getPromptRun(targetId);
         if (!alive) return;
         setRun(r);
         if (r.extraction_status === "complete") {
           const [s, t, res] = await Promise.all([
-            getPromptRunSummary(latest.id),
+            getPromptRunSummary(targetId),
             getPromptSetTrend(setId, { n: 10 }).catch(() => null),
-            getPromptRunResults(latest.id).catch(() => null),
+            getPromptRunResults(targetId).catch(() => null),
           ]);
           if (!alive) return;
           setSummary(s); setTrend(t); setResults(res);
@@ -393,9 +407,9 @@ function ResultsPanel({ setId, runs }) {
     };
     tick();
     return () => { alive = false; if (timer) clearTimeout(timer); };
-  }, [latest, setId]);
+  }, [targetId, setId]);
 
-  if (!latest) {
+  if (!target) {
     return (
       <div className="d-panel at-results" style={{ marginTop: 14 }}>
         <div className="d-panel-h">Results</div>
