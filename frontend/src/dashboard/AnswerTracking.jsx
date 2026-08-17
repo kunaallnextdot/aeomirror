@@ -6,16 +6,16 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import {
-  MessageSquare, Plus, Play, Trash2, Info, RefreshCw, Check, X, Pencil,
+  Plus, Play, Info, RefreshCw, Check, X, Pencil,
   ArrowUpRight, ArrowDownRight, Minus, AlertTriangle, ChevronRight, ChevronDown,
 } from "lucide-react";
 import {
   Line, LineChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from "recharts";
 import {
-  listPromptSets, createPromptSet, getPromptSet, deletePromptSet,
-  addPrompt, updatePrompt, deletePrompt, estimatePromptSet, runPromptSet,
-  getPromptRun, getPromptRunSummary, getPromptSetTrend, getPromptRunResults, ScanError,
+  listMonitors, getMonitorAnswerTracking, addMonitorPrompt, runMonitorAnswerTracking,
+  getMonitorAnswerTrackingTrend, updatePrompt, deletePrompt,
+  getPromptRun, getPromptRunSummary, getPromptRunResults, ScanError,
 } from "../api.js";
 import { ErrorState, TableSkeleton, fmtDate } from "./ui.jsx";
 import { useAuth } from "../auth/AuthContext.jsx";
@@ -29,90 +29,77 @@ const RUN_STATUS_COLOR = {
   running: "var(--accent)", pending: "var(--txt-dim)",
 };
 
-export default function AnswerTracking({ selectedSetId = null, selectedRunId = null }) {
+export default function AnswerTracking({ selectedMonitorId = null, selectedRunId = null }) {
   const { hasPermission } = useAuth();
   const navigate = useNavigate();
   const canRun = hasPermission("scan:run");
-  const canDelete = hasPermission("scan:delete");
 
-  // The selected set + run are the URL's job (single source of truth), not local state.
-  const selectedId = selectedSetId;
-  const selectSet = useCallback((id) => navigate(`/app/answer-tracking/${encodeURIComponent(id)}`), [navigate]);
-
-  const [sets, setSets] = useState(null);
+  const [monitors, setMonitors] = useState(null);
   const [error, setError] = useState(null);
-  const [newName, setNewName] = useState("");
-  const [creating, setCreating] = useState(false);
 
   const load = useCallback(async () => {
     setError(null);
     try {
-      const res = await listPromptSets();
-      setSets(res.prompt_sets || []);
+      const res = await listMonitors();
+      setMonitors(res.monitors || res || []);
     } catch (e) {
-      setError(e instanceof ScanError ? e.message : "Could not load prompt sets.");
+      setError(e instanceof ScanError ? e.message : "Could not load your sites.");
     }
   }, []);
-
   useEffect(() => { load(); }, [load]);
 
-  const create = async () => {
-    const name = newName.trim();
-    if (!name) return;
-    setCreating(true);
-    try {
-      const ps = await createPromptSet({ name });
-      setNewName("");
-      await load();
-      selectSet(ps.id);
-    } catch (e) {
-      setError(e instanceof ScanError ? e.message : "Could not create the prompt set.");
-    } finally { setCreating(false); }
-  };
+  // A single site is auto-selected (no selector) — redirect so the URL carries the choice.
+  const sole = monitors && monitors.length === 1 ? monitors[0] : null;
+  useEffect(() => {
+    if (sole && !selectedMonitorId) {
+      navigate(`/app/answer-tracking/${encodeURIComponent(sole.id)}`, { replace: true });
+    }
+  }, [sole, selectedMonitorId, navigate]);
 
-  if (error && !sets) return <ErrorState message={error} onRetry={load} />;
-  if (!sets) return <TableSkeleton rows={4} />;
+  if (error && !monitors) return <ErrorState message={error} onRetry={load} />;
+  if (!monitors) return <TableSkeleton rows={4} />;
+
+  const active = selectedMonitorId ? monitors.find((m) => m.id === selectedMonitorId) || null : null;
+  const showSelector = monitors.length > 1;   // one site => auto-selected, selector hidden (CHANGE 1d)
 
   return (
     <div className="at-wrap">
       <Explainer />
 
-      <div className="d-panel" style={{ marginTop: 14 }}>
-        <div className="d-panel-h">Prompt sets</div>
-        {canRun && (
-          <div className="at-create">
-            <input className="d-input" placeholder="New prompt set name…" value={newName}
-                   maxLength={120} onChange={(e) => setNewName(e.target.value)}
-                   onKeyDown={(e) => e.key === "Enter" && create()} />
-            <button className="d-btn" disabled={creating || !newName.trim()} onClick={create}>
-              <Plus size={15} /> Create
-            </button>
-          </div>
-        )}
-        {sets.length === 0 ? (
+      {monitors.length === 0 ? (
+        <div className="d-panel" style={{ marginTop: 14 }}>
           <div className="d-dim" style={{ padding: "10px 2px", fontSize: 13 }}>
-            No prompt sets yet. Create one to start tracking how AI assistants answer.
+            No sites yet. Add a site under <b>Monitoring</b> first — Answer Tracking prompts
+            belong to a site.
           </div>
-        ) : (
-          <ul className="at-list">
-            {sets.map((s) => (
-              <li key={s.id} className={s.id === selectedId ? "on" : ""}>
-                {/* whole row is the link target — cmd/ctrl/middle-click opens a new tab */}
-                <Link className="at-list-link" to={`/app/answer-tracking/${encodeURIComponent(s.id)}`}>
-                  <span className="at-list-name">{s.name}</span>
-                  <span className="at-list-meta">
-                    {s.active_prompt_count}/{s.prompt_count} active · {s.prompt_count}/{s.max_prompts} prompts
-                  </span>
-                </Link>
-              </li>
-            ))}
-          </ul>
-        )}
-      </div>
+        </div>
+      ) : (
+        <>
+          {showSelector && (
+            <div className="d-panel at-siteselect" style={{ marginTop: 14 }}>
+              <label className="at-siteselect-h" htmlFor="at-site">Site</label>
+              <select id="at-site" className="d-select" value={selectedMonitorId || ""}
+                      onChange={(e) => e.target.value &&
+                        navigate(`/app/answer-tracking/${encodeURIComponent(e.target.value)}`)}>
+                <option value="" disabled>Select a site…</option>
+                {monitors.map((m) => (
+                  <option key={m.id} value={m.id}>{m.name || m.normalized_url || m.url}</option>
+                ))}
+              </select>
+            </div>
+          )}
 
-      {selectedId && (
-        <PromptSetDetail key={selectedId} setId={selectedId} selectedRunId={selectedRunId} canRun={canRun} canDelete={canDelete}
-                         onChanged={load} onDeleted={() => { navigate("/app/answer-tracking"); load(); }} />
+          {active
+            ? <SiteAnswerTracking key={active.id} monitorId={active.id}
+                                  selectedRunId={selectedRunId} canRun={canRun} />
+            : showSelector && (
+                <div className="d-panel" style={{ marginTop: 14 }}>
+                  <div className="d-dim" style={{ fontSize: 13, padding: "6px 2px" }}>
+                    Select a site above to manage its prompts and see results.
+                  </div>
+                </div>
+              )}
+        </>
       )}
     </div>
   );
@@ -132,10 +119,11 @@ function Explainer() {
   );
 }
 
-function PromptSetDetail({ setId, selectedRunId, canRun, canDelete, onChanged, onDeleted }) {
+/* One site's prompt list + run controls + results. Prompts belong to the site (monitor);
+   the prompt-set concept is gone from the UI. */
+function SiteAnswerTracking({ monitorId, selectedRunId, canRun }) {
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
-  const [estimate, setEstimate] = useState(null);
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
   const [runMsg, setRunMsg] = useState(null);
@@ -143,54 +131,43 @@ function PromptSetDetail({ setId, selectedRunId, canRun, canDelete, onChanged, o
   const load = useCallback(async () => {
     setError(null);
     try {
-      const [d, est] = await Promise.all([
-        getPromptSet(setId),
-        estimatePromptSet(setId).catch(() => null),
-      ]);
-      setData(d);
-      setEstimate(est);
+      setData(await getMonitorAnswerTracking(monitorId));
     } catch (e) {
-      setError(e instanceof ScanError ? e.message : "Could not load this prompt set.");
+      setError(e instanceof ScanError ? e.message : "Could not load this site’s prompts.");
     }
-  }, [setId]);
+  }, [monitorId]);
 
   useEffect(() => { load(); }, [load]);
 
-  const atMax = data && data.prompt_count >= data.max_prompts;
+  const atMax = data && data.prompts.length >= data.max_prompts;
 
-  const add = async () => {
-    const t = text.trim();
+  const add = async (value) => {
+    const t = (value ?? text).trim();
     if (!t) return;
     setBusy(true); setError(null);
     try {
-      await addPrompt(setId, t);
+      await addMonitorPrompt(monitorId, t);
       setText("");
-      await load(); onChanged?.();
+      await load();
     } catch (e) {
       setError(e instanceof ScanError ? e.message : "Could not add the prompt.");
     } finally { setBusy(false); }
   };
 
   const toggle = async (p) => {
-    try { await updatePrompt(p.id, { is_active: !p.is_active }); await load(); onChanged?.(); }
+    try { await updatePrompt(p.id, { is_active: !p.is_active }); await load(); }
     catch (e) { setError(e instanceof ScanError ? e.message : "Could not update the prompt."); }
   };
 
   const removePrompt = async (p) => {
-    try { await deletePrompt(p.id); await load(); onChanged?.(); }
+    try { await deletePrompt(p.id); await load(); }
     catch (e) { setError(e instanceof ScanError ? e.message : "Could not remove the prompt."); }
-  };
-
-  const removeSet = async () => {
-    if (!window.confirm("Delete this prompt set and all its prompts and runs?")) return;
-    try { await deletePromptSet(setId); onDeleted?.(); }
-    catch (e) { setError(e instanceof ScanError ? e.message : "Could not delete the set."); }
   };
 
   const run = async () => {
     setBusy(true); setRunMsg(null); setError(null);
     try {
-      const res = await runPromptSet(setId);
+      const res = await runMonitorAnswerTracking(monitorId);
       setRunMsg({ ok: true, text: `Run ${RUN_STATUS_LABEL[res.status] || res.status}.` });
       await load();
     } catch (e) {
@@ -203,20 +180,19 @@ function PromptSetDetail({ setId, selectedRunId, canRun, canDelete, onChanged, o
   if (error && !data) return <div className="d-panel" style={{ marginTop: 14 }}><ErrorState message={error} onRetry={load} /></div>;
   if (!data) return <div className="d-panel" style={{ marginTop: 14 }}><TableSkeleton rows={3} /></div>;
 
+  const estimate = data.estimate;
   const estCalls = estimate?.call_count ?? 0;
   const estCost = estimate?.estimated_cost_usd;
   const noProviders = estimate && (!estimate.providers || estimate.providers.length === 0);
+  const existing = new Set((data.prompts || []).map((p) => p.text.trim().toLowerCase()));
+  const suggestions = (data.suggestions || []).filter((s) => !existing.has(s.trim().toLowerCase()));
 
   return (
     <>
     <div className="d-panel at-detail" style={{ marginTop: 14 }}>
       <div className="d-panel-h at-detail-h">
-        <span>{data.name}</span>
-        {canDelete && (
-          <button className="d-iconbtn danger" onClick={removeSet} title="Delete set">
-            <Trash2 size={14} />
-          </button>
-        )}
+        <span>{data.site_name || data.brand_name || data.site_url}</span>
+        <span className="at-detail-sub">{data.prompts.length}/{data.max_prompts} prompts</span>
       </div>
 
       {error && <div className="at-err">{error}</div>}
@@ -229,7 +205,7 @@ function PromptSetDetail({ setId, selectedRunId, canRun, canDelete, onChanged, o
         {data.prompts.map((p) => (
           <PromptRow key={p.id} p={p} canRun={canRun}
                      onToggle={() => toggle(p)} onRemove={() => removePrompt(p)}
-                     onSaved={() => { load(); onChanged?.(); }} onError={setError} />
+                     onSaved={load} onError={setError} />
         ))}
       </ul>
 
@@ -240,10 +216,21 @@ function PromptSetDetail({ setId, selectedRunId, canRun, canDelete, onChanged, o
                    value={text} maxLength={2000} disabled={atMax}
                    onChange={(e) => setText(e.target.value)}
                    onKeyDown={(e) => e.key === "Enter" && add()} />
-            <button className="d-btn" disabled={busy || atMax || !text.trim()} onClick={add}>
+            <button className="d-btn" disabled={busy || atMax || !text.trim()} onClick={() => add()}>
               <Plus size={15} /> Add
             </button>
           </div>
+          {/* CHANGE 4a — one-tap starter prompts built from this site's brand */}
+          {!atMax && suggestions.length > 0 && (
+            <div className="at-suggest">
+              <span className="at-suggest-h">Try one:</span>
+              {suggestions.map((s) => (
+                <button key={s} className="at-suggest-chip" disabled={busy} onClick={() => add(s)}>
+                  <Plus size={12} /> {s}
+                </button>
+              ))}
+            </div>
+          )}
           <div className="at-guide">
             Track <b>category queries</b> a buyer would ask — where you’d want to appear:
             <span className="at-guide-good">“best {"<category>"} tools for {"<audience>"}”</span>
@@ -256,7 +243,7 @@ function PromptSetDetail({ setId, selectedRunId, canRun, canDelete, onChanged, o
       )}
       {atMax && (
         <div className="at-note">
-          This set has the maximum of {data.max_prompts} prompts. Remove one to add another.
+          This site has the maximum of {data.max_prompts} prompts. Remove one to add another.
         </div>
       )}
 
@@ -292,7 +279,7 @@ function PromptSetDetail({ setId, selectedRunId, canRun, canDelete, onChanged, o
           <div className="at-runs-h">Recent runs</div>
           {data.runs.map((r) => (
             <Link key={r.id} className="at-run-row"
-                  to={`/app/answer-tracking/${encodeURIComponent(setId)}/runs/${encodeURIComponent(r.id)}`}>
+                  to={`/app/answer-tracking/${encodeURIComponent(monitorId)}/runs/${encodeURIComponent(r.id)}`}>
               <span className="at-run-status" style={{ color: RUN_STATUS_COLOR[r.status] }}>
                 {RUN_STATUS_LABEL[r.status] || r.status}
               </span>
@@ -307,7 +294,7 @@ function PromptSetDetail({ setId, selectedRunId, canRun, canDelete, onChanged, o
         </div>
       )}
     </div>
-    <ResultsPanel setId={setId} runs={data.runs} brand={data} selectedRunId={selectedRunId} />
+    <ResultsPanel monitorId={monitorId} runs={data.runs} selectedRunId={selectedRunId} />
     </>
   );
 }
@@ -384,7 +371,7 @@ function citationWhy(diag) {
   }
 }
 
-function ResultsPanel({ setId, runs, selectedRunId }) {
+function ResultsPanel({ monitorId, runs, selectedRunId }) {
   // The run to show comes from the URL when a run is selected (…/runs/:runId), else the
   // latest. Deriving the target from `runs` means polling RESUMES on a direct load of a
   // prompt-set URL — the panel picks up the in-flight run and keeps polling it.
@@ -413,7 +400,7 @@ function ResultsPanel({ setId, runs, selectedRunId }) {
         if (r.extraction_status === "complete") {
           const [s, t, res] = await Promise.all([
             getPromptRunSummary(targetId),
-            getPromptSetTrend(setId, { n: 10 }).catch(() => null),
+            getMonitorAnswerTrackingTrend(monitorId, { n: 10 }).catch(() => null),
             getPromptRunResults(targetId).catch(() => null),
           ]);
           if (!alive) return;
@@ -427,7 +414,7 @@ function ResultsPanel({ setId, runs, selectedRunId }) {
     };
     tick();
     return () => { alive = false; if (timer) clearTimeout(timer); };
-  }, [targetId, setId]);
+  }, [targetId, monitorId]);
 
   if (!target) {
     return (
@@ -711,16 +698,30 @@ function PromptResultRow({ row, open, onToggle, results }) {
       </button>
       {open && (
         <div className="at-prow-body">
-          {row.irrelevant_hint && (
-            <div className="at-hint">
-              This prompt returned no mentions and no category competitors — it may not be a
-              category query for your brand. We won’t change it; that’s your call.
-            </div>
-          )}
-          {row.gap && <GapToAction gap={row.gap} />}
-          {group && groupByProvider(group.results).map((g) => <ProviderGroup key={g.provider} g={g} />)}
+          {/* CHANGE 3 priority: gap-to-action (what the user came for) beats the informational
+              hint; the informational hint (CHANGE 4b) only shows when there's no gap. */}
+          {row.gap
+            ? <GapToAction gap={row.gap} />
+            : row.irrelevant_hint && <InformationalHint />}
+          {group && groupByProvider(group.results).map((g) => (
+            <ProviderGroup key={g.provider} g={g}
+                           ctx={{ hasGap: !!row.gap, informational: !!row.irrelevant_hint }} />
+          ))}
         </div>
       )}
+    </div>
+  );
+}
+
+/* CHANGE 4b — a prompt where NO provider recommended any brand is informational, not a buying
+   query, so it can't measure visibility. A HINT only: we never auto-disable or edit the prompt. */
+function InformationalHint() {
+  return (
+    <div className="at-hint">
+      <b>Looks informational.</b> No provider recommended any brand for this question, so it can’t
+      measure your visibility — it reads as an informational query, not a buying one. Try a
+      category buying query instead, e.g. <i>“best {"<category>"} tools for {"<audience>"}”</i>.
+      This is just a hint — we won’t change your prompt.
     </div>
   );
 }
@@ -775,9 +776,16 @@ export function groupByProvider(samples) {
     // A provider's samples all share a search mode; note if any sample lacked web search.
     const searchOff = rs.some((r) => r.search_enabled === false);
 
+    // CHANGE 2 — do the samples AGREE? Same mention verdict AND same set of recommended
+    // entities => "identical". Disagreement is real signal (unstable position) and stays visible.
+    const recKey = (r) => JSON.stringify(
+      (r.recommended_entities || []).map((e) => (e.name || "").trim().toLowerCase()).sort());
+    const verdictKey = (r) => `${r.brand_mentioned}|${recKey(r)}`;
+    const identical = total > 1 && rs.every((r) => verdictKey(r) === verdictKey(rs[0]));
+
     return {
       provider, samples: rs, total, namedCount: named.length,
-      anyNamed: named.length > 0, allExtractionFailed,
+      anyNamed: named.length > 0, allExtractionFailed, identical,
       sentence: namedWithCtx ? namedWithCtx.mention_context : null,
       recommended, citations,
       sentiment: namedWithSent ? namedWithSent.sentiment : null,
@@ -789,10 +797,15 @@ export function groupByProvider(samples) {
   return groups.sort((a, b) => (b.anyNamed === a.anyNamed ? 0 : b.anyNamed ? 1 : -1));
 }
 
-/* One provider's result for a prompt, aggregated across its samples. Individual samples
-   remain available behind the "View full response" expander. */
-function ProviderGroup({ g }) {
+const _LETTERS = "ABCDEFGH";
+
+/* One provider's result for a prompt, aggregated across its samples. When the samples AGREE
+   the block is labelled "N identical responses" and the expander shows one; when they DIFFER
+   it is labelled "responses differed" and the expander lists each as "Response A/B". No sample
+   index is ever shown. `ctx` carries prompt-level gap/informational state (CHANGE 3). */
+export function ProviderGroup({ g, ctx }) {
   const [showRaw, setShowRaw] = useState(false);
+  const shown = g.identical ? g.samples.slice(0, 1) : g.samples;   // identical => show one
   return (
     <div className="at-verdict">
       <div className="at-verdict-h">
@@ -802,6 +815,11 @@ function ProviderGroup({ g }) {
           : g.namedCount > 0
             ? <span className="at-tag ok">Named in {g.namedCount} of {g.total}</span>
             : <span className="at-tag no">Not named in any of {g.total}</span>}
+        {g.total > 1 && (
+          g.identical
+            ? <span className="at-tag" title="Both samples agreed">{g.total} identical responses</span>
+            : <span className="at-tag warn" title="Samples disagreed — an unstable position">responses differed</span>
+        )}
         {g.sentiment && <span className="at-tag" style={{ color: SENT_COLOR[g.sentiment] }}>{g.sentiment}</span>}
         {g.position != null && <span className="at-tag">#{g.position}</span>}
         {g.searchOff && <span className="at-tag warn" title="These samples ran without web search — citations may be unavailable">no web search</span>}
@@ -816,7 +834,7 @@ function ProviderGroup({ g }) {
           ))}
         </div>
       )}
-      {g.recommended.length > 0 && (
+      {g.recommended.length > 0 ? (
         <div className="at-verdict-body">
           <div className="at-instead">
             <span className="d-dim">{g.namedCount > 0 ? "Also recommended:" : "Recommended instead:"}</span>{" "}
@@ -825,29 +843,49 @@ function ProviderGroup({ g }) {
             ))}
           </div>
         </div>
-      )}
+      ) : (g.namedCount === 0 && !g.allExtractionFailed && (
+        <div className="at-verdict-body"><EmptyRecommendation ctx={ctx} /></div>
+      ))}
       <button className="at-rawtoggle" onClick={() => setShowRaw((s) => !s)}>
-        {showRaw ? "Hide" : "View"} full response ({g.total} sample{g.total === 1 ? "" : "s"})
+        {showRaw ? "Hide" : "View"} full response{!g.identical && g.total > 1 ? "s" : ""}
       </button>
       {showRaw && (
         <div className="at-verdict-samples">
-          {g.samples.map((r, i) => <SampleVerdict key={i} r={r} />)}
+          {shown.map((r, i) => (
+            <SampleVerdict key={i} r={r} ctx={ctx}
+                           label={g.total > 1 && !g.identical ? `Response ${_LETTERS[i]}` : null} />
+          ))}
         </div>
       )}
     </div>
   );
 }
 
-/* One prompt×provider sample as a structured VERDICT — not a wall of prose. The full raw
-   response is available behind an explicit expander, closed by default. */
-function SampleVerdict({ r }) {
+/* CHANGE 3 — replaces the old useless "No specific brands were recommended for this query."
+   line, in priority order: gap-to-action (shown above) > informational prompt > fallback. */
+function EmptyRecommendation({ ctx }) {
+  if (ctx?.hasGap) {
+    return <div className="d-dim" style={{ fontSize: 12 }}>
+      No brand recommended — see “Why not you — and what to do” above.</div>;
+  }
+  if (ctx?.informational) {
+    return <div className="d-dim" style={{ fontSize: 12 }}>
+      No provider recommended a brand — this reads as an informational question, not a buying
+      query, so it can’t show brand visibility.</div>;
+  }
+  return <div className="d-dim" style={{ fontSize: 12 }}>No specific brands were recommended in this response.</div>;
+}
+
+/* One prompt×provider sample as a structured VERDICT — not a wall of prose. `label` is a
+   human "Response A/B" (never a sample index). The full raw response is behind an expander. */
+function SampleVerdict({ r, label, ctx }) {
   const [showRaw, setShowRaw] = useState(false);
   const mentioned = r.brand_mentioned === true;
   return (
     <div className="at-verdict">
       <div className="at-verdict-h">
         <b>{r.provider}</b>
-        <span className="d-dim"> · sample {r.run_index}{r.is_adaptive_run ? " (adaptive)" : ""}</span>
+        {label && <span className="d-dim"> · {label}</span>}
         {r.extraction_failed
           ? <span className="at-tag warn">extraction failed</span>
           : mentioned
@@ -875,7 +913,7 @@ function SampleVerdict({ r }) {
               ))}
             </div>
           ) : (
-            <div className="d-dim" style={{ fontSize: 12 }}>No specific brands were recommended for this query.</div>
+            <EmptyRecommendation ctx={ctx} />
           )}
         </div>
       )}

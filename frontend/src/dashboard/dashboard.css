@@ -702,3 +702,16 @@
 .at-lb-clear{margin-left:auto;background:none;border:1px solid var(--line-2);border-radius:6px;
   color:var(--txt-mid);font-size:11px;padding:3px 8px;cursor:pointer}
 .at-lb-clear:hover{color:var(--txt);border-color:var(--accent)}
+
+/* monitor-scoped Answer Tracking: site selector, starter suggestions */
+.at-siteselect{display:flex;align-items:center;gap:10px}
+.at-siteselect-h{font-size:12.5px;font-weight:600;color:var(--txt-mid)}
+.at-siteselect .d-select{min-width:220px}
+.at-detail-sub{font-size:11.5px;color:var(--txt-dim);font-weight:500}
+.at-suggest{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin:8px 0 2px}
+.at-suggest-h{font-size:11.5px;color:var(--txt-dim);margin-right:2px}
+.at-suggest-chip{display:inline-flex;align-items:center;gap:4px;background:var(--panel-2);
+  border:1px solid var(--line-2);border-radius:16px;color:var(--txt-mid);font-size:11.5px;
+  padding:4px 10px;cursor:pointer;transition:color .12s,border-color .12s}
+.at-suggest-chip:hover:not(:disabled){color:var(--accent);border-color:var(--accent)}
+.at-suggest-chip:disabled{opacity:.5;cursor:default}

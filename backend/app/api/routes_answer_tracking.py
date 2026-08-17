@@ -17,7 +17,8 @@ from app.db.models import (
 )
 from app.db.session import get_db
 from app.schemas.answer_tracking import (
-    CreatePromptRequest, CreatePromptSetRequest, UpdatePromptRequest, UpdatePromptSetRequest,
+    CreatePromptRequest, CreatePromptSetRequest, UpdateMonitorBrandRequest,
+    UpdatePromptRequest, UpdatePromptSetRequest,
 )
 from app.services.answer_tracking import aggregation, extraction, gap_analysis, runner, service
 from app.services.answer_tracking.errors import RunRefused
@@ -80,6 +81,120 @@ def _run_out(run: PromptRun) -> dict:
         "started_at": run.started_at, "completed_at": run.completed_at,
         "created_at": run.created_at,
     }
+
+
+# ------------------------------- monitor-scoped answer tracking -------------------------------
+# Prompts belong to a SITE (monitor). Each monitor has exactly one prompt list, backed
+# internally by a single hidden PromptSet — the set concept is gone from the user's model.
+def _owned_monitor(db: Session, ctx: AuthContext, monitor_id: str) -> Monitor:
+    m = service.owned_monitor(db, ctx.org_id, monitor_id)
+    if m is None:
+        raise HTTPException(status_code=404, detail="Monitor not found.")
+    return m
+
+
+def _monitor_brand_out(m: Monitor) -> dict:
+    return {
+        "monitor_id": m.id, "site_name": m.name, "site_url": m.normalized_url,
+        "brand_name": m.brand_name or m.name, "brand_domain": m.brand_domain or m.normalized_url,
+        "brand_aliases": m.brand_aliases or [], "competitor_domains": m.competitor_domains or [],
+    }
+
+
+@router.get("/monitors/{monitor_id}/answer-tracking")
+def monitor_answer_tracking(monitor_id: str,
+                            ctx: AuthContext = Depends(require_permission("report:view")),
+                            db: Session = Depends(get_db)):
+    """Everything the Answer Tracking page needs for ONE site: brand identity, prompts,
+    recent runs, the pre-run estimate, the trend, and starter-prompt suggestions."""
+    m = _owned_monitor(db, ctx, monitor_id)
+    ps = service.prompt_set_for_monitor(db, ctx.org_id, monitor_id, create=True)
+    prompts = (db.query(TrackedPrompt)
+               .filter(TrackedPrompt.prompt_set_id == ps.id)
+               .order_by(TrackedPrompt.created_at).all())
+    runs = (db.query(PromptRun)
+            .filter(PromptRun.prompt_set_id == ps.id)
+            .order_by(PromptRun.created_at.desc()).limit(20).all())
+    return {
+        **_monitor_brand_out(m),
+        "max_prompts": settings.answer_tracking_max_prompts,
+        "prompts": [_prompt_out(p) for p in prompts],
+        "runs": [_run_out(r) for r in runs],
+        "suggestions": service.suggest_prompts(m),
+        "estimate": service.estimate_run(db, ps),
+        "trend": aggregation.set_trend(db, ps, n=10),
+    }
+
+
+@router.patch("/monitors/{monitor_id}/answer-tracking")
+def update_monitor_brand(monitor_id: str, body: UpdateMonitorBrandRequest,
+                         ctx: AuthContext = Depends(require_permission("scan:run")),
+                         db: Session = Depends(get_db)):
+    m = _owned_monitor(db, ctx, monitor_id)
+    if body.brand_name is not None:
+        m.brand_name = body.brand_name.strip() or None
+    if body.brand_domain is not None:
+        m.brand_domain = body.brand_domain.strip().lower() or None
+    if body.brand_aliases is not None:
+        m.brand_aliases = body.brand_aliases or None
+    if body.competitor_domains is not None:
+        m.competitor_domains = body.competitor_domains or None
+    db.commit()
+    db.refresh(m)
+    return _monitor_brand_out(m)
+
+
+@router.post("/monitors/{monitor_id}/answer-tracking/prompts")
+def monitor_add_prompt(monitor_id: str, body: CreatePromptRequest,
+                       ctx: AuthContext = Depends(require_permission("scan:run")),
+                       db: Session = Depends(get_db)):
+    _owned_monitor(db, ctx, monitor_id)
+    ps = service.prompt_set_for_monitor(db, ctx.org_id, monitor_id, create=True)
+    cap = settings.answer_tracking_max_prompts
+    if service.prompt_count(db, ps.id) >= cap:
+        raise HTTPException(status_code=422,
+                            detail=f"This site already has the maximum of {cap} prompts.")
+    p = TrackedPrompt(prompt_set_id=ps.id, organization_id=ctx.org_id, text=body.text.strip())
+    db.add(p)
+    db.commit()
+    db.refresh(p)
+    return _prompt_out(p)
+
+
+@router.get("/monitors/{monitor_id}/answer-tracking/estimate")
+def monitor_estimate(monitor_id: str,
+                     ctx: AuthContext = Depends(require_permission("report:view")),
+                     db: Session = Depends(get_db)):
+    _owned_monitor(db, ctx, monitor_id)
+    ps = service.prompt_set_for_monitor(db, ctx.org_id, monitor_id, create=True)
+    return service.estimate_run(db, ps)
+
+
+@router.get("/monitors/{monitor_id}/answer-tracking/trend")
+def monitor_trend(monitor_id: str, n: int = Query(default=10, ge=2, le=50),
+                  ctx: AuthContext = Depends(require_permission("report:view")),
+                  db: Session = Depends(get_db)):
+    _owned_monitor(db, ctx, monitor_id)
+    ps = service.prompt_set_for_monitor(db, ctx.org_id, monitor_id, create=True)
+    return aggregation.set_trend(db, ps, n=n)
+
+
+@router.post("/monitors/{monitor_id}/answer-tracking/run")
+async def monitor_run(monitor_id: str,
+                      override: bool = Query(default=False),
+                      ctx: AuthContext = Depends(require_permission("scan:run")),
+                      db: Session = Depends(get_db)):
+    _owned_monitor(db, ctx, monitor_id)
+    ps = service.prompt_set_for_monitor(db, ctx.org_id, monitor_id, create=True)
+    can_override = ctx.role in (ROLE_ADMIN, ROLE_OWNER)
+    try:
+        run = service.create_run(db, ps, now=datetime.utcnow(), can_override=can_override,
+                                  override=override, actor_user_id=ctx.user.id)
+    except RunRefused as exc:
+        raise HTTPException(status_code=429, detail=exc.detail,
+                            headers={"X-Run-Refused-Reason": exc.reason})
+    await runner.execute_run(db, run)
+    return {"run_id": run.id, "status": run.status}
 
 
 # ------------------------------- prompt sets -------------------------------

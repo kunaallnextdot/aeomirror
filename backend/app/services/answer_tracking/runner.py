@@ -168,6 +168,7 @@ async def execute_run(db: Session, run: PromptRun) -> PromptRun:
     for rec in all_records:
         db.add(PromptResult(
             run_id=run.id, prompt_id=rec["prompt_id"], organization_id=run.organization_id,
+            monitor_id=run.monitor_id,
             provider=rec["provider"], model=rec["model"], run_index=rec["run_index"],
             is_adaptive_run=rec["is_adaptive_run"], search_enabled=rec["search_enabled"],
             raw_response=rec["raw_response"], citations=rec["citations"],

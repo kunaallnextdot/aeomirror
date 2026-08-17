@@ -14,7 +14,7 @@ from sqlalchemy.orm import Session
 from app.config import settings
 from app.db.models import (
     RUN_COMPLETED, RUN_PARTIAL,
-    PromptRun, PromptSet, TrackedPrompt,
+    Monitor, PromptRun, PromptSet, TrackedPrompt,
 )
 
 from . import providers as provider_registry
@@ -32,6 +32,59 @@ def owned_prompt_set(db: Session, org_id: str, prompt_set_id: str) -> PromptSet 
     if not ps or ps.organization_id != org_id:
         return None
     return ps
+
+
+def owned_monitor(db: Session, org_id: str, monitor_id: str) -> Monitor | None:
+    m = db.get(Monitor, monitor_id)
+    if not m or m.organization_id != org_id:
+        return None
+    return m
+
+
+def prompt_set_for_monitor(db: Session, org_id: str, monitor_id: str,
+                           *, create: bool = True) -> PromptSet | None:
+    """The ONE prompt list for a site. A monitor has exactly one prompt set (the concept is
+    hidden from the user); this resolves it, creating it lazily when `create`. Deterministic:
+    if a monitor somehow has several legacy sets, the earliest-created is canonical (the others
+    are never deleted, just not surfaced). Returns None when the monitor isn't owned."""
+    monitor = owned_monitor(db, org_id, monitor_id)
+    if monitor is None:
+        return None
+    ps = (db.query(PromptSet)
+          .filter(PromptSet.organization_id == org_id, PromptSet.monitor_id == monitor_id)
+          .order_by(PromptSet.created_at).first())
+    if ps is None and create:
+        ps = PromptSet(organization_id=org_id, monitor_id=monitor_id,
+                       name=(monitor.name or monitor.normalized_url or "Prompts"))
+        db.add(ps)
+        db.commit()
+        db.refresh(ps)
+    return ps
+
+
+def _domain_root(value: str | None) -> str:
+    """Second-level label of a domain/url ('acme' from https://www.acme.com/x)."""
+    d = (value or "").strip().lower()
+    if not d:
+        return ""
+    d = d.split("//")[-1].split("/")[0]
+    if d.startswith("www."):
+        d = d[4:]
+    labels = [p for p in d.split(".") if p]
+    return labels[-2] if len(labels) >= 2 else (labels[0] if labels else "")
+
+
+def suggest_prompts(monitor: Monitor) -> list[str]:
+    """Three category-style starter prompts seeded from the site's brand name / domain, as
+    one-tap starting points when adding a prompt (CHANGE 4). NOTE: there is no detected-category
+    field in the scan model, so these are brand/domain-seeded templates, not category-derived."""
+    brand = (monitor.brand_name or monitor.name or "").strip()
+    label = brand or _domain_root(monitor.brand_domain or monitor.normalized_url).title() or "your brand"
+    return [
+        f"best alternatives to {label}",
+        f"top {label} competitors compared",
+        f"what are the best tools like {label} for teams",
+    ]
 
 
 def active_prompts(db: Session, prompt_set_id: str) -> list[TrackedPrompt]:
@@ -151,7 +204,8 @@ def create_run(db: Session, prompt_set: PromptSet, *, now: datetime | None = Non
             reason="monthly_limit",
         )
 
-    run = PromptRun(organization_id=prompt_set.organization_id, prompt_set_id=prompt_set.id)
+    run = PromptRun(organization_id=prompt_set.organization_id, prompt_set_id=prompt_set.id,
+                    monitor_id=prompt_set.monitor_id)
     db.add(run)
     db.commit()
     db.refresh(run)

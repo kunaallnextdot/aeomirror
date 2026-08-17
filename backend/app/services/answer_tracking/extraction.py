@@ -43,13 +43,20 @@ _SENTIMENTS = ("positive", "neutral", "negative")
 
 # --------------------------- brand context ---------------------------
 def brand_context(db: Session, ps: PromptSet) -> dict:
-    """Resolve the brand identity for extraction. Brand fields win; where empty, fall
-    back to the linked monitor (seed source)."""
+    """Resolve the brand identity for extraction. Brand fields live on the MONITOR (they
+    describe the site); the monitor's name/url seed anything unset. Legacy prompt-set brand
+    fields are used only as a last-resort fallback for pre-migration sets with no monitor."""
     monitor = db.get(Monitor, ps.monitor_id) if ps and ps.monitor_id else None
-    name = (ps.brand_name or (monitor.name if monitor else "") or "").strip()
-    domain = (ps.brand_domain or (monitor.normalized_url if monitor else "") or "").strip().lower()
-    aliases = [a for a in (ps.brand_aliases or []) if isinstance(a, str) and a.strip()]
-    competitors = [c for c in (ps.competitor_domains or []) if isinstance(c, str) and c.strip()]
+    if monitor is not None:
+        name = (monitor.brand_name or monitor.name or "").strip()
+        domain = (monitor.brand_domain or monitor.normalized_url or "").strip().lower()
+        aliases = [a for a in (monitor.brand_aliases or []) if isinstance(a, str) and a.strip()]
+        competitors = [c for c in (monitor.competitor_domains or []) if isinstance(c, str) and c.strip()]
+    else:   # monitorless legacy set — fall back to whatever was stored on the set
+        name = (ps.brand_name or "").strip()
+        domain = (ps.brand_domain or "").strip().lower()
+        aliases = [a for a in (ps.brand_aliases or []) if isinstance(a, str) and a.strip()]
+        competitors = [c for c in (ps.competitor_domains or []) if isinstance(c, str) and c.strip()]
     return {"name": name, "domain": domain, "aliases": aliases, "competitors": competitors}
 
 
@@ -266,6 +273,7 @@ async def extract_for_run(db: Session, run: PromptRun) -> dict:
         calls += rec["calls"]
         db.add(PromptResultAnalysis(
             result_id=r.id, run_id=run.id, organization_id=run.organization_id,
+            monitor_id=run.monitor_id,
             brand_mentioned=rec["brand_mentioned"], mention_context=rec["mention_context"],
             sentiment=rec["sentiment"], brand_urls_cited=rec["brand_urls_cited"],
             competitors_mentioned=rec["competitors_mentioned"],

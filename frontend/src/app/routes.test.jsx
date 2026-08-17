@@ -7,7 +7,7 @@ import { MemoryRouter, Routes, Route } from "react-router-dom";
 import { describe, it, expect, vi } from "vitest";
 
 vi.mock("../dashboard/AnswerTracking.jsx", () => ({
-  default: (props) => <div>set:{String(props.selectedSetId)} run:{String(props.selectedRunId)}</div>,
+  default: (props) => <div>site:{String(props.selectedMonitorId)} run:{String(props.selectedRunId)}</div>,
 }));
 
 import { AppIndexRedirect, AnswerTrackingRoute, NotFoundRoute } from "./routes.jsx";
@@ -29,13 +29,13 @@ describe("app routing", () => {
 
   it("a detail route reads its id (and nested run id) from the URL params", () => {
     render(
-      <MemoryRouter initialEntries={["/app/answer-tracking/SET1/runs/RUN9"]}>
+      <MemoryRouter initialEntries={["/app/answer-tracking/MON1/runs/RUN9"]}>
         <Routes>
-          <Route path="/app/answer-tracking/:promptSetId/runs/:runId" element={<AnswerTrackingRoute />} />
+          <Route path="/app/answer-tracking/:monitorId/runs/:runId" element={<AnswerTrackingRoute />} />
         </Routes>
       </MemoryRouter>,
     );
-    expect(screen.getByText("set:SET1 run:RUN9")).toBeTruthy();
+    expect(screen.getByText("site:MON1 run:RUN9")).toBeTruthy();
   });
 
   it("an unknown /app route renders the in-layout 404", () => {

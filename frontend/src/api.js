@@ -368,6 +368,28 @@ export function updatePrompt(id, patch) {
 export function deletePrompt(id) {
   return request(`/prompts/${encodeURIComponent(id)}`, { method: "DELETE" });
 }
+
+/* Monitor-scoped Answer Tracking — prompts belong to a SITE (monitor). One prompt list per
+   site; the prompt-set concept is internal only. */
+export function getMonitorAnswerTracking(monitorId) {
+  return request(`/monitors/${encodeURIComponent(monitorId)}/answer-tracking`);
+}
+export function updateMonitorBrand(monitorId, patch) {
+  return request(`/monitors/${encodeURIComponent(monitorId)}/answer-tracking`,
+    { method: "PATCH", body: JSON.stringify(patch) });
+}
+export function addMonitorPrompt(monitorId, text) {
+  return request(`/monitors/${encodeURIComponent(monitorId)}/answer-tracking/prompts`,
+    { method: "POST", body: JSON.stringify({ text }) });
+}
+export function runMonitorAnswerTracking(monitorId, { override } = {}) {
+  const qs = override ? `?override=true` : "";
+  return request(`/monitors/${encodeURIComponent(monitorId)}/answer-tracking/run${qs}`, { method: "POST" });
+}
+export function getMonitorAnswerTrackingTrend(monitorId, { n } = {}) {
+  const qs = n ? `?n=${encodeURIComponent(n)}` : "";
+  return request(`/monitors/${encodeURIComponent(monitorId)}/answer-tracking/trend${qs}`);
+}
 export function estimatePromptSet(id) {
   return request(`/prompt-sets/${encodeURIComponent(id)}/estimate`);
 }

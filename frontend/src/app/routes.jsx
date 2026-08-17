@@ -113,8 +113,8 @@ export function MonitorDetailRoute() {
 }
 
 export function AnswerTrackingRoute() {
-  const { promptSetId, runId } = useParams();
-  return <AnswerTracking selectedSetId={promptSetId || null} selectedRunId={runId || null} />;
+  const { monitorId, runId } = useParams();
+  return <AnswerTracking selectedMonitorId={monitorId || null} selectedRunId={runId || null} />;
 }
 
 export function BillingRoute() { return <BillingView />; }

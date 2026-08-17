@@ -14,7 +14,7 @@ from sqlalchemy.orm import Session
 from app.config import settings
 from app.db.models import (
     _RUN_TERMINAL,
-    PromptGapAnalysis, PromptResult, PromptResultAnalysis, PromptRun, PromptSet, TrackedPrompt,
+    Monitor, PromptGapAnalysis, PromptResult, PromptResultAnalysis, PromptRun, PromptSet, TrackedPrompt,
 )
 
 # mention_type values that mean "recommended/compared as a SOLUTION" (so it counts as a
@@ -118,22 +118,40 @@ def _normalise_entity_key(name: str) -> str:
     return key or s
 
 
-def _brand_keys(ps: PromptSet | None) -> set[str]:
+def _brand_fields(db: Session, ps: PromptSet | None) -> dict:
+    """Brand identity for a set, resolved from the MONITOR (brand fields live on the site now);
+    legacy set fields are a last-resort fallback for monitorless pre-migration sets."""
+    empty = {"name": "", "domain": "", "aliases": [], "competitors": []}
+    if not ps:
+        return empty
+    monitor = db.get(Monitor, ps.monitor_id) if ps.monitor_id else None
+    if monitor is not None:
+        return {
+            "name": (monitor.brand_name or monitor.name or ""),
+            "domain": (monitor.brand_domain or monitor.normalized_url or ""),
+            "aliases": list(monitor.brand_aliases or []),
+            "competitors": list(monitor.competitor_domains or []),
+        }
+    return {
+        "name": (ps.brand_name or ""), "domain": (ps.brand_domain or ""),
+        "aliases": list(ps.brand_aliases or []), "competitors": list(ps.competitor_domains or []),
+    }
+
+
+def _brand_keys(brand_fields: dict) -> set[str]:
     """Normalised keys that identify the tracked brand (name + aliases + domain root)."""
     keys: set[str] = set()
-    if not ps:
-        return keys
-    for v in [ps.brand_name, *(ps.brand_aliases or [])]:
+    for v in [brand_fields.get("name"), *(brand_fields.get("aliases") or [])]:
         k = _normalise_entity_key(v or "")
         if k:
             keys.add(k)
-    dk = _normalise_entity_key((ps.brand_domain or "").split("/")[0])
+    dk = _normalise_entity_key((brand_fields.get("domain") or "").split("/")[0])
     if dk:
         keys.add(dk)
     return keys
 
 
-def _leaderboard(successful, results, denom, prompt_hit, ps, excluded, min_appearances):
+def _leaderboard(successful, results, denom, prompt_hit, brand_fields, excluded, min_appearances):
     """Run-level competitive leaderboard built from stored `recommended_entities` (the ordered
     solutions each answer put forward). Merges surface forms per `_normalise_entity_key`, drops
     excluded AI platforms, applies the min-appearances threshold (the tracked brand is exempt so
@@ -143,7 +161,7 @@ def _leaderboard(successful, results, denom, prompt_hit, ps, excluded, min_appea
     NOT mentioned — answers it holds and you don't. average_position is the mean rank ACROSS
     SAMPLES WHOSE ANSWER WAS AN ORDERED LIST (signalled by a non-null brand position), null when
     no such sample recommended the entity."""
-    brand_keys = _brand_keys(ps)
+    brand_keys = _brand_keys(brand_fields)
     appearances: Counter = Counter()
     prompts_by_key: dict[str, set] = {}
     ranks: dict[str, list[int]] = {}
@@ -254,7 +272,8 @@ def run_metrics(db: Session, run: PromptRun) -> dict:
     # AI assistants / search engines stay excluded (FIX1). Entities whose domain/name match
     # the org's configured competitor_domains are flagged `tracked` (the trusted signal).
     ps = db.get(PromptSet, run.prompt_set_id)
-    configured_roots = {_root(d) for d in (ps.competitor_domains or [])} - {""} if ps else set()
+    brand_fields = _brand_fields(db, ps)          # from the monitor (brand identity lives on the site)
+    configured_roots = {_root(d) for d in brand_fields["competitors"]} - {""}
     excluded_entities = settings.answer_tracking_excluded_entity_set()
     comp_hit: Counter = Counter()
     comp_domain: dict[str, str | None] = {}
@@ -304,7 +323,7 @@ def run_metrics(db: Session, run: PromptRun) -> dict:
 
     # run-level competitive leaderboard (who is beating the brand, and where it is absent)
     leaderboard, leaderboard_excluded = _leaderboard(
-        successful, results, denom, prompt_hit, ps, excluded_entities,
+        successful, results, denom, prompt_hit, brand_fields, excluded_entities,
         settings.answer_tracking_leaderboard_min_appearances,
     )
 

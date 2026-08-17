@@ -167,6 +167,7 @@ async def run_gap_analysis_for_run(db: Session, run: PromptRun) -> dict:
             log.exception("answer-tracking: gap analysis failed run=%s prompt=%s", run.id, pid)
         db.add(PromptGapAnalysis(
             run_id=run.id, prompt_id=pid, organization_id=run.organization_id,
+            monitor_id=run.monitor_id,
             why=rec["why"], actions=rec["actions"], has_signal=rec["has_signal"],
             model=getattr(provider, "model", settings.answer_tracking_gap_analysis_model_resolved),
         ))

@@ -28,8 +28,8 @@ export default function AppRoot() {
           <Route path="monitoring" element={<MonitoringRoute />} />
           <Route path="monitoring/:monitorId" element={<MonitorDetailRoute />} />
           <Route path="answer-tracking" element={<AnswerTrackingRoute />} />
-          <Route path="answer-tracking/:promptSetId" element={<AnswerTrackingRoute />} />
-          <Route path="answer-tracking/:promptSetId/runs/:runId" element={<AnswerTrackingRoute />} />
+          <Route path="answer-tracking/:monitorId" element={<AnswerTrackingRoute />} />
+          <Route path="answer-tracking/:monitorId/runs/:runId" element={<AnswerTrackingRoute />} />
           <Route path="report" element={<ReportRoute />} />
           <Route path="compare" element={<CompareRoute />} />
           <Route path="website-summary" element={<SummaryRoute />} />

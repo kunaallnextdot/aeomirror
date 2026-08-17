@@ -308,6 +308,13 @@ class Monitor(Base):
     latest_scan_id = Column(String, nullable=True)
     latest_score = Column(Integer, nullable=True)
     digest_enabled = Column(Boolean, nullable=False, default=True)   # include in the weekly digest
+    # Answer Tracking brand identity — describes THIS site, so it lives on the monitor (a
+    # site has exactly one prompt list). Seeded from name/url; independently editable
+    # (legal entity name often differs from the marketed brand name). Drives LLM extraction.
+    brand_name = Column(String, nullable=True)
+    brand_domain = Column(String, nullable=True)
+    brand_aliases = Column(JSON, nullable=True)              # list[str]
+    competitor_domains = Column(JSON, nullable=True)         # list[str], max 5
 
 
 class ScheduledJob(Base):
@@ -658,6 +665,7 @@ class PromptRun(Base):
     id = Column(String, primary_key=True, default=_uuid)
     organization_id = Column(String, index=True, nullable=False)
     prompt_set_id = Column(String, index=True, nullable=False)
+    monitor_id = Column(String, index=True, nullable=True)   # the site this run belongs to
     started_at = Column(DateTime, nullable=True)
     completed_at = Column(DateTime, nullable=True)
     status = Column(String, nullable=False, default=RUN_PENDING)
@@ -679,6 +687,7 @@ class PromptResult(Base):
     run_id = Column(String, index=True, nullable=False)
     prompt_id = Column(String, index=True, nullable=False)
     organization_id = Column(String, index=True, nullable=False)
+    monitor_id = Column(String, index=True, nullable=True)   # the site this result belongs to
     provider = Column(String, nullable=False)
     model = Column(String, nullable=False)          # exact model string (never a floating alias)
     run_index = Column(Integer, nullable=False)     # 0..runs_per_prompt-1 (base); == runs_per_prompt for adaptive
@@ -707,6 +716,7 @@ class PromptResultAnalysis(Base):
     result_id = Column(String, index=True, nullable=False)
     run_id = Column(String, index=True, nullable=False)
     organization_id = Column(String, index=True, nullable=False)
+    monitor_id = Column(String, index=True, nullable=True)   # the site this analysis belongs to
     brand_mentioned = Column(Boolean, nullable=True)          # null when extraction_failed
     mention_context = Column(Text, nullable=True)             # the sentence containing the mention
     sentiment = Column(String, nullable=True)                 # positive | neutral | negative | null
@@ -735,6 +745,7 @@ class PromptGapAnalysis(Base):
     run_id = Column(String, index=True, nullable=False)
     prompt_id = Column(String, index=True, nullable=False)
     organization_id = Column(String, index=True, nullable=False)
+    monitor_id = Column(String, index=True, nullable=True)   # the site this gap analysis belongs to
     why = Column(Text, nullable=True)                # 2 sentences max, or a plain "not enough signal"
     actions = Column(JSON, nullable=True)            # list[str], 2-4 concrete actions (may be empty)
     has_signal = Column(Boolean, nullable=False, default=True)   # False => said "not enough signal"
