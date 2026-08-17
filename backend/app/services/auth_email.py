@@ -1,8 +1,8 @@
 """Transactional auth emails (Phase 5): email verification, password reset, and
 team invitations.
 
-Sending is best-effort and mirrors the lead-email pattern: Resend is used when
-RESEND_API_KEY + EMAIL_FROM are configured, otherwise the send is skipped. The
+Sending is best-effort over the shared Gmail SMTP transport: emails go out when
+GMAIL_USER + GMAIL_APP_PASSWORD are configured, otherwise the send is skipped. The
 raw one-time token only ever appears in the recipient's link. In NON-production,
 when email is not configured, the link is logged so a developer can complete the
 flow locally; in production the token is never logged.
@@ -13,19 +13,17 @@ import html
 import logging
 from urllib.parse import quote
 
-import httpx
-
 from app.config import settings
+from app.services import email_transport
 
 logger = logging.getLogger("aeomirror.auth_email")
-
-RESEND_ENDPOINT = "https://api.resend.com/emails"
 
 
 def _send(email: str, subject: str, text_body: str, html_body: str,
           *, kind: str, link: str) -> bool:
-    """Send one email via Resend. Never raises. In dev without email configured,
-    logs the link so the flow is testable; never logs tokens in production."""
+    """Send one auth email via the shared Gmail SMTP transport. Never raises. Returns True
+    only on a successful send. In dev without email configured, logs the link so the flow is
+    testable; never logs tokens in production."""
     if not settings.email_enabled:
         if not settings.is_production:
             # Dev convenience only — lets you click the verify/reset/invite link.
@@ -33,21 +31,8 @@ def _send(email: str, subject: str, text_body: str, html_body: str,
         else:
             logger.info("[auth_email:%s] email not configured; send skipped.", kind)
         return False
-    try:
-        resp = httpx.post(
-            RESEND_ENDPOINT,
-            headers={"Authorization": f"Bearer {settings.resend_api_key}"},
-            json={"from": settings.email_from, "to": [email],
-                  "subject": subject, "text": text_body, "html": html_body},
-            timeout=10.0,
-        )
-        if resp.status_code // 100 == 2:
-            return True
-        logger.warning("[auth_email:%s] Resend failed: HTTP %s", kind, resp.status_code)
-        return False
-    except Exception as e:
-        logger.warning("[auth_email:%s] Resend error: %s", kind, type(e).__name__)
-        return False
+    return email_transport.send_email(email, subject, text_body, html_body,
+                                      kind=kind, log_prefix="auth_email") == "sent"
 
 
 def _wrap(body_html: str) -> str:

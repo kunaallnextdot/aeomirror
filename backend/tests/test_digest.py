@@ -3,10 +3,7 @@ send-failure isolation, unsubscribe (GET safe / POST opts out / invalid 404), pe
 batching isolation, and the C1 weekly-summary suppression. No real network/email."""
 from datetime import datetime, timedelta
 
-import httpx
-
 import app.monitoring.notifications as notif
-from app.config import settings
 from app.db.models import Monitor, MonitorHistory, NotificationLog, Organization, Scan, User
 from app.db.session import SessionLocal
 from app.main import app
@@ -105,23 +102,29 @@ def test_digest_skipped_when_no_data():
 
 
 # ------------------------------- email backend -------------------------------
-def test_console_backend_renders_without_calling_resend(monkeypatch):
+def test_console_backend_renders_without_sending(monkeypatch):
     def boom(*a, **k):
-        raise AssertionError("Resend must not be called from the console backend")
-    monkeypatch.setattr("app.services.email_backend.httpx.post", boom)
+        raise AssertionError("the transport must not be called from the console backend")
+    monkeypatch.setattr("app.services.email_backend.email_transport.send_email", boom)
     res = email_backend.send(to="x@y.z", subject="s", text="t", html="<p>t</p>", backend="console")
     assert res["backend"] == "console" and res["status"] == "logged"
 
 
-def test_resend_transport_failure_returns_failed_without_raising(monkeypatch):
-    monkeypatch.setattr(settings, "resend_api_key", "k")
-    monkeypatch.setattr(settings, "email_from", "AEO <a@b.c>")
+def test_smtp_backend_reports_transport_status(monkeypatch):
+    # email_backend delegates to the shared SMTP transport and returns its status verbatim,
+    # forwarding the List-Unsubscribe headers. The transport itself never raises.
+    seen = {}
 
-    def boom(*a, **k):
-        raise httpx.ConnectError("down")
-    monkeypatch.setattr("app.services.email_backend.httpx.post", boom)
-    res = email_backend.send(to="x@y.z", subject="s", text="t", html="h", backend="resend")
-    assert res["status"] == "failed"                    # returned, not raised
+    def fake_send(to, subject, text, html_body, *, kind, log_prefix, headers=None):
+        seen["headers"] = headers
+        seen["log_prefix"] = log_prefix
+        return "failed"
+    monkeypatch.setattr("app.services.email_backend.email_transport.send_email", fake_send)
+    res = email_backend.send(to="x@y.z", subject="s", text="t", html="h",
+                             headers={"List-Unsubscribe": "<u>"}, backend="smtp")
+    assert res == {"backend": "smtp", "status": "failed"}
+    assert seen["headers"] == {"List-Unsubscribe": "<u>"}   # unsubscribe header preserved
+    assert seen["log_prefix"] == "digest"
 
 
 def test_send_digest_never_raises_on_backend_error(monkeypatch):

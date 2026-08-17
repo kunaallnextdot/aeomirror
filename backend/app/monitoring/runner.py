@@ -9,6 +9,7 @@ from __future__ import annotations
 import logging
 from datetime import datetime
 
+import anyio
 from sqlalchemy.orm import Session
 
 from app.core.ssrf import validate_url
@@ -69,7 +70,9 @@ async def run_scan_for_monitor(db: Session, monitor: Monitor) -> dict:
 
     alerts = persist_alerts(db, monitor, scan_id, alert_dicts)
     try:
-        notify_critical_alerts(db, monitor, alerts)
+        # notify_critical_alerts does a blocking SMTP send; this runs on the async scan
+        # path, so offload to a worker thread to avoid blocking the event loop.
+        await anyio.to_thread.run_sync(notify_critical_alerts, db, monitor, alerts)
     except Exception as e:  # notifications are best-effort
         logger.warning("critical alert notification failed: %s", type(e).__name__)
 

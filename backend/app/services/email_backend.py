@@ -1,20 +1,18 @@
 """Scoped email backend for the weekly digest + preflight only (C3).
 
-Selects `console` | `resend` via settings.digest_email_backend. The console backend logs
-the fully rendered email to stdout and NEVER calls Resend (local-dev / test default); the
-resend backend posts to the Resend API. Never raises — returns a result dict the caller
-records / returns to an admin. Existing auth / billing / summary email is untouched.
+Selects `console` | `smtp` via settings.digest_email_backend. The console backend logs the
+fully rendered email to stdout and NEVER sends (local-dev / test default); the smtp backend
+delivers through the shared Gmail SMTP transport, preserving the digest's List-Unsubscribe
+headers. Never raises — returns a result dict the caller records / returns to an admin.
 """
 from __future__ import annotations
 
 import logging
 
-import httpx
-
 from app.config import settings
+from app.services import email_transport
 
 log = logging.getLogger("aeomirror.email_backend")
-RESEND_ENDPOINT = "https://api.resend.com/emails"
 
 
 def send(*, to: str, subject: str, text: str, html: str,
@@ -28,27 +26,7 @@ def send(*, to: str, subject: str, text: str, html: str,
                  to, subject, headers or {}, text)
         return {"backend": "console", "status": "logged", "to": to, "subject": subject}
 
-    # resend
-    if not settings.email_enabled:
-        return {"backend": "resend", "status": "skipped", "reason": "not_configured"}
-    try:
-        resp = httpx.post(
-            RESEND_ENDPOINT,
-            headers={"Authorization": f"Bearer {settings.resend_api_key}"},
-            json={"from": settings.email_from, "to": [to], "subject": subject,
-                  "text": text, "html": html, "headers": headers or {}},
-            timeout=10.0,
-        )
-        ok = resp.status_code // 100 == 2
-        provider = {}
-        try:
-            provider = resp.json()
-        except Exception:   # noqa: BLE001 — provider body may not be JSON
-            pass
-        if not ok:
-            log.warning("[email:resend] failed HTTP %s", resp.status_code)
-        return {"backend": "resend", "status": "sent" if ok else "failed",
-                "http_status": resp.status_code, "provider": provider}
-    except Exception as e:   # noqa: BLE001 — transport failure is never fatal
-        log.warning("[email:resend] error: %s", type(e).__name__)
-        return {"backend": "resend", "status": "failed", "error": type(e).__name__}
+    # smtp — the digest's List-Unsubscribe headers are carried through the transport
+    status = email_transport.send_email(to, subject, text, html,
+                                        kind="digest", log_prefix="digest", headers=headers)
+    return {"backend": "smtp", "status": status}

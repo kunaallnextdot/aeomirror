@@ -1,5 +1,5 @@
 """Monitoring notifications (Phase 7): immediate critical alerts + weekly/monthly
-summaries, delivered via the existing Resend email provider and recorded in
+summaries, delivered via the shared Gmail SMTP transport and recorded in
 notification_log. Best-effort — sending never raises into the scheduler.
 
 Recipients are the organization owner (and the monitor's creator, if different).
@@ -12,7 +12,6 @@ import html
 import logging
 from datetime import timedelta
 
-import httpx
 from sqlalchemy.orm import Session
 
 from app.config import settings
@@ -20,34 +19,17 @@ from app.core.security import now_utc
 from app.db.models import (
     Alert, Monitor, NotificationLog, Organization, User,
 )
+from app.services import email_transport
 
 logger = logging.getLogger("aeomirror.monitor_notify")
-RESEND_ENDPOINT = "https://api.resend.com/emails"
 
 
 # ------------------------------- transport -------------------------------
 def _send_email(to: str, subject: str, text: str, html_body: str, *, kind: str) -> str:
-    """Send one email. Returns 'sent' | 'skipped' | 'failed'. Never raises."""
-    if not settings.email_enabled:
-        if not settings.is_production:
-            logger.info("[monitor:%s] email not configured; would send to %s: %s",
-                        kind, to, subject)
-        return "skipped"
-    try:
-        resp = httpx.post(
-            RESEND_ENDPOINT,
-            headers={"Authorization": f"Bearer {settings.resend_api_key}"},
-            json={"from": settings.email_from, "to": [to], "subject": subject,
-                  "text": text, "html": html_body},
-            timeout=10.0,
-        )
-        if resp.status_code // 100 == 2:
-            return "sent"
-        logger.warning("[monitor:%s] Resend failed: HTTP %s", kind, resp.status_code)
-        return "failed"
-    except Exception as e:
-        logger.warning("[monitor:%s] Resend error: %s", kind, type(e).__name__)
-        return "failed"
+    """Send one email via the shared Gmail SMTP transport. Returns
+    'sent' | 'skipped' | 'failed'. Never raises."""
+    return email_transport.send_email(to, subject, text, html_body,
+                                      kind=kind, log_prefix="monitor")
 
 
 def _log(db: Session, *, org_id, user_id, monitor_id, kind, subject, status, meta=None):

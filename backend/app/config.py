@@ -100,15 +100,18 @@ class Settings(BaseSettings):
     expose_docs: bool = False
 
     # --- email (lead welcome + auth) ---
-    resend_api_key: str | None = None
+    # All email now sends over Gmail SMTP (see the SMTP block below). EMAIL_FROM, when set,
+    # overrides the From header; otherwise the From is composed from EMAIL_FROM_NAME + the
+    # Gmail user. There is no third-party HTTP email API.
     email_from: str | None = None            # e.g. "AEOMirror <hi@aeomirror.com>"
+    email_from_name: str = "AEOMirror"       # display name used when EMAIL_FROM is unset
     app_base_url: str = "http://localhost:5173"
     # API's own public base URL — used for links the API itself serves (the digest
     # unsubscribe confirmation page), distinct from the frontend app_base_url.
     api_base_url: str = "http://localhost:8000"
-    # Weekly digest email backend: "resend" | "console". When unset, defaults to console
-    # outside production so local dev logs the rendered email instead of calling Resend.
-    # Scopes ONLY the digest + preflight (auth/billing/summary email is unchanged).
+    # Weekly digest email backend: "smtp" | "console". When unset, defaults to console
+    # outside production so local dev logs the rendered email instead of sending, and to
+    # smtp in production. Scopes ONLY the digest + preflight.
     email_backend: str | None = None
     # Weekly digest send window (fixed UTC — per-org timezone is out of scope). 0 = Monday.
     digest_send_weekday: int = 0
@@ -354,15 +357,17 @@ class Settings(BaseSettings):
 
     @property
     def email_enabled(self) -> bool:
-        return bool(self.resend_api_key and self.email_from)
+        """True when outbound email can send. Email is Gmail-SMTP only now, so this simply
+        mirrors smtp_configured (Gmail user + app password present)."""
+        return self.smtp_configured
 
     @property
     def digest_email_backend(self) -> str:
         """Resolved digest email backend: an explicit EMAIL_BACKEND wins, else 'console'
-        outside production (logs to stdout), 'resend' in production."""
-        if self.email_backend in ("resend", "console"):
+        outside production (logs to stdout), 'smtp' in production."""
+        if self.email_backend in ("smtp", "console"):
             return self.email_backend
-        return "resend" if self.is_production else "console"
+        return "smtp" if self.is_production else "console"
 
     @property
     def ai_enabled(self) -> bool:
@@ -377,8 +382,13 @@ class Settings(BaseSettings):
 
     @property
     def smtp_from(self) -> str | None:
-        """From address for SMTP mail: EMAIL_FROM if set, else the Gmail user."""
-        return self.email_from or self.gmail_user
+        """From address for SMTP mail: EMAIL_FROM if set (honoured verbatim), else a
+        display-named address 'EMAIL_FROM_NAME <gmail_user>'. None when neither is available."""
+        if self.email_from:
+            return self.email_from
+        if self.gmail_user:
+            return f"{self.email_from_name} <{self.gmail_user}>"
+        return None
 
     @property
     def contact_recipient(self) -> str | None:

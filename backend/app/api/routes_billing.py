@@ -8,6 +8,7 @@ requires org owner/admin (org:update).
 """
 from __future__ import annotations
 
+import anyio
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 
@@ -131,7 +132,9 @@ async def webhook(provider_name: str, request: Request, db: Session = Depends(ge
         # Invalid signature / payload — never process.
         raise HTTPException(status_code=400, detail=str(e))
     try:
-        outcome = service.process_event(db, event)
+        # process_event may emit billing emails (blocking SMTP); this is an async route,
+        # so offload to a worker thread to avoid blocking the event loop.
+        outcome = await anyio.to_thread.run_sync(service.process_event, db, event)
     except Exception:
         # Signature was valid but processing failed; 500 asks the provider to retry.
         raise HTTPException(status_code=500, detail="Event processing failed.")

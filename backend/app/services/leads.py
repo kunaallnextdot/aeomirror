@@ -1,25 +1,23 @@
 """Lead capture + welcome email.
 
 The lead is stored FIRST and always; the email is strictly best-effort and can
-never fail the user's scan or the lead write. Email uses Resend (INTEGRATIONS.md
-B1) when RESEND_API_KEY + EMAIL_FROM are configured; otherwise it is skipped with
-a log line. A welcome email is sent only when the lead is newly created, so repeat
-submissions of the same email do not re-send.
+never fail the user's scan or the lead write. Email uses the shared Gmail SMTP
+transport when GMAIL_USER + GMAIL_APP_PASSWORD are configured; otherwise it is
+skipped with a log line. A welcome email is sent only when the lead is newly
+created, so repeat submissions of the same email do not re-send.
 """
 from __future__ import annotations
 
 import html
 import logging
 
-import httpx
 from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.db.models import Lead, Scan
+from app.services import email_transport
 
 logger = logging.getLogger("aeomirror.leads")
-
-RESEND_ENDPOINT = "https://api.resend.com/emails"
 
 
 def _normalize(url: str) -> str:
@@ -77,31 +75,12 @@ def send_welcome_email(email: str, *, domain=None, ars=None,
     or internal scan details are included or logged.
     """
     if not settings.email_enabled:
-        logger.info("Email not configured (RESEND_API_KEY/EMAIL_FROM); skipping send.")
+        logger.info("Email not configured (GMAIL_USER/GMAIL_APP_PASSWORD); skipping send.")
         return False
 
     subject, text_body, html_body = _render_welcome(domain, ars, top_issues)
-    try:
-        resp = httpx.post(
-            RESEND_ENDPOINT,
-            headers={"Authorization": f"Bearer {settings.resend_api_key}"},
-            json={
-                "from": settings.email_from,
-                "to": [email],
-                "subject": subject,
-                "text": text_body,
-                "html": html_body,
-            },
-            timeout=10.0,
-        )
-        if resp.status_code // 100 == 2:
-            return True
-        # Do not log the response body (may echo the request); status only.
-        logger.warning("Resend send failed: HTTP %s", resp.status_code)
-        return False
-    except Exception as e:
-        logger.warning("Resend send error: %s", type(e).__name__)
-        return False
+    return email_transport.send_email(email, subject, text_body, html_body,
+                                      kind="welcome", log_prefix="leads") == "sent"
 
 
 def _render_welcome(domain, ars, top_issues):

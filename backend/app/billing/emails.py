@@ -7,14 +7,13 @@ from __future__ import annotations
 import html
 import logging
 
-import httpx
 from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.db.models import NotificationLog, Organization, User
+from app.services import email_transport
 
 logger = logging.getLogger("aeomirror.billing.email")
-RESEND_ENDPOINT = "https://api.resend.com/emails"
 
 
 def _money(cents: int, currency: str) -> str:
@@ -29,22 +28,10 @@ def _owner_email(db: Session, org: Organization) -> tuple[str | None, str | None
 
 
 def _send(to: str, subject: str, text: str, html_body: str, *, kind: str) -> str:
-    if not settings.email_enabled:
-        if not settings.is_production:
-            logger.info("[billing:%s] email not configured; would send to %s: %s", kind, to, subject)
-        return "skipped"
-    try:
-        resp = httpx.post(RESEND_ENDPOINT,
-                          headers={"Authorization": f"Bearer {settings.resend_api_key}"},
-                          json={"from": settings.email_from, "to": [to], "subject": subject,
-                                "text": text, "html": html_body}, timeout=10.0)
-        if resp.status_code // 100 == 2:
-            return "sent"
-        logger.warning("[billing:%s] Resend failed HTTP %s", kind, resp.status_code)
-        return "failed"
-    except Exception as e:
-        logger.warning("[billing:%s] Resend error: %s", kind, type(e).__name__)
-        return "failed"
+    """Send one billing email via the shared Gmail SMTP transport. Returns
+    'sent' | 'skipped' | 'failed'. Never raises."""
+    return email_transport.send_email(to, subject, text, html_body,
+                                      kind=kind, log_prefix="billing")
 
 
 def _emit(db: Session, org: Organization, kind: str, subject: str, text: str,

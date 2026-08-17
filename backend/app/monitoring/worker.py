@@ -15,6 +15,8 @@ import asyncio
 import logging
 import time
 
+import anyio
+
 from app.config import settings
 from app.db.session import SessionLocal
 from app.monitoring import notifications, runner, scheduler
@@ -88,8 +90,9 @@ async def tick() -> dict:
                 break
             await runner.process_job(db, job)
             processed += 1
-        summaries = notifications.maybe_send_summaries(db)
-        digests = _maybe_send_digests(db)
+        # Both do blocking SMTP sends on this async scheduler pass — offload to threads.
+        summaries = await anyio.to_thread.run_sync(notifications.maybe_send_summaries, db)
+        digests = await anyio.to_thread.run_sync(_maybe_send_digests, db)
         answer_runs = await _maybe_run_answer_tracking(db)
         extractions = await _maybe_run_extractions(db)
         purged = _maybe_purge_snapshots(db)
