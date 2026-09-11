@@ -1,0 +1,59 @@
+/* Aurora styling for Recent Scans (/app/scans). Screen-scoped `au-sc-*` classes for the
+   parts with no direct prototype primitive (filter toolbar, data table, row actions, the
+   floating compare bar). Built from Phase-1 --au-* tokens. Loaded only with ScansTable.
+   NOTE (report): table + form controls (search/select) have no prototype archetype; token-
+   styled here and could be promoted to shared Aurora primitives at cleanup. */
+
+/* filter toolbar */
+.au-sc-toolbar{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:16px;position:relative;z-index:1}
+.au-sc-search{display:flex;align-items:center;gap:8px;background:var(--au-solid);border:1px solid var(--au-line);
+  border-radius:var(--au-r-pill);padding:9px 15px;color:var(--au-muted);flex:1;min-width:200px}
+.au-sc-search input{border:0;background:none;outline:none;color:var(--au-ink);font:inherit;font-size:13.5px;flex:1;min-width:0}
+.au-sc-search input::placeholder{color:var(--au-muted)}
+.au-sc-search:focus-within{outline:2px solid var(--au-primary);outline-offset:1px}
+.au-sc-select{background:var(--au-solid);border:1px solid var(--au-line);border-radius:var(--au-r-pill);
+  color:var(--au-ink-2);font:inherit;font-size:13px;padding:9px 14px;cursor:pointer}
+.au-sc-select:focus-visible{outline:2px solid var(--au-primary);outline-offset:1px}
+
+/* table */
+.au-sc-tablewrap{overflow-x:auto;border:1px solid var(--au-line);border-radius:var(--au-r-m);background:var(--au-solid)}
+.au-sc-table{width:100%;border-collapse:collapse;font-size:13px}
+.au-sc-table th{font-family:var(--au-font-numeric);font-size:10px;letter-spacing:.06em;text-transform:uppercase;
+  color:var(--au-muted);text-align:left;padding:12px 14px;border-bottom:1px solid var(--au-line);white-space:nowrap;font-weight:500}
+.au-sc-table td{padding:11px 14px;border-bottom:1px solid var(--au-line-2);vertical-align:middle;color:var(--au-ink-2)}
+.au-sc-table tbody tr:last-child td{border-bottom:0}
+.au-sc-table tbody tr:hover{background:rgba(20,30,51,.02)}
+.au-sc-table tr.au-sc-sel{background:var(--au-mint)}
+.au-sc-url{font-weight:600;color:var(--au-ink)}
+.au-sc-meta{font-family:var(--au-font-numeric);font-size:12px;color:var(--au-muted);white-space:nowrap}
+.au-sc-empty{text-align:center;padding:28px;color:var(--au-muted)}
+.au-sc-th-right,.au-sc-td-right{text-align:right}
+
+/* row actions */
+.au-sc-actions{display:flex;gap:6px;justify-content:flex-end}
+.au-sc-iconbtn{display:inline-flex;align-items:center;justify-content:center;width:30px;height:30px;
+  border-radius:9px;border:1px solid var(--au-line);background:var(--au-solid);color:var(--au-ink-2);
+  cursor:pointer;transition:border-color .15s,color .15s}
+.au-sc-iconbtn:hover:not(:disabled){border-color:var(--au-primary);color:var(--au-primary)}
+.au-sc-iconbtn:disabled{opacity:.5;cursor:not-allowed}
+.au-sc-iconbtn.au-sc-danger:hover:not(:disabled){border-color:var(--au-peach-d);color:var(--au-peach-d)}
+.au-sc-check{width:16px;height:16px;accent-color:var(--au-primary);cursor:pointer}
+
+/* floating compare bar (appears when scans are ticked) */
+.au-sc-cmp{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);z-index:60;display:flex;align-items:center;
+  gap:14px;background:var(--au-ink);color:#fff;border-radius:var(--au-r-pill);padding:10px 12px 10px 18px;box-shadow:var(--au-sh-l)}
+.au-sc-cmp-n{font-family:var(--au-font-numeric);font-size:12.5px}
+.au-sc-cmp-go{display:inline-flex;align-items:center;gap:7px;background:var(--au-primary);color:#fff;border:0;
+  border-radius:var(--au-r-pill);padding:7px 14px;font-weight:600;font-size:13px;cursor:pointer;font-family:inherit}
+.au-sc-cmp-hint{font-size:12px;color:rgba(255,255,255,.7)}
+.au-sc-cmp-x{background:rgba(255,255,255,.14);border:0;color:#fff;border-radius:50%;width:28px;height:28px;
+  display:grid;place-items:center;cursor:pointer}
+
+/* loading + empty + error (route-scoped Aurora states) */
+.au-sc-skrows{display:flex;flex-direction:column;gap:8px}
+.au-sc-center{text-align:center;padding:48px 24px;position:relative;z-index:1}
+.au-sc-ill{width:56px;height:56px;border-radius:50%;display:grid;place-items:center;margin:0 auto 16px;
+  background:var(--au-mint);color:var(--au-mint-d)}
+.au-sc-ill.au-sc-bad{background:var(--au-peach);color:var(--au-peach-d)}
+.au-sc-ct{font-family:var(--au-font-heading);font-size:20px;font-weight:700;color:var(--au-ink);margin-bottom:8px}
+.au-sc-cs{font-size:13.5px;color:var(--au-muted);max-width:440px;margin:0 auto 20px;line-height:1.6}

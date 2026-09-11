@@ -7,12 +7,12 @@ import {
   Link, Navigate, useNavigate, useOutletContext, useParams, useSearchParams,
 } from "react-router-dom";
 import { getScanDetail, compareScans, ScanError } from "../api.js";
-import {
-  StatsSkeleton, TableSkeleton, EmptyState, ErrorState, MiniEmpty, ScoreRing, scoreColor, fmtDate,
-} from "../dashboard/ui.jsx";
+import { fmtDate } from "../dashboard/ui.jsx";
 import DashboardHome from "../dashboard/DashboardHome.jsx";
-import ScansTable from "../dashboard/ScansTable.jsx";
-import ScanDetails from "../dashboard/ScanDetails.jsx";
+import ScansTable, { ScansLoading, ScansEmpty, ScansError } from "../dashboard/ScansTable.jsx";
+import { AuroraSkeletonPage, AuroraEmptyScans, AuroraError, Shell, Cell, Ring } from "../dashboard/aurora.jsx";
+const auScoreColor = (v) => (v >= 75 ? "var(--au-mint-d)" : v >= 45 ? "var(--au-lemon-d)" : "var(--au-peach-d)");
+import ScanDetails, { ScanDetailLoading, ScanDetailNotFound } from "../dashboard/ScanDetails.jsx";
 import Compare from "../dashboard/Compare.jsx";
 import ReportView from "../dashboard/ReportView.jsx";
 import Monitoring from "../dashboard/Monitoring.jsx";
@@ -26,47 +26,52 @@ import { Globe } from "lucide-react";
 
 export function useAppCtx() { return useOutletContext(); }
 
-/* Gate for the views that depend on the shared scan list (home/scans/compare/summary/
-   report): loading -> skeleton, error -> error, no scans -> empty state. */
-function Gated({ children }) {
+/* Scan-list gate for the migrated routes (home/scans/compare/summary/report): loading ->
+   skeleton, error -> error, no scans -> empty state. (Replaced the former dark <Gated>.) */
+function AuroraGated({ children }) {
   const { loading, error, scans, reload, onRunScan } = useAppCtx();
-  if (error) return <ErrorState message={error} onRetry={reload} />;
-  if (loading) return <><StatsSkeleton /><TableSkeleton /></>;
-  if (!scans.length) return <EmptyState onRun={onRunScan} />;
+  if (error) return <AuroraError message={error} onRetry={reload} />;
+  if (loading) return <AuroraSkeletonPage />;
+  if (!scans.length) return <AuroraEmptyScans onRun={onRunScan} />;
   return children;
 }
 
 export function DashboardHomeRoute() {
   const { dashboard, openDetail } = useAppCtx();
-  return <Gated><DashboardHome data={dashboard} onOpenLatest={openDetail} /></Gated>;
+  return <AuroraGated><DashboardHome data={dashboard} onOpenLatest={openDetail} /></AuroraGated>;
 }
 
 export function ScansRoute() {
-  const { scans, busyId, openDetail, onRerun, onDelete, canRun, canDelete, openCompare } = useAppCtx();
+  const { scans, busyId, openDetail, onRerun, onDelete, canRun, canDelete, openCompare,
+          loading, error, reload, onRunScan } = useAppCtx();
+  // Aurora-scoped guard for THIS route only — same conditions as the shared <Gated>, but
+  // re-skinned so migrating /app/scans doesn't touch Gated/EmptyState/ErrorState (still used
+  // by Dashboard/Compare/Summary/Report).
+  if (error) return <ScansError message={error} onRetry={reload} />;
+  if (loading) return <ScansLoading />;
+  if (!scans.length) return <ScansEmpty onRun={onRunScan} />;
   return (
-    <Gated>
-      <ScansTable scans={scans} busyId={busyId} onView={openDetail} onRerun={onRerun}
-                  onDelete={onDelete} canRun={canRun} canDelete={canDelete}
-                  onCompareSelected={openCompare} />
-    </Gated>
+    <ScansTable scans={scans} busyId={busyId} onView={openDetail} onRerun={onRerun}
+                onDelete={onDelete} canRun={canRun} canDelete={canDelete}
+                onCompareSelected={openCompare} />
   );
 }
 
 export function CompareRoute() {
   const { scans } = useAppCtx();
-  return <Gated><Compare scans={scans} onCompare={compareScans} /></Gated>;
+  return <AuroraGated><Compare scans={scans} onCompare={compareScans} /></AuroraGated>;
 }
 
 export function ReportRoute() {
   const { dashboard } = useAppCtx();
   const [params] = useSearchParams();
   const scanId = params.get("scan") || dashboard?.latest_scan?.id;
-  return <Gated><ReportView scanId={scanId} /></Gated>;
+  return <AuroraGated><ReportView scanId={scanId} /></AuroraGated>;
 }
 
 export function SummaryRoute() {
   const { scans, openDetail } = useAppCtx();
-  return <Gated><WebsiteSummary scans={scans} onView={openDetail} /></Gated>;
+  return <AuroraGated><WebsiteSummary scans={scans} onView={openDetail} /></AuroraGated>;
 }
 
 /* Scan detail loads its own record by :scanId (not gated by the shared list). */
@@ -89,8 +94,9 @@ export function ScanDetailRoute() {
     catch { /* keep view; poller retries */ }
   }, [scanId, reloadSubscription]);
 
-  if (error) return <NotFoundState label={error} />;   // includes cross-org 404 ("not found")
-  if (!scan) return <TableSkeleton rows={4} />;
+  // Aurora-skinned states for THIS route only (shared NotFoundState/TableSkeleton untouched).
+  if (error) return <ScanDetailNotFound label={error} />;   // includes cross-org 404 ("not found")
+  if (!scan) return <ScanDetailLoading />;
   return (
     <ScanDetails scan={scan} onBack={() => navigate("/app/scans")} onRerun={onRerun}
                  busy={busyId === scan.scan_id} canRun={canRun}
@@ -125,30 +131,16 @@ export function AppIndexRedirect() { return <Navigate to="/app/dashboard" replac
 
 export function NotFoundRoute() {
   return (
-    <div className="d-panel" style={{ textAlign: "center", padding: "40px 20px" }}>
-      <div style={{ fontSize: 15, fontWeight: 600, marginBottom: 6 }}>Page not found</div>
-      <div className="d-dim" style={{ fontSize: 13, marginBottom: 14 }}>
-        This page doesn’t exist under your workspace.
-      </div>
-      <Link className="d-btn" to="/app/dashboard">Back to dashboard</Link>
-    </div>
+    <div className="aurora-screen"><Shell>
+      <Cell solid><div className="au-card-center">
+        <div className="au-card-t">Page not found</div>
+        <div className="au-card-s">This page doesn’t exist under your workspace.</div>
+        <Link className="au-btn au-accent" to="/app/dashboard">Back to dashboard</Link>
+      </div></Cell>
+    </Shell></div>
   );
 }
 
-/* Shown when a valid route points at an id that doesn't exist or belongs to another org
-   (the backend returns 404, never 403, so ids can't be probed). Not a crash, not a
-   spinner. */
-export function NotFoundState({ label }) {
-  return (
-    <div className="d-panel" style={{ textAlign: "center", padding: "36px 20px" }}>
-      <div style={{ fontSize: 15, fontWeight: 600, marginBottom: 6 }}>Not found or no access</div>
-      <div className="d-dim" style={{ fontSize: 13, marginBottom: 14 }}>
-        {label || "This item doesn’t exist, or it belongs to another workspace."}
-      </div>
-      <Link className="d-btn" to="/app/dashboard">Back to dashboard</Link>
-    </div>
-  );
-}
 
 /* Website summary (per-domain rollup) — moved verbatim from the old Dashboard shell. */
 function WebsiteSummary({ scans, onView }) {
@@ -166,24 +158,31 @@ function WebsiteSummary({ scans, onView }) {
   }).sort((a, b) => new Date(b.latest.scan_time) - new Date(a.latest.scan_time));
 
   if (rows.length === 0) {
-    return <MiniEmpty icon={Globe} line="No websites yet — run a scan to see per-domain rollups here." />;
+    return (
+      <div className="aurora-screen"><Shell><Cell solid><div className="au-card-center">
+        <div className="au-ill"><Globe size={26} /></div>
+        <div className="au-card-s">No websites yet — run a scan to see per-domain rollups here.</div>
+      </div></Cell></Shell></div>
+    );
   }
   return (
-    <div className="d-grid" style={{ gap: 14 }}>
-      {rows.map((g) => (
-        <div key={g.domain} className="d-card" style={{ display: "flex", alignItems: "center", gap: 18, flexWrap: "wrap" }}>
-          <ScoreRing value={g.latest.overall_score} size={52} stroke={6} />
-          <div style={{ flex: 1, minWidth: 160 }}>
-            <div style={{ fontSize: 15, fontWeight: 600 }}>{g.domain}</div>
-            <div className="d-dim d-mono" style={{ fontSize: 11.5, marginTop: 3 }}>{g.count} scan{g.count === 1 ? "" : "s"} · latest {fmtDate(g.latest.scan_time)}</div>
-          </div>
-          <div style={{ display: "flex", gap: 18, textAlign: "center" }}>
-            <div><div style={{ color: scoreColor(g.best), fontWeight: 700, fontFamily: "'IBM Plex Mono'" }}>{g.best ?? "-"}</div><div className="d-dim" style={{ fontSize: 11 }}>best</div></div>
-            <div><div style={{ color: scoreColor(g.worst), fontWeight: 700, fontFamily: "'IBM Plex Mono'" }}>{g.worst ?? "-"}</div><div className="d-dim" style={{ fontSize: 11 }}>worst</div></div>
-          </div>
-          <button className="d-iconbtn" onClick={() => onView(g.latest.id)}>View latest</button>
-        </div>
-      ))}
-    </div>
+    <div className="aurora-screen"><Shell>
+      <div className="au-stack">
+        {rows.map((g) => (
+          <Cell key={g.domain} solid style={{ display: "flex", alignItems: "center", gap: 18, flexWrap: "wrap" }}>
+            <span role="img" aria-label={`Score ${g.latest.overall_score ?? "not available"}`}><Ring value={g.latest.overall_score} size={52} stroke={6} /></span>
+            <div style={{ flex: 1, minWidth: 160 }}>
+              <div style={{ fontSize: 15, fontWeight: 600, color: "var(--au-ink)" }}>{g.domain}</div>
+              <div className="au-dim au-mono" style={{ fontSize: 11.5, marginTop: 3 }}>{g.count} scan{g.count === 1 ? "" : "s"} · latest {fmtDate(g.latest.scan_time)}</div>
+            </div>
+            <div style={{ display: "flex", gap: 18, textAlign: "center" }}>
+              <div><div style={{ color: auScoreColor(g.best), fontWeight: 700, fontFamily: "var(--au-font-numeric)" }}>{g.best ?? "-"}</div><div className="au-dim" style={{ fontSize: 11 }}>best</div></div>
+              <div><div style={{ color: auScoreColor(g.worst), fontWeight: 700, fontFamily: "var(--au-font-numeric)" }}>{g.worst ?? "-"}</div><div className="au-dim" style={{ fontSize: 11 }}>worst</div></div>
+            </div>
+            <button className="au-iconbtn" onClick={() => onView(g.latest.id)}>View latest</button>
+          </Cell>
+        ))}
+      </div>
+    </Shell></div>
   );
 }

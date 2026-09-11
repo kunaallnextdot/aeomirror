@@ -1,6 +1,7 @@
 /* Contact & Support page (/contact).
    Two-column layout: info + FAQ on the left, the contact form on the right.
-   Matches the AEOMirror dark design system. Submits to POST /api/contact. */
+   Aurora (light) design system — self-contained `ct-*` styles on `--au-*` tokens.
+   Submits to POST /api/contact. */
 import React, { useMemo, useState } from "react";
 import {
   Mail, Clock, Send, CheckCircle2, AlertTriangle, LifeBuoy, MessageSquareText,
@@ -62,8 +63,8 @@ export default function Contact() {
   };
 
   const msgLen = form.message.length;
-  const msgColor = msgLen === 0 ? "var(--txt-dim)"
-    : msgLen < MSG_MIN || msgLen > MSG_MAX ? "var(--bad)" : "var(--txt-mid)";
+  const msgColor = msgLen === 0 ? "var(--au-muted)"
+    : msgLen < MSG_MIN || msgLen > MSG_MAX ? "var(--au-peach-d)" : "var(--au-ink-2)";
 
   return (
     <div className="ct-wrap">
@@ -195,61 +196,61 @@ const CSS = `
 .ct-grid{display:grid;grid-template-columns:1fr 1.05fr;gap:40px;align-items:start}
 @media (max-width:820px){.ct-grid{grid-template-columns:1fr;gap:28px}}
 
-.ct-eyebrow{display:inline-flex;align-items:center;gap:7px;color:var(--accent);font-size:11px;
-  letter-spacing:.12em;margin-bottom:18px;border:1px solid var(--line);padding:5px 11px;border-radius:20px;
-  font-family:'IBM Plex Mono',monospace}
-.ct-title{font-size:40px;line-height:1.05;font-weight:800;letter-spacing:-.02em;margin:0 0 14px}
-.ct-lede{color:var(--txt-mid);font-size:15.5px;line-height:1.6;margin:0 0 28px;max-width:460px}
+.ct-eyebrow{display:inline-flex;align-items:center;gap:7px;color:var(--au-primary);font-size:11px;
+  letter-spacing:.12em;margin-bottom:18px;border:1px solid var(--au-line);padding:5px 11px;border-radius:var(--au-r-pill);
+  font-family:var(--au-font-numeric)}
+.ct-title{font-family:var(--au-font-heading);font-size:40px;line-height:1.05;font-weight:700;letter-spacing:-.02em;margin:0 0 14px;color:var(--au-ink)}
+.ct-lede{color:var(--au-muted);font-size:15.5px;line-height:1.6;margin:0 0 28px;max-width:460px}
 
 .ct-meta{display:flex;flex-direction:column;gap:14px;margin-bottom:30px}
-.ct-meta-row{display:flex;gap:12px;align-items:flex-start;color:var(--txt-mid)}
-.ct-meta-row svg{color:var(--accent);margin-top:2px;flex:none}
-.ct-meta-k{font-size:11.5px;color:var(--txt-dim);text-transform:uppercase;letter-spacing:.06em}
-.ct-meta-v{font-size:14.5px;color:var(--txt);font-weight:500}
-.ct-link{font-size:14.5px;color:var(--accent);text-decoration:none;font-weight:500}
+.ct-meta-row{display:flex;gap:12px;align-items:flex-start;color:var(--au-muted)}
+.ct-meta-row svg{color:var(--au-primary);margin-top:2px;flex:none}
+.ct-meta-k{font-size:11.5px;color:var(--au-muted);text-transform:uppercase;letter-spacing:.06em}
+.ct-meta-v{font-size:14.5px;color:var(--au-ink);font-weight:500}
+.ct-link{font-size:14.5px;color:var(--au-primary);text-decoration:none;font-weight:500}
 .ct-link:hover{text-decoration:underline}
 
-.ct-faq{border-top:1px solid var(--line);padding-top:22px}
-.ct-faq-h{display:flex;align-items:center;gap:8px;font-size:12.5px;font-weight:600;color:var(--txt-mid);margin-bottom:14px}
+.ct-faq{border-top:1px solid var(--au-line);padding-top:22px}
+.ct-faq-h{display:flex;align-items:center;gap:8px;font-size:12.5px;font-weight:600;color:var(--au-muted);margin-bottom:14px}
 .ct-faq-item{margin-bottom:16px}
-.ct-faq-q{font-size:14px;font-weight:600;margin-bottom:4px}
-.ct-faq-a{font-size:13px;color:var(--txt-mid);line-height:1.55}
+.ct-faq-q{font-size:14px;font-weight:600;margin-bottom:4px;color:var(--au-ink)}
+.ct-faq-a{font-size:13px;color:var(--au-muted);line-height:1.55}
 
-.ct-card{border:1px solid var(--line);border-radius:16px;background:var(--panel);padding:26px}
+.ct-card{border:1px solid var(--au-line);border-radius:16px;background:var(--au-solid);padding:26px;box-shadow:var(--au-sh-s)}
 .ct-form{display:flex;flex-direction:column;gap:16px}
 .ct-field{display:flex;flex-direction:column;gap:7px}
-.ct-field label{font-size:13px;font-weight:600;color:var(--txt)}
-.ct-field .req{color:var(--accent)}
-.ct-field .opt{color:var(--txt-dim);font-weight:400;font-size:12px}
-.ct-field input,.ct-field textarea{background:var(--panel-2);border:1px solid var(--line-2);border-radius:9px;
-  padding:11px 12px;color:var(--txt);font-size:14px;font-family:'Inter',sans-serif;outline:none;width:100%;resize:vertical}
-.ct-field input::placeholder,.ct-field textarea::placeholder{color:var(--txt-dim)}
-.ct-field input:focus,.ct-field textarea:focus{border-color:var(--accent)}
-.ct-field input.bad,.ct-field textarea.bad{border-color:var(--bad)}
-.ct-err{color:var(--bad);font-size:12px}
+.ct-field label{font-size:13px;font-weight:600;color:var(--au-ink)}
+.ct-field .req{color:var(--au-primary)}
+.ct-field .opt{color:var(--au-muted);font-weight:400;font-size:12px}
+.ct-field input,.ct-field textarea{background:var(--au-solid);border:1px solid var(--au-line);border-radius:9px;
+  padding:11px 12px;color:var(--au-ink);font-size:14px;font-family:var(--au-font-body);outline:none;width:100%;resize:vertical}
+.ct-field input::placeholder,.ct-field textarea::placeholder{color:var(--au-muted)}
+.ct-field input:focus,.ct-field textarea:focus{border-color:var(--au-primary);outline:2px solid var(--au-primary);outline-offset:1px}
+.ct-field input.bad,.ct-field textarea.bad{border-color:var(--au-peach-d)}
+.ct-err{color:var(--au-peach-d);font-size:12px}
 .ct-err.inline{margin:0}
 .ct-counter{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-top:-2px}
-.ct-count{font-size:11.5px;font-family:'IBM Plex Mono',monospace}
+.ct-count{font-size:11.5px;font-family:var(--au-font-numeric)}
 
-.ct-btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;background:var(--accent);color:#04222a;
-  border:none;padding:12px 18px;border-radius:9px;font-weight:600;font-size:14px;cursor:pointer;margin-top:4px}
+.ct-btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;background:var(--au-primary);color:#fff;
+  border:none;padding:12px 18px;border-radius:var(--au-r-s);font-weight:600;font-size:14px;cursor:pointer;margin-top:4px;font-family:var(--au-font-body)}
 .ct-btn:disabled{opacity:.55;cursor:default}
 .ct-btn.dim{opacity:.6}
-.ct-btn.ghost{background:transparent;border:1px solid var(--line-2);color:var(--txt);opacity:1}
-.ct-fineprint{color:var(--txt-dim);font-size:11.5px;text-align:center}
+.ct-btn.ghost{background:transparent;border:1px solid var(--au-line);color:var(--au-ink-2);opacity:1}
+.ct-fineprint{color:var(--au-muted);font-size:11.5px;text-align:center}
 
-.ct-spin{width:14px;height:14px;border:2px solid rgba(4,34,42,.35);border-top-color:#04222a;border-radius:50%;
+.ct-spin{width:14px;height:14px;border:2px solid rgba(255,255,255,.4);border-top-color:#fff;border-radius:50%;
   display:inline-block;animation:ctspin .7s linear infinite}
 @keyframes ctspin{to{transform:rotate(360deg)}}
 
 .ct-success{text-align:center;padding:26px 8px}
-.ct-success-icon{color:var(--good);display:flex;justify-content:center;margin-bottom:12px}
-.ct-success h2{font-size:24px;margin:0 0 8px}
-.ct-success p{color:var(--txt-mid);font-size:14.5px;line-height:1.6;margin:0 0 20px}
+.ct-success-icon{color:var(--au-mint-d);display:flex;justify-content:center;margin-bottom:12px}
+.ct-success h2{font-family:var(--au-font-heading);font-size:24px;margin:0 0 8px;color:var(--au-ink)}
+.ct-success p{color:var(--au-muted);font-size:14.5px;line-height:1.6;margin:0 0 20px}
 
 .ct-toast{position:fixed;top:18px;right:18px;z-index:80;display:flex;align-items:center;gap:9px;
-  padding:12px 15px;border-radius:10px;font-size:13.5px;font-weight:500;box-shadow:0 8px 30px rgba(0,0,0,.35);
+  padding:12px 15px;border-radius:10px;font-size:13.5px;font-weight:500;box-shadow:0 8px 30px rgba(20,30,51,.18);
   max-width:360px}
-.ct-toast.ok{background:rgba(67,192,138,.14);border:1px solid var(--good);color:var(--good)}
-.ct-toast.err{background:rgba(229,97,91,.12);border:1px solid var(--bad);color:var(--bad)}
+.ct-toast.ok{background:var(--au-mint);border:1px solid var(--au-mint-d);color:var(--au-mint-d)}
+.ct-toast.err{background:var(--au-peach);border:1px solid var(--au-peach-d);color:var(--au-peach-d)}
 `;

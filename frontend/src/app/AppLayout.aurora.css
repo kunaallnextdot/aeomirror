@@ -1,0 +1,72 @@
+/* Aurora shell (Phase 11) — the authenticated /app chrome: glass sidebar + sticky glass
+   topbar on a light Aurora ground. Token-for-token port of the dark `.dash*` rules in
+   dashboard.css onto `--au-*`; the dark originals are LEFT INTACT (still used by the
+   leftover shared dark EmptyState/MiniEmpty via `.dash-newscan`, retired in #14) and Admin
+   never used `.dash*`, so this is additive. Every class is `au-`-prefixed.
+
+   The shell provides ONE light ground; each migrated screen still brings its own
+   `.aurora-screen` wrapper (+ Shell blob field) — redundant nesting that #14 collapses. */
+.au-dash{display:grid;grid-template-columns:240px 1fr;min-height:100vh;
+  background:var(--au-app);color:var(--au-ink);font-family:var(--au-font-body);font-size:15px;line-height:1.5}
+.au-dash-side{border-right:1px solid var(--au-line);background:rgba(255,255,255,.66);backdrop-filter:blur(18px);
+  display:flex;flex-direction:column;padding:18px 12px;gap:16px;position:sticky;top:0;height:100vh}
+.au-dash-brand{display:flex;align-items:center;gap:9px;font-family:var(--au-font-heading);font-size:16px;
+  font-weight:700;letter-spacing:-.02em;padding:2px 8px;color:var(--au-ink)}
+.au-dash-brand svg{color:var(--au-primary)}
+.au-dash-nav{display:flex;flex-direction:column;gap:2px;margin-top:4px}
+.au-dash-nav .au-dash-nav-item{display:flex;align-items:center;gap:11px;background:transparent;border:none;
+  color:var(--au-ink-2);padding:9px 11px;border-radius:var(--au-r-s);cursor:pointer;font-size:13.5px;font-weight:500;
+  text-align:left;width:100%;text-decoration:none;transition:background .15s,color .15s;font-family:inherit}
+.au-dash-nav .au-dash-nav-item:hover{background:rgba(20,30,51,.05);color:var(--au-ink)}
+.au-dash-nav .au-dash-nav-item.on{background:var(--au-mint);color:var(--au-primary);font-weight:600}
+.au-dash-nav .au-dash-nav-item span{flex:1}
+.au-dash-nav .au-dash-nav-item:focus{outline:none}
+.au-dash-nav .au-dash-nav-item:focus-visible{outline:2px solid var(--au-primary);outline-offset:2px}
+.au-dash-side-foot{margin-top:auto;display:flex;flex-direction:column;gap:8px}
+.au-dash-newscan{display:flex;align-items:center;justify-content:center;gap:8px;background:var(--au-primary);color:#fff;
+  border:none;padding:10px;border-radius:var(--au-r-s);font-weight:600;cursor:pointer;font-size:13px;
+  font-family:inherit;transition:transform .16s,box-shadow .16s}
+.au-dash-newscan:hover{transform:translateY(-1px);box-shadow:0 8px 18px rgba(14,122,107,.26)}
+.au-dash-exit{display:flex;align-items:center;gap:8px;background:transparent;border:1px solid var(--au-line);
+  color:var(--au-ink-2);padding:9px 11px;border-radius:var(--au-r-s);cursor:pointer;font-size:12.5px;font-family:inherit;transition:border-color .15s,color .15s}
+.au-dash-exit:hover{border-color:var(--au-primary);color:var(--au-primary)}
+
+.au-dash-main{display:flex;flex-direction:column;min-width:0}
+.au-dash-top{display:flex;justify-content:space-between;align-items:center;gap:16px;padding:18px 26px;
+  border-bottom:1px solid var(--au-line);position:sticky;top:0;background:rgba(255,255,255,.66);
+  backdrop-filter:blur(18px);z-index:10}
+.au-dash-top-title{font-family:var(--au-font-heading);font-size:19px;font-weight:700;letter-spacing:-.02em;color:var(--au-ink)}
+.au-dash-top-sub{font-size:12px;color:var(--au-muted);margin-top:2px}
+.au-dash-content{padding:22px 26px 60px;animation:au-dfade .25s ease}
+@keyframes au-dfade{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
+
+/* sidebar footer user block (port of auth.css .dash-user*) */
+.au-dash-user{display:flex;align-items:center;gap:10px;padding:9px 8px;border-top:1px solid var(--au-line);margin-top:6px}
+.au-dash-user-id{flex:1;min-width:0}
+.au-dash-user-name{font-size:12.5px;font-weight:600;color:var(--au-ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.au-dash-user-role{font-size:10.5px;color:var(--au-muted);text-transform:capitalize}
+
+/* sidebar scan-usage meter (port of dashboard.css .side-meter*) */
+.au-side-meter{margin-bottom:10px;padding:10px 11px;border:1px solid var(--au-line);border-radius:10px;background:var(--au-solid)}
+.au-side-meter-top{display:flex;justify-content:space-between;align-items:baseline;font-size:11.5px;margin-bottom:7px}
+.au-side-meter-lbl{color:var(--au-ink-2);font-weight:500}
+.au-side-meter-n{font-family:var(--au-font-numeric);color:var(--au-ink)}
+.au-side-meter-bar{height:5px;background:var(--au-line);border-radius:4px;overflow:hidden}
+.au-side-meter-bar>div{height:100%;border-radius:4px;transition:width .5s ease}
+.au-side-meter-up{display:inline-flex;align-items:center;gap:4px;margin-top:7px;background:none;border:none;padding:0;
+  cursor:pointer;color:var(--au-primary);font-family:var(--au-font-numeric);font-size:11.5px}
+.au-side-meter-up:hover{text-decoration:underline}
+
+/* mobile: single column, sidebar becomes a horizontal wrapping bar (mirrors the dark
+   shell's max-width:900px collapse). */
+@media(max-width:900px){
+  .au-dash{grid-template-columns:1fr}
+  .au-dash-side{position:static;height:auto;flex-direction:row;flex-wrap:wrap;align-items:center;
+    border-right:none;border-bottom:1px solid var(--au-line)}
+  .au-dash-nav{flex-direction:row;flex-wrap:wrap}
+  .au-dash-side-foot{margin:0}
+}
+@media(max-width:640px){
+  .au-dash-content{padding:16px 14px 48px}
+  .au-dash-top{padding:14px 16px}
+}

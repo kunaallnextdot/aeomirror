@@ -126,46 +126,46 @@ function UpgradeModal({ reason, message, scanId, onSuccess, onClose, onUpgraded 
   };
 
   return (
-    <div className="up-overlay" onClick={onClose} role="dialog" aria-modal="true">
-      <div className="up-modal" onClick={(e) => e.stopPropagation()}>
-        <button className="up-x" onClick={onClose} aria-label="Close"><X size={16} /></button>
-        <div className="up-eyebrow"><Sparkles size={13} /> UPGRADE</div>
-        <h2 className="up-title">{copy.title}</h2>
-        <p className="up-sub">{message || copy.sub}</p>
+    <div className="au-up-overlay" onClick={onClose} role="dialog" aria-modal="true">
+      <div className="au-up-modal" onClick={(e) => e.stopPropagation()}>
+        <button className="au-up-x" onClick={onClose} aria-label="Close"><X size={16} /></button>
+        <div className="au-up-eyebrow"><Sparkles size={13} /> UPGRADE</div>
+        <h2 className="au-up-title">{copy.title}</h2>
+        <p className="au-up-sub">{message || copy.sub}</p>
 
-        <div className={`up-options${showOneTime ? " two" : ""}`}>
-          <div className="up-card featured">
-            <div className="up-card-h"><Crown size={15} /> Pro</div>
-            <div className="up-price">$29<span>/mo</span></div>
-            <div className="up-card-tag">The full toolkit</div>
-            <ul className="up-feats">
+        <div className={`au-up-options${showOneTime ? " au-two" : ""}`}>
+          <div className="au-up-card au-featured">
+            <div className="au-up-card-h"><Crown size={15} /> Pro</div>
+            <div className="au-up-price">$29<span>/mo</span></div>
+            <div className="au-up-card-tag">The full toolkit</div>
+            <ul className="au-up-feats">
               {PRO_FEATURES.map((f) => <li key={f}><Check size={12} /> {f}</li>)}
             </ul>
-            <button className="btn btn-primary btn-block" disabled={!!busy} onClick={() => go("pro")}>
+            <button className="au-btn au-accent au-block" disabled={!!busy} onClick={() => go("pro")}>
               {busy === "pro" ? "Processing…" : "Upgrade to Pro"}
             </button>
           </div>
 
           {showOneTime && (
-            <div className="up-card">
-              <div className="up-card-h"><FileText size={15} /> One-time report</div>
-              <div className="up-price">$9<span> once</span></div>
-              <div className="up-card-tag">Unlock just this report</div>
-              <ul className="up-feats">
+            <div className="au-up-card">
+              <div className="au-up-card-h"><FileText size={15} /> One-time report</div>
+              <div className="au-up-price">$9<span> once</span></div>
+              <div className="au-up-card-tag">Unlock just this report</div>
+              <ul className="au-up-feats">
                 <li><Check size={12} /> Every recommendation &amp; fix</li>
                 <li><Check size={12} /> AI-written report narrative</li>
                 <li><Check size={12} /> PDF / CSV / JSON exports</li>
                 <li><Check size={12} /> Doesn't change your plan</li>
               </ul>
-              <button className="btn btn-ghost btn-block" disabled={!!busy} onClick={() => go("report")}>
+              <button className="au-btn au-ghost au-block" disabled={!!busy} onClick={() => go("report")}>
                 {busy === "report" ? "Processing…" : "Unlock for $9"}
               </button>
             </div>
           )}
         </div>
 
-        {err && <div className="up-err"><AlertTriangle size={13} /> {err}</div>}
-        <button className="up-later" onClick={onClose}>Maybe later</button>
+        {err && <div className="au-up-err"><AlertTriangle size={13} /> {err}</div>}
+        <button className="au-up-later" onClick={onClose}>Maybe later</button>
       </div>
     </div>
   );

@@ -1,0 +1,104 @@
+/* Aurora styling for the Scan Details screen (/app/scans/:scanId).
+   Screen-scoped `au-sd-*` classes for the parts with NO direct prototype primitive
+   (signal-analysis accordion, bulk pages table, evidence rows, Pro-lock teaser, live
+   progress). Built from Phase-1 --au-* tokens so the whole screen is one system.
+   Loaded only when ScanDetails renders. See design/token-map.md. */
+
+/* toolbar */
+.au-sd-toolbar{display:flex;align-items:center;justify-content:space-between;gap:8px;
+  flex-wrap:wrap;margin-bottom:16px;position:relative;z-index:1}
+.au-sd-toolbar-r{display:flex;gap:8px;flex-wrap:wrap}
+
+/* header */
+.au-sd-headcell{display:flex;align-items:center;gap:22px;flex-wrap:wrap}
+.au-sd-domain{font-family:var(--au-font-heading);font-size:20px;font-weight:700;
+  letter-spacing:-.02em;color:var(--au-ink);word-break:break-word}
+.au-sd-headmeta{display:flex;gap:8px;align-items:center;margin:8px 0;flex-wrap:wrap}
+.au-sd-meta{font-family:var(--au-font-numeric);font-size:11.5px;color:var(--au-muted)}
+.au-sd-tallies{display:flex;gap:18px}
+.au-sd-tally{text-align:center}
+.au-sd-tally-n{font-family:var(--au-font-numeric);font-size:24px;font-weight:500;line-height:1}
+.au-sd-tally-l{font-size:11px;color:var(--au-muted);margin-top:4px}
+.au-sd-dim{color:var(--au-muted);font-size:12px}
+
+/* stacked panels */
+.au-sd-stack{display:flex;flex-direction:column;gap:16px;position:relative;z-index:1}
+.au-sd-panel-h{display:flex;align-items:baseline;gap:10px;font-family:var(--au-font-heading);
+  font-size:15px;font-weight:700;color:var(--au-ink);margin-bottom:14px}
+.au-sd-panel-h .au-sd-sub{font-family:var(--au-font-numeric);font-size:12px;color:var(--au-muted);font-weight:400}
+
+/* signal-analysis accordion (no prototype archetype — token-styled) */
+.au-sd-list{display:flex;flex-direction:column;gap:8px}
+.au-sd-sig{background:var(--au-solid);border:1px solid var(--au-line);border-radius:var(--au-r-s);overflow:hidden}
+.au-sd-sig-head{display:flex;align-items:center;gap:11px;width:100%;background:none;border:0;
+  cursor:pointer;padding:13px 15px;font-family:inherit;text-align:left}
+.au-sd-sig-head:hover{background:rgba(20,30,51,.02)}
+.au-sd-dot{width:9px;height:9px;border-radius:50%;flex:none}
+.au-sd-sig-name{flex:1;min-width:0;font-size:14px;font-weight:600;color:var(--au-ink)}
+.au-sd-score{font-family:var(--au-font-numeric);font-size:13px;width:28px;text-align:right;font-weight:500}
+.au-sd-chev{color:var(--au-muted);transition:transform .2s;flex:none}
+.au-sd-sig-body{padding:2px 15px 15px 35px;display:flex;flex-direction:column;gap:12px}
+.au-sd-bh{font-family:var(--au-font-numeric);font-size:10px;letter-spacing:.07em;text-transform:uppercase;
+  color:var(--au-muted);margin-bottom:6px}
+.au-sd-ul{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px}
+.au-sd-ul li{display:flex;align-items:flex-start;gap:8px;font-size:13px;color:var(--au-ink-2);line-height:1.5}
+.au-sd-ul li svg{margin-top:2px;flex:none}
+.au-sd-clean{display:flex;align-items:center;gap:7px;color:var(--au-mint-d);font-size:12.5px}
+.au-sd-found{display:flex;flex-wrap:wrap;gap:6px}
+.au-sd-found-chip{font-family:var(--au-font-numeric);font-size:11px;color:var(--au-sky-d);
+  background:var(--au-sky);padding:3px 9px;border-radius:8px}
+.au-sd-ev{display:flex;flex-direction:column;gap:4px}
+.au-sd-ev-row{display:flex;gap:12px;font-size:12.5px}
+.au-sd-ev-k{color:var(--au-muted)}
+.au-sd-ev-v{font-family:var(--au-font-numeric);color:var(--au-ink-2);text-align:right;margin-left:auto;
+  max-width:60%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+/* bulk pages table (no prototype archetype — token-styled) */
+.au-sd-best{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:12px}
+.au-sd-tablewrap{overflow-x:auto;border:1px solid var(--au-line);border-radius:var(--au-r-s)}
+.au-sd-table{width:100%;border-collapse:collapse;font-size:13px}
+.au-sd-table th{font-family:var(--au-font-numeric);font-size:10px;letter-spacing:.06em;text-transform:uppercase;
+  color:var(--au-muted);text-align:left;padding:11px 14px;border-bottom:1px solid var(--au-line);white-space:nowrap;font-weight:500}
+.au-sd-table td{padding:11px 14px;border-bottom:1px solid var(--au-line-2);vertical-align:middle;color:var(--au-ink-2)}
+.au-sd-table tbody tr:last-child td{border-bottom:0}
+.au-sd-table tbody tr:hover{background:rgba(20,30,51,.02)}
+.au-sd-url{font-weight:600;color:var(--au-ink)}
+.au-sd-th-sort{cursor:pointer}
+.au-sd-topissue{color:var(--au-muted);max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.au-sd-td-right{text-align:right}
+
+/* Pro-lock (no prototype archetype — token-styled) */
+.au-sd-lockbanner{display:flex;align-items:center;gap:10px;background:var(--au-lemon);
+  color:var(--au-lemon-d);border-radius:var(--au-r-s);padding:10px 14px;font-size:12.5px;margin-bottom:12px}
+.au-sd-lockbanner button{margin-left:auto}
+.au-sd-lockwrap{position:relative;margin-top:12px;border-radius:var(--au-r-s);overflow:hidden}
+.au-sd-blur{filter:blur(6px);opacity:.5;pointer-events:none}
+.au-sd-lock-overlay{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;
+  justify-content:center;gap:8px;text-align:center;padding:20px;
+  background:linear-gradient(180deg,rgba(251,252,253,.4),rgba(251,252,253,.92))}
+.au-sd-lock-t{font-family:var(--au-font-heading);font-weight:700;font-size:15px;color:var(--au-ink)}
+.au-sd-lock-s{font-size:12.5px;color:var(--au-muted);max-width:360px}
+
+/* live progress + terminal states (centred cards) */
+.au-sd-center{text-align:center;padding:40px 24px;position:relative;z-index:1}
+.au-sd-ill{width:54px;height:54px;border-radius:50%;display:grid;place-items:center;margin:0 auto 16px;
+  background:var(--au-mint);color:var(--au-mint-d)}
+.au-sd-ill.au-sd-ill-bad{background:var(--au-peach);color:var(--au-peach-d)}
+.au-sd-ct{font-family:var(--au-font-heading);font-size:18px;font-weight:700;color:var(--au-ink)}
+.au-sd-cs{font-size:13px;color:var(--au-muted);margin:6px 0 18px}
+.au-sd-prog{max-width:520px;margin:0 auto;text-align:left}
+.au-sd-prog-label{font-family:var(--au-font-numeric);font-size:12px;color:var(--au-muted);margin-top:10px}
+.au-sd-prog-url{font-family:var(--au-font-numeric);font-size:11.5px;color:var(--au-muted);margin-top:4px;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* indeterminate variant of the primitive .au-pgf (prototype has no indeterminate) */
+.au-sd-indet{width:40% !important;animation:au-sd-indet 1.1s ease-in-out infinite}
+@keyframes au-sd-indet{0%{margin-left:-40%}100%{margin-left:100%}}
+
+/* loading skeleton rows */
+.au-sd-skrows{display:flex;flex-direction:column;gap:10px}
+
+/* best/worst chips */
+.au-sd-bestchip{display:inline-flex;align-items:center;gap:5px;font-size:12px;font-weight:600;
+  padding:5px 11px;border-radius:var(--au-r-pill)}
+.au-sd-bestchip.good{background:var(--au-mint);color:var(--au-mint-d)}
+.au-sd-bestchip.bad{background:var(--au-peach);color:var(--au-peach-d)}

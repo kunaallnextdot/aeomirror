@@ -1,9 +1,10 @@
 import React, { useEffect, useState } from "react";
 import { Loader2 } from "lucide-react";
 import {
-  AuthShell, Field, TextInput, PasswordInput, PasswordStrength, passwordStrength,
-  Alert, SubmitButton, RoleBadge,
-} from "../ui.jsx";
+  AuAuthShell, AuField, AuTextInput, AuPasswordInput, AuPasswordStrength,
+  AuAlert, AuSubmitButton, AuRoleBadge,
+} from "../../dashboard/aurora.jsx";
+import { passwordStrength } from "../ui.jsx";
 import { apiJson } from "../client.js";
 import { useAuth } from "../AuthContext.jsx";
 import { navigate, queryParam } from "../router.jsx";
@@ -47,48 +48,48 @@ export default function AcceptInvitation() {
 
   if (loadErr) {
     return (
-      <AuthShell title="Team invitation"
-        footer={<button className="auth-link" onClick={() => navigate("/login")}>Go to sign in</button>}>
-        <Alert>{loadErr}</Alert>
-      </AuthShell>
+      <AuAuthShell title="Team invitation"
+        footer={<button className="au-authlink" onClick={() => navigate("/login")}>Go to sign in</button>}>
+        <AuAlert>{loadErr}</AuAlert>
+      </AuAuthShell>
     );
   }
   if (!info) {
     return (
-      <AuthShell title="Team invitation">
-        <div className="alert alert-info"><Loader2 size={15} className="spin-slow" /> <span>Loading your invitation…</span></div>
-      </AuthShell>
+      <AuAuthShell title="Team invitation">
+        <div className="au-alert au-alert-info"><Loader2 size={15} className="au-spin" /> <span>Loading your invitation…</span></div>
+      </AuAuthShell>
     );
   }
 
   return (
-    <AuthShell
+    <AuAuthShell
       title={`Join ${info.organization_name}`}
-      subtitle={<span>You've been invited as <RoleBadge role={info.role} /> · <b>{info.email}</b></span>}
-      footer={<button className="auth-link" onClick={() => navigate("/login")}>Use a different account</button>}
+      subtitle={<span>You've been invited as <AuRoleBadge role={info.role} /> · <b>{info.email}</b></span>}
+      footer={<button className="au-authlink" onClick={() => navigate("/login")}>Use a different account</button>}
     >
-      <form className="auth-form" onSubmit={submit}>
-        {err && <Alert>{err}</Alert>}
+      <form className="au-form" onSubmit={submit}>
+        {err && <AuAlert>{err}</AuAlert>}
         {requiresSignup ? (
           <>
-            <Field label="Your name">
-              <TextInput value={name} onChange={(e) => setName(e.target.value)} required autoFocus
+            <AuField label="Your name">
+              <AuTextInput value={name} onChange={(e) => setName(e.target.value)} required autoFocus
                          placeholder="Ada Lovelace" autoComplete="name" />
-            </Field>
-            <Field label="Create a password">
-              <PasswordInput value={password} onChange={(e) => setPassword(e.target.value)}
+            </AuField>
+            <AuField label="Create a password">
+              <AuPasswordInput value={password} onChange={(e) => setPassword(e.target.value)}
                              required autoComplete="new-password" />
-            </Field>
-            <PasswordStrength value={password} />
+            </AuField>
+            <AuPasswordStrength value={password} />
           </>
         ) : (
-          <Field label="Your password" hint="Enter your existing AEOMirror password to accept.">
-            <PasswordInput value={password} onChange={(e) => setPassword(e.target.value)}
+          <AuField label="Your password" hint="Enter your existing AEOMirror password to accept.">
+            <AuPasswordInput value={password} onChange={(e) => setPassword(e.target.value)}
                            required autoFocus autoComplete="current-password" />
-          </Field>
+          </AuField>
         )}
-        <SubmitButton busy={busy}>Accept invitation</SubmitButton>
+        <AuSubmitButton busy={busy}>Accept invitation</AuSubmitButton>
       </form>
-    </AuthShell>
+    </AuAuthShell>
   );
 }

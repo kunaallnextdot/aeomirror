@@ -57,51 +57,51 @@ export function SharePanel({ scanId }) {
   };
 
   return (
-    <div className="rep-sharewrap">
-      <button className={`rep-dl rep-share${open ? " on" : ""}`} onClick={() => setOpen((o) => !o)}
+    <div className="au-sharewrap">
+      <button className={`au-btn au-ghost au-share-btn${open ? " on" : ""}`} onClick={() => setOpen((o) => !o)}
               aria-expanded={open}>
         <Share2 size={15} /> Share
       </button>
       {open && (
-        <div className="rep-share-pop">
+        <div className="au-share-pop">
           {shares === null ? (
-            <div className="d-dim" style={{ fontSize: 12.5 }}>Loading…</div>
+            <div className="au-dim" style={{ fontSize: 12.5 }}>Loading…</div>
           ) : share ? (
             <>
-              <div className="rep-share-h">Public link</div>
-              <div className="rep-share-url">
+              <div className="au-share-h">Public link</div>
+              <div className="au-share-url">
                 <input readOnly value={url} onFocus={(e) => e.target.select()} aria-label="Public report link" />
-                <button className="btn btn-primary btn-sm" onClick={copy}>
+                <button className="au-btn au-accent au-sm" onClick={copy}>
                   {copied ? <><Check size={12} /> Copied</> : "Copy"}
                 </button>
               </div>
-              <div className="rep-share-meta d-dim">
+              <div className="au-share-meta au-dim">
                 Expires {fmtDate(share.expires_at)} · {share.view_count} view{share.view_count === 1 ? "" : "s"}
               </div>
               {expiresSoon && (
-                <div className="rep-share-warn">
+                <div className="au-share-warn">
                   <Clock size={12} /> This link expires {fmtDate(share.expires_at)}. Re-create it to keep it working.
                 </div>
               )}
-              <button className="rep-share-revoke" disabled={busy} onClick={revoke}>
+              <button className="au-share-revoke" disabled={busy} onClick={revoke}>
                 {busy ? "Revoking…" : "Revoke link"}
               </button>
-              <div className="rep-share-note d-dim">
+              <div className="au-share-note au-dim">
                 Anyone with this link can view the report — no login needed. It isn't indexed by search engines.
               </div>
             </>
           ) : (
             <>
-              <div className="rep-share-h">Share this report</div>
-              <div className="d-dim" style={{ fontSize: 12.5, marginBottom: 10 }}>
+              <div className="au-share-h">Share this report</div>
+              <div className="au-dim" style={{ fontSize: 12.5, marginBottom: 10 }}>
                 Create a public, read-only link. Anyone with it can view the report without signing in.
               </div>
-              <button className="btn btn-primary btn-block" disabled={busy} onClick={create}>
+              <button className="au-btn au-accent au-block" disabled={busy} onClick={create}>
                 {busy ? "Creating…" : "Create public link"}
               </button>
             </>
           )}
-          {err && <div className="rep-share-err"><AlertTriangle size={12} /> {err}</div>}
+          {err && <div className="au-share-err"><AlertTriangle size={12} /> {err}</div>}
         </div>
       )}
     </div>

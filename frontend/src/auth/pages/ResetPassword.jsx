@@ -1,7 +1,8 @@
 import React, { useState } from "react";
 import {
-  AuthShell, Field, PasswordInput, PasswordStrength, passwordStrength, Alert, SubmitButton,
-} from "../ui.jsx";
+  AuAuthShell, AuField, AuPasswordInput, AuPasswordStrength, AuAlert, AuSubmitButton,
+} from "../../dashboard/aurora.jsx";
+import { passwordStrength } from "../ui.jsx";
 import { resetPassword } from "../api.js";
 import { navigate, queryParam } from "../router.jsx";
 
@@ -29,41 +30,41 @@ export default function ResetPassword() {
 
   if (!token) {
     return (
-      <AuthShell title="Reset your password"
-        footer={<button className="auth-link" onClick={() => navigate("/forgot-password")}>Request a new link</button>}>
-        <Alert>This reset link is missing its token. Please use the link from your email.</Alert>
-      </AuthShell>
+      <AuAuthShell title="Reset your password"
+        footer={<button className="au-authlink" onClick={() => navigate("/forgot-password")}>Request a new link</button>}>
+        <AuAlert>This reset link is missing its token. Please use the link from your email.</AuAlert>
+      </AuAuthShell>
     );
   }
 
   return (
-    <AuthShell
+    <AuAuthShell
       title="Set a new password"
       subtitle="Choose a new password for your account."
-      footer={<button className="auth-link" onClick={() => navigate("/login")}>Back to sign in</button>}
+      footer={<button className="au-authlink" onClick={() => navigate("/login")}>Back to sign in</button>}
     >
       {done ? (
         <>
-          <Alert kind="ok">Your password has been reset. You can now sign in.</Alert>
-          <button className="btn btn-primary btn-block" style={{ marginTop: 16 }} onClick={() => navigate("/login")}>
+          <AuAlert kind="ok">Your password has been reset. You can now sign in.</AuAlert>
+          <button className="au-btn au-accent au-block" style={{ marginTop: 16 }} onClick={() => navigate("/login")}>
             Go to sign in
           </button>
         </>
       ) : (
-        <form className="auth-form" onSubmit={submit}>
-          {err && <Alert>{err}</Alert>}
-          <Field label="New password">
-            <PasswordInput value={password} onChange={(e) => setPassword(e.target.value)}
+        <form className="au-form" onSubmit={submit}>
+          {err && <AuAlert>{err}</AuAlert>}
+          <AuField label="New password">
+            <AuPasswordInput value={password} onChange={(e) => setPassword(e.target.value)}
                            required autoFocus autoComplete="new-password" />
-          </Field>
-          <PasswordStrength value={password} />
-          <Field label="Confirm new password">
-            <PasswordInput value={confirm} onChange={(e) => setConfirm(e.target.value)}
+          </AuField>
+          <AuPasswordStrength value={password} />
+          <AuField label="Confirm new password">
+            <AuPasswordInput value={confirm} onChange={(e) => setConfirm(e.target.value)}
                            required autoComplete="new-password" />
-          </Field>
-          <SubmitButton busy={busy}>Reset password</SubmitButton>
+          </AuField>
+          <AuSubmitButton busy={busy}>Reset password</AuSubmitButton>
         </form>
       )}
-    </AuthShell>
+    </AuAuthShell>
   );
 }

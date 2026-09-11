@@ -1,13 +1,13 @@
-/* Public shared-report page (/r/:token). Rendered WITHOUT the dashboard shell, sidebar
-   or account nav, and works for a signed-out visitor. It fetches the report through the
-   plain (non-auth) getPublicReport, injects <meta name="robots" content="noindex"> (the
-   edge also sends X-Robots-Tag on /r/*), and renders ReportView in read-only mode. The
-   "Scanned with AEOMirror" marks link back to the homepage — the point of the feature. */
+/* Public shared-report page (/r/:token) — MIGRATED to Aurora. Rendered WITHOUT the dashboard
+   shell; works signed-out. useNoIndex (robots noindex) + data fetch are UNCHANGED — only the
+   chrome + loading/error skin changed. Copy is verbatim. Renders ReportView in read-only mode
+   (ReportView is already Aurora). */
 import React, { useEffect, useState } from "react";
 import { Radar, AlertTriangle } from "lucide-react";
 import { getPublicReport, ScanError } from "../api.js";
 import ReportView from "./ReportView.jsx";
-import { TableSkeleton } from "./ui.jsx";
+import { Shell, Cell, Skeleton } from "./aurora.jsx";
+import "./aurora.css";
 
 function useNoIndex() {
   useEffect(() => {
@@ -34,29 +34,30 @@ export default function PublicReport({ token }) {
   }, [token]);
 
   return (
-    <div className="pub">
-      <header className="pub-bar">
-        <a className="pub-brand" href="/"><Radar size={16} /> Scanned with <b>AEOMirror</b></a>
+    <div className="au-pub">
+      <header className="au-pub-bar">
+        <a className="au-pub-brand" href="/"><Radar size={16} /> Scanned with <b>&nbsp;AEOMirror</b></a>
       </header>
 
-      <main className="pub-main">
+      <main className="au-pub-main">
         {error ? (
-          <div className="d-panel" style={{ textAlign: "center", padding: 40 }}>
-            <div className="d-mini-empty-ill" style={{ margin: "0 auto 14px", background: "rgba(229,97,91,.12)", color: "var(--bad)" }}>
-              <AlertTriangle size={24} />
-            </div>
-            <div style={{ fontSize: 17, fontWeight: 700, fontFamily: "'Hanken Grotesk'" }}>Report unavailable</div>
-            <div className="d-dim" style={{ marginTop: 6, fontSize: 13 }}>{error}</div>
-            <a className="btn btn-primary" style={{ display: "inline-flex", marginTop: 16 }} href="/">Go to AEOMirror</a>
-          </div>
+          <div className="aurora-screen"><Shell><Cell solid><div className="au-card-center">
+            <div className="au-ill au-ill-bad"><AlertTriangle size={24} /></div>
+            <div className="au-card-t">Report unavailable</div>
+            <div className="au-card-s">{error}</div>
+            <a className="au-btn au-accent" href="/">Go to AEOMirror</a>
+          </div></Cell></Shell></div>
         ) : !report ? (
-          <TableSkeleton rows={5} />
+          <div className="aurora-screen"><Shell><div className="au-stack">
+            <Cell solid><div style={{ display: "grid", gap: 10 }}><Skeleton w="45%" h={22} /><Skeleton w="70%" h={12} /></div></Cell>
+            <Cell solid><div style={{ display: "flex", flexDirection: "column", gap: 8 }}>{Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} h={44} />)}</div></Cell>
+          </div></Shell></div>
         ) : (
           <ReportView readOnly report={report} />
         )}
       </main>
 
-      <footer className="pub-foot">
+      <footer className="au-pub-foot">
         <a href="/">Get your own free AI-visibility report at <b>AEOMirror</b> →</a>
       </footer>
     </div>

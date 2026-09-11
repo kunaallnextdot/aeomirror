@@ -1,8 +1,9 @@
 import React, { useEffect, useState } from "react";
 import { BadgeCheck, AlertTriangle, Monitor, LogOut, Trash2 } from "lucide-react";
+import { passwordStrength } from "../ui.jsx";
 import {
-  Field, TextInput, PasswordInput, PasswordStrength, passwordStrength, Alert, Avatar,
-} from "../ui.jsx";
+  Shell, AuField, AuTextInput, AuPasswordInput, AuPasswordStrength, AuAlert, AuAvatar,
+} from "../../dashboard/aurora.jsx";
 import {
   updateMe, listSessions, revokeSession, logoutEverywhere, resendVerification,
 } from "../api.js";
@@ -80,95 +81,97 @@ export default function ProfilePage() {
   };
 
   return (
-    <div className="acct">
-      {/* identity */}
-      <div className="d-panel" style={{ marginBottom: 16 }}>
-        <div className="d-panel-h">Profile</div>
-        <div style={{ display: "flex", alignItems: "center", gap: 14, marginBottom: 16 }}>
-          <Avatar user={{ ...user, name, avatar }} size={56} />
-          <div>
-            <div style={{ fontSize: 15, fontWeight: 700 }}>{user?.name}</div>
-            <div style={{ fontSize: 12.5, color: "var(--txt-mid)", display: "flex", alignItems: "center", gap: 6, marginTop: 3 }}>
-              {user?.email}
-              {user?.email_verified
-                ? <span style={{ color: "var(--good)", display: "inline-flex", alignItems: "center", gap: 4 }}><BadgeCheck size={13} /> verified</span>
-                : <span style={{ color: "var(--warn)", display: "inline-flex", alignItems: "center", gap: 4 }}><AlertTriangle size={13} /> unverified</span>}
+    <div className="aurora-screen"><Shell>
+      <div style={{ position: "relative", zIndex: 1, maxWidth: 720 }}>
+        {/* identity */}
+        <div className="au-panel" style={{ marginBottom: 16 }}>
+          <div className="au-panel-h">Profile</div>
+          <div style={{ display: "flex", alignItems: "center", gap: 14, marginBottom: 16 }}>
+            <AuAvatar user={{ ...user, name, avatar }} size={56} />
+            <div>
+              <div style={{ fontSize: 15, fontWeight: 700 }}>{user?.name}</div>
+              <div style={{ fontSize: 12.5, color: "var(--au-muted)", display: "flex", alignItems: "center", gap: 6, marginTop: 3 }}>
+                {user?.email}
+                {user?.email_verified
+                  ? <span style={{ color: "var(--au-mint-d)", display: "inline-flex", alignItems: "center", gap: 4 }}><BadgeCheck size={13} /> verified</span>
+                  : <span style={{ color: "var(--au-lemon-d)", display: "inline-flex", alignItems: "center", gap: 4 }}><AlertTriangle size={13} /> unverified</span>}
+              </div>
             </div>
           </div>
+          {!user?.email_verified && (
+            <div style={{ marginBottom: 14 }}>
+              <AuAlert kind="info">Your email isn't verified yet. <button className="au-authlink" onClick={resend}>Resend verification</button>{verifyMsg ? ` — ${verifyMsg}` : ""}</AuAlert>
+            </div>
+          )}
+          <form className="au-form" onSubmit={saveProfile}>
+            {profileMsg && <AuAlert kind={profileMsg.kind}>{profileMsg.text}</AuAlert>}
+            <AuField label="Name">
+              <AuTextInput value={name} onChange={(e) => setName(e.target.value)} required />
+            </AuField>
+            <AuField label="Avatar URL" hint="Paste an image URL, or leave blank to use your initial.">
+              <AuTextInput value={avatar} onChange={(e) => setAvatar(e.target.value)} placeholder="https://…" />
+            </AuField>
+            <div>
+              <div className="au-field-l" style={{ marginBottom: 8 }}>Notifications</div>
+              <label className="au-check" style={{ marginBottom: 8 }}>
+                <input type="checkbox" checked={!!prefs.product_updates} onChange={() => togglePref("product_updates")} /> Product updates
+              </label>
+              <label className="au-check">
+                <input type="checkbox" checked={!!prefs.scan_reports} onChange={() => togglePref("scan_reports")} /> Scan report emails
+              </label>
+            </div>
+            <button type="submit" className="au-btn au-accent" disabled={savingProfile} style={{ alignSelf: "flex-start" }}>
+              {savingProfile ? "Saving…" : "Save changes"}
+            </button>
+          </form>
         </div>
-        {!user?.email_verified && (
-          <div style={{ marginBottom: 14 }}>
-            <Alert kind="info">Your email isn't verified yet. <button className="auth-link" onClick={resend}>Resend verification</button>{verifyMsg ? ` — ${verifyMsg}` : ""}</Alert>
-          </div>
-        )}
-        <form className="auth-form" onSubmit={saveProfile}>
-          {profileMsg && <Alert kind={profileMsg.kind}>{profileMsg.text}</Alert>}
-          <Field label="Name">
-            <TextInput value={name} onChange={(e) => setName(e.target.value)} required />
-          </Field>
-          <Field label="Avatar URL" hint="Paste an image URL, or leave blank to use your initial.">
-            <TextInput value={avatar} onChange={(e) => setAvatar(e.target.value)} placeholder="https://…" />
-          </Field>
-          <div>
-            <div className="f-label" style={{ marginBottom: 8 }}>Notifications</div>
-            <label className="f-check" style={{ marginBottom: 8 }}>
-              <input type="checkbox" checked={!!prefs.product_updates} onChange={() => togglePref("product_updates")} /> Product updates
-            </label>
-            <label className="f-check">
-              <input type="checkbox" checked={!!prefs.scan_reports} onChange={() => togglePref("scan_reports")} /> Scan report emails
-            </label>
-          </div>
-          <button type="submit" className="btn btn-primary" disabled={savingProfile} style={{ alignSelf: "flex-start" }}>
-            {savingProfile ? "Saving…" : "Save changes"}
-          </button>
-        </form>
-      </div>
 
-      {/* password */}
-      <div className="d-panel" style={{ marginBottom: 16 }}>
-        <div className="d-panel-h">Change password</div>
-        <form className="auth-form" onSubmit={changePassword}>
-          {pwMsg && <Alert kind={pwMsg.kind}>{pwMsg.text}</Alert>}
-          <Field label="Current password">
-            <PasswordInput value={curPw} onChange={(e) => setCurPw(e.target.value)} required autoComplete="current-password" />
-          </Field>
-          <Field label="New password">
-            <PasswordInput value={newPw} onChange={(e) => setNewPw(e.target.value)} required autoComplete="new-password" />
-          </Field>
-          <PasswordStrength value={newPw} />
-          <button type="submit" className="btn btn-primary" disabled={pwBusy} style={{ alignSelf: "flex-start" }}>
-            {pwBusy ? "Updating…" : "Update password"}
-          </button>
-        </form>
-      </div>
+        {/* password */}
+        <div className="au-panel" style={{ marginBottom: 16 }}>
+          <div className="au-panel-h">Change password</div>
+          <form className="au-form" onSubmit={changePassword}>
+            {pwMsg && <AuAlert kind={pwMsg.kind}>{pwMsg.text}</AuAlert>}
+            <AuField label="Current password">
+              <AuPasswordInput value={curPw} onChange={(e) => setCurPw(e.target.value)} required autoComplete="current-password" />
+            </AuField>
+            <AuField label="New password">
+              <AuPasswordInput value={newPw} onChange={(e) => setNewPw(e.target.value)} required autoComplete="new-password" />
+            </AuField>
+            <AuPasswordStrength value={newPw} />
+            <button type="submit" className="au-btn au-accent" disabled={pwBusy} style={{ alignSelf: "flex-start" }}>
+              {pwBusy ? "Updating…" : "Update password"}
+            </button>
+          </form>
+        </div>
 
-      {/* sessions */}
-      <div className="d-panel">
-        <div className="d-panel-h">Active sessions <span className="sub">devices signed in to your account</span></div>
-        {sessions === null ? (
-          <div className="d-dim">Loading…</div>
-        ) : sessions.length === 0 ? (
-          <div className="d-dim">No other active sessions.</div>
-        ) : (
-          <div>
-            {sessions.map((s) => (
-              <div key={s.id} className="mem-row">
-                <Monitor size={18} style={{ color: "var(--txt-dim)" }} />
-                <div className="mem-id">
-                  <div className="mem-name">{shortAgent(s.user_agent)} {s.current && <span className="pill-you">this device</span>}</div>
-                  <div className="mem-email">last used {new Date(s.last_used_at || s.created_at).toLocaleString()}</div>
+        {/* sessions */}
+        <div className="au-panel">
+          <div className="au-panel-h">Active sessions <span className="au-sub">devices signed in to your account</span></div>
+          {sessions === null ? (
+            <div className="au-dim">Loading…</div>
+          ) : sessions.length === 0 ? (
+            <div className="au-dim">No other active sessions.</div>
+          ) : (
+            <div>
+              {sessions.map((s) => (
+                <div key={s.id} className="au-mem-row">
+                  <Monitor size={18} style={{ color: "var(--au-muted)" }} />
+                  <div className="au-mem-id">
+                    <div className="au-mem-name">{shortAgent(s.user_agent)} {s.current && <span className="au-pill-you">this device</span>}</div>
+                    <div className="au-mem-email">last used {new Date(s.last_used_at || s.created_at).toLocaleString()}</div>
+                  </div>
+                  {!s.current && (
+                    <button className="au-btn au-ghost au-sm" onClick={() => doRevoke(s.id)}><Trash2 size={13} /> Revoke</button>
+                  )}
                 </div>
-                {!s.current && (
-                  <button className="btn btn-ghost btn-sm" onClick={() => doRevoke(s.id)}><Trash2 size={13} /> Revoke</button>
-                )}
-              </div>
-            ))}
-          </div>
-        )}
-        <button className="btn btn-danger btn-sm" style={{ marginTop: 14 }} onClick={logoutAll}>
-          <LogOut size={13} /> Sign out everywhere
-        </button>
+              ))}
+            </div>
+          )}
+          <button className="au-btn au-danger au-sm" style={{ marginTop: 14 }} onClick={logoutAll}>
+            <LogOut size={13} /> Sign out everywhere
+          </button>
+        </div>
       </div>
-    </div>
+    </Shell></div>
   );
 }

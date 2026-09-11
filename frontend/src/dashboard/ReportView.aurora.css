@@ -1,0 +1,99 @@
+/* Aurora styling for the AI Visibility Report (/app/report) + the public share (/r/:token),
+   which render the SAME ReportView. Screen-scoped `au-rep-*` for parts with no prototype
+   archetype (in-page nav, issue-count grid, recommendation accordion cards, Pro-lock overlay,
+   AI-narrative tags, quick wins, impact grid, action plan). Built from --au-* tokens. */
+
+.au-rep-head{display:flex;align-items:center;justify-content:space-between;gap:18px;flex-wrap:wrap}
+.au-rep-head-l{display:flex;align-items:center;gap:18px;min-width:0}
+.au-rep-domain{font-family:var(--au-font-heading);font-size:20px;font-weight:700;color:var(--au-ink);word-break:break-word}
+.au-rep-grade{font-size:13.5px;color:var(--au-ink-2);margin-top:4px}
+.au-rep-actions{display:flex;gap:8px;flex-wrap:wrap}
+
+.au-rep-dlerr{display:flex;align-items:center;gap:7px;color:var(--au-peach-d);background:var(--au-peach);
+  border-radius:var(--au-r-s);padding:9px 13px;font-size:12.5px;margin-top:10px}
+.au-rep-ok{display:flex;align-items:center;gap:7px;color:var(--au-mint-d);background:var(--au-mint);
+  border-radius:var(--au-r-s);padding:9px 13px;font-size:12.5px;margin-top:10px}
+
+/* sticky in-page nav */
+.au-rep-nav{position:sticky;top:0;z-index:5;display:flex;gap:6px;flex-wrap:wrap;padding:12px 0;margin-top:8px}
+.au-rep-nav-btn{background:var(--au-solid);border:1px solid var(--au-line);border-radius:var(--au-r-pill);
+  color:var(--au-ink-2);font:inherit;font-size:12.5px;font-weight:600;padding:7px 14px;cursor:pointer;transition:.15s}
+.au-rep-nav-btn:hover{background:var(--au-mint);color:var(--au-mint-d);border-color:transparent}
+
+.au-rep-summary{font-size:14.5px;line-height:1.6;color:var(--au-ink-2);margin:0}
+.au-rep-ai-tag{display:inline-flex;align-items:center;gap:4px;font-family:var(--au-font-numeric);font-size:9.5px;
+  letter-spacing:.06em;text-transform:uppercase;color:var(--au-lav-d);background:var(--au-lav);
+  padding:2px 8px;border-radius:var(--au-r-pill);margin-left:8px;font-weight:600}
+.au-rep-ai-note{display:flex;align-items:center;gap:6px;margin-top:6px;font-size:11px;color:var(--au-muted)}
+
+/* issue-count grid */
+.au-rep-counts{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-top:16px}
+@media(max-width:640px){.au-rep-counts{grid-template-columns:repeat(2,1fr)}}
+.au-rep-count{background:var(--au-glass);border:1px solid var(--au-line-2);border-radius:var(--au-r-s);padding:12px;text-align:center}
+.au-rep-count-n{font-family:var(--au-font-numeric);font-size:26px;line-height:1;font-weight:500}
+.au-rep-count-l{font-size:11px;color:var(--au-muted);margin-top:5px}
+
+/* two-column grid (categories + strengths) */
+.au-rep-grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+@media(max-width:820px){.au-rep-grid2{grid-template-columns:1fr}}
+.au-rep-sw-h{display:flex;align-items:center;gap:7px;font-size:12.5px;font-weight:600;color:var(--au-ink);margin:0 0 6px}
+.au-rep-sw-row{display:flex;justify-content:space-between;gap:12px;font-size:13px;color:var(--au-ink-2);padding:4px 0}
+
+/* action plan */
+.au-rep-plan{margin:0;padding-left:20px;font-size:13.5px;color:var(--au-ink-2);line-height:1.7}
+.au-rep-plan li{margin-bottom:4px}
+
+/* AI insight blocks */
+.au-rep-ai-insight{border-top:1px solid var(--au-line-2);padding:12px 0}
+.au-rep-ai-insight-t{font-weight:700;font-size:13.5px;color:var(--au-ink);margin-bottom:5px}
+.au-rep-ai-insight p{margin:4px 0;font-size:13px;color:var(--au-ink-2);line-height:1.55}
+.au-rep-ai-why-r{color:var(--au-muted);font-style:italic}
+.au-rep-ai-why{background:var(--au-lav);border-radius:var(--au-r-s);padding:11px 13px;margin:10px 0}
+.au-rep-ai-why-h{display:flex;align-items:center;gap:6px;font-weight:700;font-size:12px;color:var(--au-lav-d);margin-bottom:5px}
+.au-rep-ai-teaser{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;
+  border-top:1px solid var(--au-line-2);margin-top:12px;padding-top:14px}
+.au-rep-ai-teaser-t{display:flex;align-items:center;gap:7px;font-size:13px;color:var(--au-ink-2)}
+
+/* quick wins */
+.au-rep-qw{display:flex;flex-direction:column;gap:8px}
+.au-rep-qw-item{display:flex;align-items:center;gap:10px;background:var(--au-glass);border:1px solid var(--au-line-2);
+  border-radius:var(--au-r-s);padding:10px 12px}
+.au-rep-qw-t{flex:1;min-width:0;font-size:13.5px;font-weight:600;color:var(--au-ink)}
+.au-rep-pri{font-family:var(--au-font-numeric);font-size:9.5px;letter-spacing:.05em;text-transform:uppercase;
+  color:#fff;padding:3px 8px;border-radius:var(--au-r-pill);flex:none;font-weight:600}
+
+/* recommendation cards */
+.au-rep-list{display:flex;flex-direction:column;gap:10px}
+.au-rep-card{background:var(--au-solid);border:1px solid var(--au-line);border-radius:var(--au-r-m);overflow:hidden}
+.au-rep-card-h{display:flex;align-items:center;gap:11px;width:100%;background:none;border:0;cursor:pointer;
+  padding:14px 16px;text-align:left;font-family:inherit}
+.au-rep-card-h:hover{background:rgba(20,30,51,.02)}
+.au-rep-card-t{flex:1;min-width:0;font-size:14px;font-weight:600;color:var(--au-ink)}
+.au-rep-card-meta{font-size:11.5px;color:var(--au-muted);white-space:nowrap}
+.au-rep-chev{color:var(--au-muted);transition:transform .2s;flex:none}
+.au-rep-card-b{padding:2px 16px 16px;display:flex;flex-direction:column;gap:10px}
+.au-rep-desc{font-size:13.5px;line-height:1.55;color:var(--au-ink-2);margin:0}
+.au-rep-impact{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+@media(max-width:640px){.au-rep-impact{grid-template-columns:1fr}}
+.au-rep-impact-l{display:flex;align-items:center;gap:6px;font-family:var(--au-font-numeric);font-size:10px;
+  letter-spacing:.05em;text-transform:uppercase;color:var(--au-muted);margin-bottom:4px}
+.au-rep-meta-row{display:flex;gap:16px;flex-wrap:wrap;font-size:12px;color:var(--au-muted)}
+.au-rep-meta-row span{display:inline-flex;align-items:center;gap:5px}
+.au-rep-fx-h{font-family:var(--au-font-numeric);font-size:10px;letter-spacing:.06em;text-transform:uppercase;
+  color:var(--au-muted);margin-top:4px}
+.au-rep-fx-ul{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px}
+.au-rep-fx-ul li{display:flex;align-items:flex-start;gap:8px;font-size:13px;color:var(--au-ink-2);line-height:1.5}
+.au-rep-fx-ul li svg{margin-top:2px;flex:none;color:var(--au-primary)}
+.au-rep-outcome{display:flex;align-items:center;gap:7px;color:var(--au-mint-d);font-size:13px;margin:0}
+
+/* Pro-lock overlay (blurred recs) */
+.au-rep-lockwrap{position:relative;border-radius:var(--au-r-m);overflow:hidden}
+.au-rep-blur{filter:blur(6px);opacity:.55;pointer-events:none}
+.au-rep-lock-overlay{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;
+  gap:8px;text-align:center;padding:24px;background:linear-gradient(180deg,rgba(247,249,251,.35),rgba(247,249,251,.94))}
+.au-rep-lock-t{font-family:var(--au-font-heading);font-weight:700;font-size:16px;color:var(--au-ink)}
+.au-rep-lock-s{font-size:12.5px;color:var(--au-muted);max-width:380px}
+
+/* content insights (read-only) */
+.au-rep-ci-page{border-top:1px solid var(--au-line-2);padding-top:12px;margin-top:12px}
+.au-rep-ci-url{font-family:var(--au-font-numeric);font-size:11.5px;color:var(--au-muted);margin-bottom:8px}

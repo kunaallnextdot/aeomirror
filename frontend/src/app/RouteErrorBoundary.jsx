@@ -82,6 +82,11 @@ export class RouteErrorBoundary extends React.Component {
   }
 }
 
+/* NOTE: Centered / NewVersionNotice / DefaultRuntimeError are the OUTER boundary's defaults
+   (App.jsx wraps <AppRoot> with no fallback). They render on the still-dark `.root` ground
+   BEFORE the Aurora `/app` shell mounts (e.g. a chunk-load failure), so they stay dark until
+   the app-wide theme flip in #14. Only InLayoutErrorState below is guaranteed to render
+   inside the light shell (it is the fallback passed from AppLayout), so only it is Aurora. */
 function Centered({ title, body, children }) {
   return (
     <div style={{ minHeight: "60vh", display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
@@ -117,13 +122,13 @@ function DefaultRuntimeError() {
    and the user is never stranded on a blank page. */
 export function InLayoutErrorState() {
   return (
-    <div className="d-panel" style={{ textAlign: "center", padding: "36px 20px" }}>
-      <AlertTriangle size={20} style={{ color: "var(--warn)" }} />
-      <div style={{ fontSize: 15, fontWeight: 600, margin: "8px 0 4px" }}>Something went wrong</div>
-      <div className="d-dim" style={{ fontSize: 13, marginBottom: 14 }}>
+    <div className="au-panel" style={{ textAlign: "center", padding: "36px 20px" }}>
+      <AlertTriangle size={20} style={{ color: "var(--au-lemon-d)" }} />
+      <div style={{ fontSize: 15, fontWeight: 600, margin: "8px 0 4px", color: "var(--au-ink)" }}>Something went wrong</div>
+      <div className="au-dim" style={{ fontSize: 13, marginBottom: 14 }}>
         This view hit an unexpected error. Your other pages still work.
       </div>
-      <Link className="d-btn" to="/app/dashboard">Back to dashboard</Link>
+      <Link className="au-btn au-accent" to="/app/dashboard">Back to dashboard</Link>
     </div>
   );
 }

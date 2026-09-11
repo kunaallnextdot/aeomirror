@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { AuthShell, Field, TextInput, PasswordInput, Alert, SubmitButton } from "../ui.jsx";
+import { AuAuthShell, AuField, AuTextInput, AuPasswordInput, AuAlert, AuSubmitButton } from "../../dashboard/aurora.jsx";
 import { useAuth } from "../AuthContext.jsx";
 import { navigate } from "../router.jsx";
 import { hasPendingScan } from "../pendingScan.js";
@@ -36,29 +36,29 @@ export default function Login() {
   };
 
   return (
-    <AuthShell
+    <AuAuthShell
       title="Welcome back"
       subtitle="Sign in to your AEOMirror dashboard."
-      footer={<>New to AEOMirror? <button className="auth-link" onClick={() => navigate("/register")}>Create an account</button></>}
+      footer={<>New to AEOMirror? <button className="au-authlink" onClick={() => navigate("/register")}>Create an account</button></>}
     >
-      <form className="auth-form" onSubmit={submit}>
-        {err && <Alert>{err}</Alert>}
-        <Field label="Email">
-          <TextInput type="email" value={email} onChange={(e) => setEmail(e.target.value)}
+      <form className="au-form" onSubmit={submit}>
+        {err && <AuAlert>{err}</AuAlert>}
+        <AuField label="Email">
+          <AuTextInput type="email" value={email} onChange={(e) => setEmail(e.target.value)}
                      required autoFocus placeholder="you@company.com" autoComplete="email" />
-        </Field>
-        <Field label="Password">
-          <PasswordInput value={password} onChange={(e) => setPassword(e.target.value)}
+        </AuField>
+        <AuField label="Password">
+          <AuPasswordInput value={password} onChange={(e) => setPassword(e.target.value)}
                          required autoComplete="current-password" />
-        </Field>
-        <div className="auth-row">
-          <label className="f-check">
+        </AuField>
+        <div className="au-auth-row">
+          <label className="au-check">
             <input type="checkbox" checked={remember} onChange={(e) => setRemember(e.target.checked)} /> Remember me
           </label>
-          <button type="button" className="auth-link" onClick={() => navigate("/forgot-password")}>Forgot password?</button>
+          <button type="button" className="au-authlink" onClick={() => navigate("/forgot-password")}>Forgot password?</button>
         </div>
-        <SubmitButton busy={busy}>Sign in</SubmitButton>
+        <AuSubmitButton busy={busy}>Sign in</AuSubmitButton>
       </form>
-    </AuthShell>
+    </AuAuthShell>
   );
 }

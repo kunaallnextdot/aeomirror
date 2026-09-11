@@ -14,8 +14,9 @@ import {
 } from "../api.js";
 import { UpgradeProvider, useUpgrade } from "../dashboard/UpgradeModal.jsx";
 import { useAuth } from "../auth/AuthContext.jsx";
-import { Avatar } from "../auth/ui.jsx";
+import { AuAvatar } from "../dashboard/aurora.jsx";
 import { RouteErrorBoundary, InLayoutErrorState } from "./RouteErrorBoundary.jsx";
+import "./AppLayout.aurora.css";
 
 const NAV = [
   { to: "/app/dashboard", label: "Dashboard", icon: LayoutDashboard },
@@ -155,49 +156,49 @@ function LayoutBody() {
        handleGated, reloadSubscription]);
 
   return (
-    <div className="dash">
-      <aside className="dash-side">
-        <div className="dash-brand"><Radar size={18} /> AEOMirror</div>
-        <nav className="dash-nav">
+    <div className="au-dash">
+      <aside className="au-dash-side">
+        <div className="au-dash-brand"><Radar size={18} /> AEOMirror</div>
+        <nav className="au-dash-nav">
           {NAV.map((n) => (
-            <NavLink key={n.to} to={n.to} className={({ isActive }) => "dash-nav-item" + (isActive ? " on" : "")}>
+            <NavLink key={n.to} to={n.to} className={({ isActive }) => "au-dash-nav-item" + (isActive ? " on" : "")}>
               <n.icon size={16} /> <span>{n.label}</span>
             </NavLink>
           ))}
-          <div style={{ height: 1, background: "var(--line)", margin: "8px 6px" }} />
+          <div style={{ height: 1, background: "var(--au-line)", margin: "8px 6px" }} />
           {ACCOUNT_NAV.map((n) => (
-            <NavLink key={n.to} to={n.to} className={({ isActive }) => "dash-nav-item" + (isActive ? " on" : "")}>
+            <NavLink key={n.to} to={n.to} className={({ isActive }) => "au-dash-nav-item" + (isActive ? " on" : "")}>
               <n.icon size={16} /> <span>{n.label}</span>
             </NavLink>
           ))}
         </nav>
-        <div className="dash-side-foot">
+        <div className="au-dash-side-foot">
           {meteredScans && <SideScanMeter scans={usage?.scans} onUpgrade={isLimited ? () => openUpgrade("scans") : null} />}
-          <button className="dash-newscan" onClick={onRunScan}><Radar size={15} /> New scan</button>
+          <button className="au-dash-newscan" onClick={onRunScan}><Radar size={15} /> New scan</button>
           {user?.is_platform_admin && (
-            <button className="dash-exit" onClick={() => navigate("/admin")}><Shield size={14} /> Admin panel</button>
+            <button className="au-dash-exit" onClick={() => navigate("/admin")}><Shield size={14} /> Admin panel</button>
           )}
-          <button className="dash-exit" onClick={() => navigate("/")}><ArrowLeft size={14} /> Homepage scanner</button>
-          <div className="dash-user">
-            <Avatar user={user} size={32} />
-            <div className="dash-user-id">
-              <div className="dash-user-name">{user?.name}</div>
-              <div className="dash-user-role">{role}{org ? ` · ${org.name}` : ""}</div>
+          <button className="au-dash-exit" onClick={() => navigate("/")}><ArrowLeft size={14} /> Homepage scanner</button>
+          <div className="au-dash-user">
+            <AuAvatar user={user} size={32} />
+            <div className="au-dash-user-id">
+              <div className="au-dash-user-name">{user?.name}</div>
+              <div className="au-dash-user-role">{role}{org ? ` · ${org.name}` : ""}</div>
             </div>
-            <button className="dash-exit" style={{ padding: 8 }} title="Sign out"
+            <button className="au-dash-exit" style={{ padding: 8 }} title="Sign out"
                     onClick={async () => { await logout(); navigate("/"); }}><LogOut size={14} /></button>
           </div>
         </div>
       </aside>
 
-      <main className="dash-main">
-        <header className="dash-top">
+      <main className="au-dash-main">
+        <header className="au-dash-top">
           <div>
-            <div className="dash-top-title">{title}</div>
-            <div className="dash-top-sub">{subtitle}</div>
+            <div className="au-dash-top-title">{title}</div>
+            <div className="au-dash-top-sub">{subtitle}</div>
           </div>
         </header>
-        <div className="dash-content" key={location.pathname}>
+        <div className="au-dash-content" key={location.pathname}>
           {/* Keyed by pathname so navigating clears any prior error. Runtime errors in a
               view render in-layout (sidebar stays usable); a stale-chunk error recovers
               via the guarded reload. */}
@@ -214,15 +215,15 @@ function LayoutBody() {
 function SideScanMeter({ scans, onUpgrade }) {
   if (!scans || scans.unlimited) return null;
   const pct = scans.limit ? Math.min(100, Math.round((scans.used / scans.limit) * 100)) : 0;
-  const color = pct >= 100 ? "var(--bad)" : pct >= 80 ? "var(--warn)" : "var(--accent)";
+  const color = pct >= 100 ? "var(--au-peach-d)" : pct >= 80 ? "var(--au-lemon-d)" : "var(--au-primary)";
   return (
-    <div className="side-meter">
-      <div className="side-meter-top">
-        <span className="side-meter-lbl">Scan jobs</span>
-        <span className="side-meter-n">{scans.used}/{scans.limit}</span>
+    <div className="au-side-meter">
+      <div className="au-side-meter-top">
+        <span className="au-side-meter-lbl">Scan jobs</span>
+        <span className="au-side-meter-n">{scans.used}/{scans.limit}</span>
       </div>
-      <div className="side-meter-bar"><div style={{ width: `${pct}%`, background: color }} /></div>
-      {onUpgrade && <button className="side-meter-up" onClick={onUpgrade}>Upgrade →</button>}
+      <div className="au-side-meter-bar"><div style={{ width: `${pct}%`, background: color }} /></div>
+      {onUpgrade && <button className="au-side-meter-up" onClick={onUpgrade}>Upgrade →</button>}
     </div>
   );
 }

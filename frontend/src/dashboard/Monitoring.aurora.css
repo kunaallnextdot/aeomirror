@@ -1,0 +1,107 @@
+/* Aurora styling for Monitoring (/app/monitoring) + MonitorDetail (/app/monitoring/:id).
+   Shared `au-mon-*` classes, token-styled (no prototype archetype for most). */
+
+/* ---- list header + stats ---- */
+.au-mon-top{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;margin-bottom:16px;position:relative;z-index:1}
+.au-mon-stats{display:flex;gap:22px;flex-wrap:wrap}
+.au-mon-stat-n{font-family:var(--au-font-numeric);font-size:24px;font-weight:500;line-height:1;color:var(--au-ink)}
+.au-mon-stat-l{font-size:11px;color:var(--au-muted);margin-top:4px}
+.au-mon-section-h{font-family:var(--au-font-numeric);font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--au-muted);margin:16px 0 8px}
+.au-mon-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:14px}
+
+/* ---- create form ---- */
+.au-mon-form{margin-bottom:14px}
+.au-mon-form-row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.au-mon-formerr{display:flex;align-items:center;gap:7px;color:var(--au-peach-d);font-size:12.5px;margin-bottom:10px}
+.au-mon-fhint{font-size:11.5px;color:var(--au-muted);margin-top:8px}
+
+/* ---- monitor card ---- */
+.au-mon-card{background:var(--au-solid);border:1px solid var(--au-line);border-radius:var(--au-r-m);
+  padding:16px;box-shadow:var(--au-sh-s);transition:transform .2s,box-shadow .2s}
+.au-mon-card:hover{transform:translateY(-2px);box-shadow:var(--au-sh)}
+.au-mon-card-top{display:flex;align-items:center;gap:14px;cursor:pointer}
+.au-mon-card-name{font-weight:600;font-size:14.5px;color:var(--au-ink);display:flex;align-items:center;gap:7px}
+.au-mon-card-url{font-family:var(--au-font-numeric);font-size:11.5px;color:var(--au-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:2px}
+.au-mon-card-id{flex:1;min-width:0}
+.au-mon-status{width:8px;height:8px;border-radius:50%;flex:none;background:var(--au-muted)}
+.au-mon-status.active{background:var(--au-mint-d)}
+.au-mon-status.paused{background:var(--au-lemon-d)}
+.au-mon-card-meta{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:12px}
+.au-mon-trend{display:inline-flex;align-items:center;gap:4px;font-size:12px;font-weight:600}
+.au-mon-trend.up{color:var(--au-mint-d)}.au-mon-trend.down{color:var(--au-peach-d)}
+.au-mon-trend.flat,.au-mon-trend.none{color:var(--au-muted)}
+.au-mon-freq{font-family:var(--au-font-numeric);font-size:11px;color:var(--au-muted);text-transform:capitalize}
+.au-mon-alertcount{display:inline-flex;align-items:center;gap:4px;font-family:var(--au-font-numeric);font-size:11px;color:var(--au-peach-d)}
+.au-mon-crawlerbadge{display:inline-flex;align-items:center;gap:4px;font-family:var(--au-font-numeric);font-size:10px;
+  color:var(--au-peach-d);background:var(--au-peach);padding:3px 8px;border-radius:var(--au-r-pill)}
+.au-mon-card-times{display:flex;gap:16px;margin-top:12px;font-size:11.5px;color:var(--au-muted)}
+.au-mon-card-times span{display:inline-flex;align-items:center;gap:5px}
+.au-mon-card-actions{display:flex;gap:6px;margin-top:12px;flex-wrap:wrap}
+
+/* ---- alerts ---- */
+.au-mon-alerts{margin-bottom:14px}
+.au-mon-alert-group{margin-top:8px}
+.au-mon-alert-monitor{font-family:var(--au-font-numeric);font-size:10.5px;letter-spacing:.05em;text-transform:uppercase;color:var(--au-muted);margin-bottom:5px}
+.au-mon-alert{display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--au-line-2)}
+.au-mon-alert:last-child{border-bottom:0}
+.au-mon-alert-dot{width:8px;height:8px;border-radius:50%;flex:none}
+.au-mon-alert-body{flex:1;min-width:0}
+.au-mon-alert-title{font-size:13.5px;font-weight:600;color:var(--au-ink);display:flex;align-items:center;gap:7px}
+.au-mon-alert-count-badge{font-family:var(--au-font-numeric);font-size:10px;color:var(--au-peach-d);background:var(--au-peach);padding:1px 6px;border-radius:var(--au-r-pill)}
+.au-mon-alert-msg{font-size:12.5px;color:var(--au-muted);margin-top:2px}
+.au-mon-alert-time{font-family:var(--au-font-numeric);font-size:11px;color:var(--au-muted);flex:none}
+.au-mon-ack{font-family:var(--au-font-numeric);font-size:10px;color:var(--au-mint-d);background:var(--au-mint);padding:1px 6px;border-radius:var(--au-r-pill)}
+
+/* ---- empty ---- */
+.au-mon-empty{text-align:center;padding:40px 24px}
+.au-mon-empty svg{color:var(--au-primary)}
+.au-mon-empty-t{font-family:var(--au-font-heading);font-size:18px;font-weight:700;color:var(--au-ink);margin:12px 0 6px}
+.au-mon-empty-s{font-size:13px;color:var(--au-muted);max-width:420px;margin:0 auto 18px;line-height:1.6}
+
+/* ---- detail header ---- */
+.au-mon-dhead{display:flex;align-items:center;gap:20px;flex-wrap:wrap}
+.au-mon-dtitle{font-family:var(--au-font-heading);font-size:18px;font-weight:700;color:var(--au-ink)}
+.au-mon-durl{font-family:var(--au-font-numeric);font-size:12px;color:var(--au-muted);margin-top:3px;word-break:break-all}
+.au-mon-dmeta{display:flex;align-items:center;gap:10px;margin-top:8px;font-size:12.5px;color:var(--au-ink-2);text-transform:capitalize}
+.au-mon-dtimes{display:flex;gap:18px;font-size:12px;color:var(--au-ink-2)}
+.au-mon-dtimes .au-dim{color:var(--au-muted)}
+
+/* ---- change cols / attribution ---- */
+.au-mon-change-overall{display:flex;align-items:center;gap:6px;font-size:15px;font-weight:600;margin-bottom:12px}
+.au-mon-change-cols{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+@media(max-width:820px){.au-mon-change-cols{grid-template-columns:1fr}}
+.au-mon-change-h{font-family:var(--au-font-numeric);font-size:11px;text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px}
+.au-mon-change-h.up{color:var(--au-mint-d)}.au-mon-change-h.down{color:var(--au-peach-d)}
+.au-mon-change-row{display:flex;align-items:center;gap:7px;font-size:13px;color:var(--au-ink-2);padding:3px 0}
+.au-cha-group{margin-top:10px}
+.au-cha-sev{font-family:var(--au-font-numeric);font-size:11px;font-weight:600;margin-bottom:5px}
+.au-cha-row{display:flex;align-items:center;gap:9px;padding:5px 0;font-size:12.5px}
+.au-cha-dot{width:7px;height:7px;border-radius:50%;flex:none}
+.au-cha-label{flex:1;min-width:0;color:var(--au-ink-2)}
+.au-cha-ba{font-family:var(--au-font-numeric);font-size:11px;color:var(--au-muted);white-space:nowrap;flex:none;max-width:45%;overflow:hidden;text-overflow:ellipsis}
+.au-cha-old{color:var(--au-peach-d)}.au-cha-new{color:var(--au-mint-d)}
+
+/* ---- crawler access ---- */
+.au-ca-list{display:flex;flex-direction:column;gap:2px}
+.au-ca-row{display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--au-line-2);font-size:13px}
+.au-ca-row:last-child{border-bottom:0}
+.au-ca-dot{width:8px;height:8px;border-radius:50%;flex:none}
+.au-ca-name{font-weight:600;color:var(--au-ink);display:flex;align-items:center;gap:6px}
+.au-ca-crit{font-family:var(--au-font-numeric);font-size:9px;text-transform:uppercase;color:var(--au-peach-d);background:var(--au-peach);padding:1px 6px;border-radius:var(--au-r-pill)}
+.au-ca-prov{flex:1;font-size:11.5px}
+.au-ca-status{display:inline-flex;align-items:center;gap:5px;font-family:var(--au-font-numeric);font-size:11.5px}
+.au-ca-fixes{margin-top:10px;display:flex;flex-direction:column;gap:6px}
+.au-ca-fix{display:flex;align-items:flex-start;gap:7px;font-size:12.5px;color:var(--au-ink-2)}
+
+/* ---- timelines / history ---- */
+.au-mon-timeline,.au-mon-hist{display:flex;flex-direction:column;gap:2px}
+.au-mon-tl-item{display:flex;gap:10px;padding:8px 0;border-bottom:1px solid var(--au-line-2)}
+.au-mon-tl-item:last-child{border-bottom:0}
+.au-mon-tl-dot{width:8px;height:8px;border-radius:50%;flex:none;margin-top:5px}
+.au-mon-tl-title{font-size:13.5px;color:var(--au-ink)}
+.au-mon-tl-time{font-family:var(--au-font-numeric);font-size:11px;color:var(--au-muted);margin-top:2px}
+.au-mon-hist-row{display:flex;align-items:center;gap:12px;padding:8px 0;border-bottom:1px solid var(--au-line-2)}
+.au-mon-hist-row:last-child{border-bottom:0}
+.au-mon-hist-id{flex:1;min-width:0}
+.au-ts-detail{border-top:1px solid var(--au-line-2);margin-top:12px;padding-top:12px}
+.au-ts-detail-h{display:flex;align-items:center;justify-content:space-between;gap:10px;font-weight:600;font-size:13.5px;color:var(--au-ink);margin-bottom:8px}

@@ -12,7 +12,8 @@ import { Routes, Route, useParams } from "react-router-dom";
 import { navigate, RouterBridge } from "./auth/router.jsx";
 import { RequireAdmin } from "./app/guards.jsx";
 import { RouteErrorBoundary } from "./app/RouteErrorBoundary.jsx";
-import { Avatar } from "./auth/ui.jsx";
+import { AuAvatar } from "./dashboard/aurora.jsx";
+import "./App.aurora.css";
 import Login from "./auth/pages/Login.jsx";
 import Register from "./auth/pages/Register.jsx";
 import ForgotPassword from "./auth/pages/ForgotPassword.jsx";
@@ -27,6 +28,10 @@ const AppRoot = React.lazy(() => import("./app/AppRoot.jsx"));
 const AdminApp = React.lazy(() => import("./admin/AdminApp.jsx"));
 const Contact = React.lazy(() => import("./pages/Contact.jsx"));
 const PublicReport = React.lazy(() => import("./dashboard/PublicReport.jsx"));
+// DEV-only Aurora UI kit review surface. Gating the lazy import on import.meta.env.DEV (a
+// build-time constant) puts the dynamic import in a dead branch for production, so Rollup emits
+// NO aurora-uikit / aurora chunk in prod at all. See aurora-uikit.jsx for removal steps.
+const UiKit = import.meta.env.DEV ? React.lazy(() => import("./dashboard/aurora-uikit.jsx")) : null;
 const SUPPORT_EMAIL = "aeomirror.support@gmail.com";
 
 /* localStorage key holding only the id of the most recent successful scan.
@@ -86,6 +91,9 @@ function band(v) { return v >= 75 ? "good" : v >= 45 ? "warn" : "bad"; }
 function bandColor(v) { return v >= 75 ? "var(--good)" : v >= 45 ? "var(--warn)" : "var(--bad)"; }
 const STATUS_COLOR = { pass: "var(--good)", warn: "var(--warn)", fail: "var(--bad)" };
 const STATUS_LABEL = { pass: "PASS", warn: "WARN", fail: "FAIL" };
+/* Aurora equivalents (Phase 13a) — same thresholds/mapping, `--au-*` tokens. */
+function auBandColor(v) { return v >= 75 ? "var(--au-mint-d)" : v >= 45 ? "var(--au-lemon-d)" : "var(--au-peach-d)"; }
+const AU_STATUS_COLOR = { pass: "var(--au-mint-d)", warn: "var(--au-lemon-d)", fail: "var(--au-peach-d)" };
 
 /* ---------- gauge ---------- */
 function polar(cx, cy, r, deg) { const a = (deg - 180) * Math.PI / 180; return [cx + r * Math.cos(a), cy + r * Math.sin(a)]; }
@@ -97,31 +105,31 @@ function arc(cx, cy, r, s, e) {
 function Gauge({ value, size = 200, label = "AI Readiness Score" }) {
   const cx = size / 2, cy = size / 2, r = size / 2 - 16;
   const va = 180 * (value / 100);
-  const col = bandColor(value);
+  const col = auBandColor(value);
   // Horizontal padding in the viewBox so the end tick labels (0 and 100) never
   // clip against the SVG edge. Only 0 and 100 are shown to keep the dial clean.
   const PAD = 12;
   return (
-    <div className="gauge" style={{ width: size }}>
+    <div className="au-gauge" style={{ width: size }}>
       <svg width={size} height={size / 2 + 30}
            viewBox={`${-PAD} 0 ${size + PAD * 2} ${size / 2 + 30}`}>
-        <path d={arc(cx, cy, r, 0, 180)} className="gauge-track" />
-        <path d={arc(cx, cy, r, 0, Math.max(0.1, va))} style={{ stroke: col }} className="gauge-val" />
+        <path d={arc(cx, cy, r, 0, 180)} className="au-gauge-track" />
+        <path d={arc(cx, cy, r, 0, Math.max(0.1, va))} style={{ stroke: col }} className="au-gauge-val" />
         {[0, 100].map((t) => {
           const [x, y] = polar(cx, cy, r, 180 * (t / 100));
           // Anchor the ends inward (0 = start, 100 = end) and drop them just below
           // the arc so both stay fully inside the padded viewBox.
           return (
             <text key={t} x={x} y={y + 15} textAnchor={t === 0 ? "start" : "end"}
-                  className="gauge-tick">{t}</text>
+                  className="au-gauge-tick">{t}</text>
           );
         })}
       </svg>
-      <div className="gauge-center">
-        <div className="gauge-num" style={{ color: col }}>{value}</div>
-        <div className="gauge-den">/ 100</div>
+      <div className="au-gauge-center">
+        <div className="au-gauge-num" style={{ color: col }}>{value}</div>
+        <div className="au-gauge-den">/ 100</div>
       </div>
-      <div className="gauge-label">{label}</div>
+      <div className="au-gauge-label">{label}</div>
     </div>
   );
 }
@@ -140,31 +148,31 @@ const CRAWLER_META = {
 };
 function CrawlerStrip({ crawlers }) {
   return (
-    <div className="strip">
-      <div className="strip-head">
+    <div className="au-strip">
+      <div className="au-strip-head">
         <span>AI crawler visibility</span>
-        <span className="strip-sub">can each engine reach this site</span>
+        <span className="au-strip-sub">can each engine reach this site</span>
       </div>
-      <div className="strip-rows">
+      <div className="au-strip-rows">
         {crawlers.map((c) => {
           const m = CRAWLER_META[c.id];
           const ok = c.status === "pass";
           const warn = c.status === "warn";
           return (
-            <div key={c.id} className="strip-row">
-              <div className="strip-bars">
+            <div key={c.id} className="au-strip-row">
+              <div className="au-strip-bars">
                 {[0, 1, 2].map((i) => (
-                  <span key={i} className="bar" style={{
+                  <span key={i} className="au-bar" style={{
                     height: 8 + i * 5,
-                    background: ok ? "var(--good)" : warn && i < 2 ? "var(--warn)" : (!ok && !warn && i < 1) ? "var(--bad)" : "var(--line-2)"
+                    background: ok ? "var(--au-mint-d)" : warn && i < 2 ? "var(--au-lemon-d)" : (!ok && !warn && i < 1) ? "var(--au-peach-d)" : "var(--au-line)"
                   }} />
                 ))}
               </div>
-              <div className="strip-name">
-                <div className="strip-n">{m.name}</div>
-                <div className="strip-s">{m.sub}</div>
+              <div className="au-strip-name">
+                <div className="au-strip-n">{m.name}</div>
+                <div className="au-strip-s">{m.sub}</div>
               </div>
-              <div className="strip-status" style={{ color: STATUS_COLOR[c.status] }}>
+              <div className="au-strip-status" style={{ color: AU_STATUS_COLOR[c.status] }}>
                 {ok ? "Reachable" : warn ? "Undeclared" : "Blocked"}
               </div>
             </div>
@@ -181,16 +189,16 @@ function CrawlerStrip({ crawlers }) {
    totals diverged from the headline). */
 function SignalBars({ sections = [] }) {
   return (
-    <div className="fam">
+    <div className="au-fam">
       {sections.map((s) => {
         const v = Math.max(0, Math.min(100, s.score ?? 0));
         return (
-          <div key={s.id} className="fam-row">
-            <div className="fam-label">{s.label}</div>
-            <div className="fam-track">
-              <div className="fam-fill" style={{ width: `${v}%`, background: bandColor(v) }} />
+          <div key={s.id} className="au-fam-row">
+            <div className="au-fam-label">{s.label}</div>
+            <div className="au-fam-track">
+              <div className="au-fam-fill" style={{ width: `${v}%`, background: auBandColor(v) }} />
             </div>
-            <div className="fam-num mono" style={{ color: bandColor(v) }}>{s.score}<span className="fam-den">/100</span></div>
+            <div className="au-fam-num" style={{ color: auBandColor(v) }}>{s.score}<span className="au-fam-den">/100</span></div>
           </div>
         );
       })}
@@ -210,17 +218,17 @@ function IssueList({ issues, locked = false, max = 5 }) {
 
   if (locked) {
     return (
-      <div className="issues">
+      <div className="au-issues">
         {list.map((c, i) => (
-          <div key={i} className="issue">
-            <span className="issue-chip" style={{ color: STATUS_COLOR[c.status], borderColor: STATUS_COLOR[c.status] }}>
+          <div key={i} className="au-issue">
+            <span className="au-issue-chip" style={{ color: AU_STATUS_COLOR[c.status], borderColor: AU_STATUS_COLOR[c.status] }}>
               {STATUS_LABEL[c.status]}
             </span>
-            <div className="issue-body">
-              <div className="issue-label">{c.label} <span className="issue-fam">{c.family}</span></div>
-              <div className="issue-fix"><Lock size={11} /> {c.fix || c.fix_hint}</div>
+            <div className="au-issue-body">
+              <div className="au-issue-label">{c.label} <span className="au-issue-fam">{c.family}</span></div>
+              <div className="au-issue-fix"><Lock size={11} /> {c.fix || c.fix_hint}</div>
             </div>
-            <button className="issue-btn locked"><Lock size={12} /> Fix</button>
+            <button className="au-issue-btn locked"><Lock size={12} /> Fix</button>
           </div>
         ))}
       </div>
@@ -228,28 +236,28 @@ function IssueList({ issues, locked = false, max = 5 }) {
   }
 
   return (
-    <div className="issues">
+    <div className="au-issues">
       {list.map((c, i) => {
         const isOpen = !!open[i];
         const fix = c.fix || c.fix_hint;
         return (
-          <div key={i} className={`issue expandable${isOpen ? " open" : ""}`}>
-            <button className="issue-main" onClick={() => toggle(i)} aria-expanded={isOpen}>
-              <span className="issue-chip" style={{ color: STATUS_COLOR[c.status], borderColor: STATUS_COLOR[c.status] }}>
+          <div key={i} className={`au-issue expandable${isOpen ? " open" : ""}`}>
+            <button className="au-issue-main" onClick={() => toggle(i)} aria-expanded={isOpen}>
+              <span className="au-issue-chip" style={{ color: AU_STATUS_COLOR[c.status], borderColor: AU_STATUS_COLOR[c.status] }}>
                 {STATUS_LABEL[c.status]}
               </span>
-              <div className="issue-body">
-                <div className="issue-label">{c.label} <span className="issue-fam">{c.family}</span></div>
-                <div className="issue-fix"><Wrench size={11} /> {isOpen ? "How to fix ↓" : "See the fix"}</div>
+              <div className="au-issue-body">
+                <div className="au-issue-label">{c.label} <span className="au-issue-fam">{c.family}</span></div>
+                <div className="au-issue-fix"><Wrench size={11} /> {isOpen ? "How to fix ↓" : "See the fix"}</div>
               </div>
-              <ChevronDown size={15} className="issue-chev" style={{ transform: isOpen ? "rotate(180deg)" : "none" }} />
+              <ChevronDown size={15} className="au-issue-chev" style={{ transform: isOpen ? "rotate(180deg)" : "none" }} />
             </button>
             {isOpen && (
-              <div className="issue-detail">
-                {c.detail && <p className="issue-detail-finding">{c.detail}</p>}
+              <div className="au-issue-detail">
+                {c.detail && <p className="au-issue-detail-finding">{c.detail}</p>}
                 {fix && (
-                  <div className="issue-detail-fix">
-                    <div className="issue-detail-h"><Wrench size={11} /> Recommended fix</div>
+                  <div className="au-issue-detail-fix">
+                    <div className="au-issue-detail-h"><Wrench size={11} /> Recommended fix</div>
                     <p>{fix}</p>
                   </div>
                 )}
@@ -351,9 +359,9 @@ function FreeScanner({ compact, onFull, onScanComplete }) {
   };
 
   return (
-    <div className={compact ? "scanner compact" : "scanner"}>
+    <div className={compact ? "au-scanner compact" : "au-scanner"}>
       {isAuthenticated && (
-        <div className="scan-mode" role="group" aria-label="Scan type">
+        <div className="au-scan-mode" role="group" aria-label="Scan type">
           <button type="button" className={tab === "single" ? "on" : ""} onClick={() => setTab("single")}>Single page</button>
           <button type="button" className={tab === "bulk" ? "on" : ""} onClick={() => setTab("bulk")}>Bulk — up to 50 URLs</button>
         </div>
@@ -361,8 +369,8 @@ function FreeScanner({ compact, onFull, onScanComplete }) {
 
       {tab === "single" ? (
         <>
-          <div className="scan-input">
-            <Globe size={16} className="scan-globe" />
+          <div className="au-scan-input">
+            <Globe size={16} className="au-scan-globe" />
             <input
               value={url}
               onChange={(e) => setUrl(e.target.value)}
@@ -370,92 +378,92 @@ function FreeScanner({ compact, onFull, onScanComplete }) {
               placeholder="Paste any website URL"
               spellCheck={false}
             />
-            <button className="scan-go" onClick={() => run()} disabled={state === "scanning"}>
-              {state === "scanning" ? <><ScanLine size={15} className="spin-slow" /> Scanning</> : <>Scan free <ArrowRight size={15} /></>}
+            <button className="au-scan-go" onClick={() => run()} disabled={state === "scanning"}>
+              {state === "scanning" ? <><ScanLine size={15} className="au-spin" /> Scanning</> : <>Scan free <ArrowRight size={15} /></>}
             </button>
           </div>
-          <div className="scan-hint">Checks crawler access, indexability, schema, content structure, internal linking, performance and freshness across 10 signals. Free account — 1 scan a month, plus a one-time 50-URL bulk trial.</div>
+          <div className="au-scan-hint">Checks crawler access, indexability, schema, content structure, internal linking, performance and freshness across 10 signals. Free account — 1 scan a month, plus a one-time 50-URL bulk trial.</div>
         </>
       ) : (
         <BulkScanPanel onGate={setGate402} />
       )}
 
       {error && (
-        <div className="scan-error" role="alert">
+        <div className="au-scan-error" role="alert">
           <AlertTriangle size={14} /> <span>{error}</span>
         </div>
       )}
 
       {gate402 && (
-        <div className="scan-error scan-gate" role="alert">
+        <div className="au-scan-error au-scan-gate" role="alert">
           <AlertTriangle size={14} /> <span>{gate402}</span>
-          <button className="scan-gate-up" onClick={() => navigate("/app")}>Upgrade to Pro <ArrowRight size={13} /></button>
+          <button className="au-scan-gate-up" onClick={() => navigate("/app")}>Upgrade to Pro <ArrowRight size={13} /></button>
         </div>
       )}
 
       {state === "scanning" && (
-        <div className="scan-progress">
-          <div className="scan-line" />
-          <div className="scan-steps mono">
+        <div className="au-scan-progress">
+          <div className="au-scan-line" />
+          <div className="au-scan-steps">
             <span>fetch</span><span>render</span><span>parse robots.txt</span><span>read schema</span><span>score</span>
           </div>
         </div>
       )}
 
       {state === "done" && report && (
-        <div className="report">
-          <div className="report-top">
-            <div className="report-domain">
-              <div className="report-label mono">RESULT</div>
-              <div className="report-url">{report.domain}</div>
-              <span className="report-badge" style={{ color: bandColor(headline), borderColor: bandColor(headline) }}>
+        <div className="au-report">
+          <div className="au-report-top">
+            <div className="au-report-domain">
+              <div className="au-report-label">RESULT</div>
+              <div className="au-report-url">{report.domain}</div>
+              <span className="au-report-badge" style={{ color: auBandColor(headline), borderColor: auBandColor(headline) }}>
                 {band(headline) === "good" ? "AI ready" : band(headline) === "warn" ? "Needs work" : "At risk"}
               </span>
             </div>
             <Gauge value={headline} size={168} />
           </div>
 
-          <div className="report-grid">
-            <div className="panel">
-              <div className="panel-h">Score by signal <span className="panel-sub">10 checks</span></div>
+          <div className="au-report-grid">
+            <div className="au-mkt-panel">
+              <div className="au-mkt-panel-h">Score by signal <span className="au-mkt-panel-sub">10 checks</span></div>
               <SignalBars sections={report.sections} />
             </div>
             <CrawlerStrip crawlers={report.crawlers} />
           </div>
 
-          <div className="panel">
-            <div className="panel-h">Top issues
-              {!isAuthenticated && <span className="panel-sub">fixes unlock with a free account</span>}
+          <div className="au-mkt-panel">
+            <div className="au-mkt-panel-h">Top issues
+              {!isAuthenticated && <span className="au-mkt-panel-sub">fixes unlock with a free account</span>}
             </div>
             <IssueList issues={report.issues} locked={!isAuthenticated} max={5} />
           </div>
 
           {!isAuthenticated ? (
-            <div className="report-cta">
+            <div className="au-report-cta">
               <div>
-                <div className="cta-title">Unlock the full report and the fixes</div>
-                <div className="cta-sub">Generated schema, llms.txt, an FAQ block, and a re-scan that proves the score moved.</div>
+                <div className="au-cta-title">Unlock the full report and the fixes</div>
+                <div className="au-cta-sub">Generated schema, llms.txt, an FAQ block, and a re-scan that proves the score moved.</div>
               </div>
-              <button className="cta-btn" onClick={onFull}>Create free account <ArrowRight size={15} /></button>
+              <button className="au-cta-btn" onClick={onFull}>Create free account <ArrowRight size={15} /></button>
             </div>
           ) : (
-            <div className="report-cta">
+            <div className="au-report-cta">
               <div>
-                <div className="cta-title">Your full report is ready</div>
-                <div className="cta-sub">
+                <div className="au-cta-title">Your full report is ready</div>
+                <div className="au-cta-sub">
                   {isPro
                     ? "Open the full breakdown in your dashboard, or download the PDF to share."
                     : "Open the full breakdown in your dashboard — every signal, fix and evidence detail."}
                 </div>
               </div>
-              <div className="report-cta-actions">
-                <button className="cta-btn" onClick={viewFullReport}>View full report <ArrowRight size={15} /></button>
+              <div className="au-report-cta-actions">
+                <button className="au-cta-btn" onClick={viewFullReport}>View full report <ArrowRight size={15} /></button>
                 {isPro ? (
-                  <button className="cta-link" onClick={downloadPdf} disabled={pdfBusy}>
+                  <button className="au-cta-link" onClick={downloadPdf} disabled={pdfBusy}>
                     <Download size={14} /> {pdfBusy ? "Preparing…" : "Download PDF"}
                   </button>
                 ) : (
-                  <button className="cta-link" onClick={() => openUpgrade("report", { scanId: report.scan_id })}>
+                  <button className="au-cta-link" onClick={() => openUpgrade("report", { scanId: report.scan_id })}>
                     <Sparkles size={14} /> Unlock exports &amp; AI-written report
                   </button>
                 )}
@@ -540,15 +548,15 @@ function BulkScanPanel({ onGate }) {
   };
 
   return (
-    <div className="bulk">
+    <div className="au-bulk">
       {!trial.isPro && trial.available && (
-        <div className="bulk-badge"><Sparkles size={12} /> 1 free bulk trial</div>
+        <div className="au-bulk-badge"><Sparkles size={12} /> 1 free bulk trial</div>
       )}
-      <textarea className="bulk-text" rows={5} spellCheck={false}
+      <textarea className="au-bulk-text" rows={5} spellCheck={false}
                 placeholder={"One URL per line…\nhttps://example.com/\nhttps://example.com/pricing"}
                 value={text} onChange={(e) => setText(e.target.value)} />
       <div
-        className={`bulk-drop${dragOver ? " over" : ""}`}
+        className={`au-bulk-drop${dragOver ? " over" : ""}`}
         onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
         onDragLeave={() => setDragOver(false)}
         onDrop={onDrop}
@@ -557,39 +565,39 @@ function BulkScanPanel({ onGate }) {
       >
         <FileText size={15} />
         <span>{file ? file.name : "Drop a .csv, .xlsx, .txt or .json here, or click to browse"}</span>
-        {file && <button className="bulk-clear" onClick={(e) => { e.stopPropagation(); setFile(null); if (fileRef.current) fileRef.current.value = ""; }}>Clear</button>}
+        {file && <button className="au-bulk-clear" onClick={(e) => { e.stopPropagation(); setFile(null); if (fileRef.current) fileRef.current.value = ""; }}>Clear</button>}
         <input ref={fileRef} type="file" accept={BULK_ACCEPT} hidden
                onChange={(e) => chooseFile(e.target.files?.[0] || null)} />
       </div>
 
-      <div className="bulk-foot">
-        <span className={`bulk-count${over ? " over" : ""}`}>
+      <div className="au-bulk-foot">
+        <span className={`au-bulk-count${over ? " over" : ""}`}>
           {file ? "URLs read from file" : `${count} / ${BULK_MAX} URLs`}{over ? " · extras skipped" : ""}
         </span>
-        <button className="scan-go" onClick={submit} disabled={busy}>
-          {busy ? <><ScanLine size={15} className="spin-slow" /> Starting…</>
+        <button className="au-scan-go" onClick={submit} disabled={busy}>
+          {busy ? <><ScanLine size={15} className="au-spin" /> Starting…</>
             : <>Scan {file ? "file" : `${Math.min(count, BULK_MAX)} URL${count === 1 ? "" : "s"}`} <ArrowRight size={15} /></>}
         </button>
       </div>
 
-      {err && <div className="scan-error" role="alert"><AlertTriangle size={14} /> <span>{err}</span></div>}
+      {err && <div className="au-scan-error" role="alert"><AlertTriangle size={14} /> <span>{err}</span></div>}
       {skipped?.length > 0 && <SkippedList skipped={skipped} />}
-      <div className="scan-hint">Bulk scans run in the background — we'll take you to a live progress view.</div>
+      <div className="au-scan-hint">Bulk scans run in the background — we'll take you to a live progress view.</div>
     </div>
   );
 }
 
 function SkippedList({ skipped }) {
   return (
-    <div className="bulk-skipped">
-      <div className="bulk-skipped-h">{skipped.length} URL{skipped.length === 1 ? "" : "s"} skipped</div>
+    <div className="au-bulk-skipped">
+      <div className="au-bulk-skipped-h">{skipped.length} URL{skipped.length === 1 ? "" : "s"} skipped</div>
       {skipped.slice(0, 8).map((s, i) => (
-        <div key={i} className="bulk-skipped-row">
-          <span className="bulk-skipped-url">{s.url}</span>
-          <span className="bulk-skipped-reason">{SKIP_LABEL[s.reason] || s.reason}</span>
+        <div key={i} className="au-bulk-skipped-row">
+          <span className="au-bulk-skipped-url">{s.url}</span>
+          <span className="au-bulk-skipped-reason">{SKIP_LABEL[s.reason] || s.reason}</span>
         </div>
       ))}
-      {skipped.length > 8 && <div className="d-dim" style={{ fontSize: 11.5, marginTop: 4 }}>+{skipped.length - 8} more</div>}
+      {skipped.length > 8 && <div style={{ fontSize: 11.5, marginTop: 4, color: "var(--au-muted)" }}>+{skipped.length - 8} more</div>}
     </div>
   );
 }
@@ -597,21 +605,21 @@ function SkippedList({ skipped }) {
 /* ============================= MARKETING VIEW ============================= */
 function Marketing({ onFull, onScanComplete }) {
   return (
-    <div className="mkt">
-      <div className="mkt-hero">
-        <div className="eyebrow mono"><Radar size={13} /> AEOMIRROR / AI VISIBILITY SCANNER</div>
+    <div className="au-mkt">
+      <div className="au-mkt-hero">
+        <div className="au-eyebrow"><Radar size={13} /> AEOMIRROR / AI VISIBILITY SCANNER</div>
         <h1>Is AI recommending you,<br />or your competitor?</h1>
-        <p className="mkt-lede">
+        <p className="au-mkt-lede">
           Search rankings no longer predict AI answers. AEOMirror scans any site and shows exactly what
           ChatGPT, Claude, Gemini and Perplexity can reach, read, and cite. Then it hands you the fixes.
         </p>
         <FreeScanner onFull={onFull} onScanComplete={onScanComplete} />
       </div>
 
-      <div className="mkt-strip">
-        <div className="mkt-stat"><div className="mono big">10</div><div>signals scored — free scan, no AI cost</div></div>
-        <div className="mkt-stat"><div className="mono big">4</div><div>AI crawlers checked per scan</div></div>
-        <div className="mkt-stat"><div className="mono big">AI</div><div>written reports & content insights on Pro</div></div>
+      <div className="au-mkt-strip">
+        <div className="au-mkt-stat"><div className="au-big">10</div><div>signals scored — free scan, no AI cost</div></div>
+        <div className="au-mkt-stat"><div className="au-big">4</div><div>AI crawlers checked per scan</div></div>
+        <div className="au-mkt-stat"><div className="au-big">AI</div><div>written reports & content insights on Pro</div></div>
       </div>
     </div>
   );
@@ -623,23 +631,23 @@ function Marketing({ onFull, onScanComplete }) {
 function TopBar() {
   const { ready, isAuthenticated, user } = useAuth();
   return (
-    <div className="topbar-auth">
-      <div className="topbar-brand" onClick={() => navigate("/")} style={{ cursor: "pointer" }}><Radar size={17} /> AEOMirror</div>
-      <div className="topbar-actions">
-        <button className="tb-btn tb-link" onClick={() => navigate("/contact")}>Contact</button>
+    <div className="au-topbar">
+      <div className="au-topbar-brand" onClick={() => navigate("/")} style={{ cursor: "pointer" }}><Radar size={17} /> AEOMirror</div>
+      <div className="au-topbar-actions">
+        <button className="au-tb-btn au-tb-link" onClick={() => navigate("/contact")}>Contact</button>
         {!ready ? null : isAuthenticated ? (
           <>
-            <button className="tb-btn tb-primary" onClick={() => navigate("/app")}>
+            <button className="au-tb-btn au-tb-primary" onClick={() => navigate("/app")}>
               <LayoutDashboard size={15} /> Dashboard
             </button>
-            <button className="tb-avatar" onClick={() => navigate("/app")} title={user?.name}>
-              <Avatar user={user} size={30} />
+            <button className="au-tb-avatar" onClick={() => navigate("/app")} title={user?.name}>
+              <AuAvatar user={user} size={30} />
             </button>
           </>
         ) : (
           <>
-            <button className="tb-btn" onClick={() => navigate("/login")}>Log in</button>
-            <button className="tb-btn tb-primary" onClick={() => navigate("/register")}>Sign up free</button>
+            <button className="au-tb-btn" onClick={() => navigate("/login")}>Log in</button>
+            <button className="au-tb-btn au-tb-primary" onClick={() => navigate("/register")}>Sign up free</button>
           </>
         )}
       </div>
@@ -650,11 +658,11 @@ function TopBar() {
 function MarketingRoot() {
   const { isAuthenticated } = useAuth();
   const body = (
-    <>
+    <div className="au-site">
       <TopBar />
       <Marketing onFull={() => navigate(isAuthenticated ? "/app" : "/register")} onScanComplete={() => {}} />
       <SiteFooter />
-    </>
+    </div>
   );
   // Signed-in visitors get the shared subscription context (plan + usage) and the
   // UpgradeModal, so the result card can render its plan-aware CTA and open the
@@ -664,35 +672,37 @@ function MarketingRoot() {
 
 /* Public /contact page shell: same marketing chrome (top bar + footer). */
 function ContactRoot() {
+  // 13a: chrome (TopBar/SiteFooter) is Aurora on the light au-site ground; the Contact
+  // page body itself is migrated in 13b (renders dark until then — a known, bounded gap).
   return (
-    <>
+    <div className="au-site">
       <TopBar />
       <Suspense fallback={<FullScreenLoader />}><Contact /></Suspense>
       <SiteFooter />
-    </>
+    </div>
   );
 }
 
 /* Website footer with a Contact/Support section. */
 function SiteFooter() {
   return (
-    <footer className="site-footer">
-      <div className="footer-inner">
-        <div className="footer-brand">
-          <div className="footer-logo"><Radar size={16} /> AEOMirror</div>
-          <p className="footer-tag">See what AI can reach, read and cite on any site — then fix it.</p>
+    <footer className="au-site-footer">
+      <div className="au-footer-inner">
+        <div className="au-footer-brand">
+          <div className="au-footer-logo"><Radar size={16} /> AEOMirror</div>
+          <p className="au-footer-tag">See what AI can reach, read and cite on any site — then fix it.</p>
         </div>
-        <div className="footer-help">
-          <div className="footer-help-h"><LifeBuoy size={15} /> Need help?</div>
-          <a className="footer-mail" href={`mailto:${SUPPORT_EMAIL}`}>
+        <div className="au-footer-help">
+          <div className="au-footer-help-h"><LifeBuoy size={15} /> Need help?</div>
+          <a className="au-footer-mail" href={`mailto:${SUPPORT_EMAIL}`}>
             <Mail size={13} /> {SUPPORT_EMAIL}
           </a>
-          <button className="footer-cta" onClick={() => navigate("/contact")}>
+          <button className="au-footer-cta" onClick={() => navigate("/contact")}>
             Contact us <ArrowRight size={14} />
           </button>
         </div>
       </div>
-      <div className="footer-bottom">© {new Date().getFullYear()} AEOMirror. All rights reserved.</div>
+      <div className="au-footer-bottom">© {new Date().getFullYear()} AEOMirror. All rights reserved.</div>
     </footer>
   );
 }
@@ -753,6 +763,13 @@ function AppRouter() {
         </RouteErrorBoundary>
       } />
 
+      {/* DEV-only Aurora primitive review surface (absent from production builds) */}
+      {import.meta.env.DEV && (
+        <Route path="/ui-kit" element={
+          <Suspense fallback={<FullScreenLoader />}><UiKit /></Suspense>
+        } />
+      )}
+
       {/* unknown top-level path: keep the current behaviour (marketing home) */}
       <Route path="*" element={<MarketingRoot />} />
     </Routes>
@@ -783,340 +800,61 @@ html,body{margin:0;padding:0;background:#0B0F14}
   --txt:#E9EEF2; --txt-mid:#8A97A3; --txt-dim:#5A6772;
   --accent:#34D3E0; --accent-dim:rgba(52,211,224,.12);
   --good:#43C08A; --warn:#E6A94A; --bad:#E5615B;
+  /* --- Aurora design system (Phase 1, ADDITIVE) ---------------------------------
+     Namespaced au- so nothing above is touched and no name collides (the prototype's
+     bare line/line-2/primary would clash with the dark tokens). NOTHING consumes these
+     yet — screens are repointed one phase at a time under a per-screen .aurora-screen
+     wrapper; see design/token-map.md. Dark tokens + the injected .root base rules are
+     removed only in the final cleanup phase. */
+  /* surfaces */
+  --au-app:#ECEFF4; --au-panel:#FBFCFD; --au-solid:#FFFFFF; --au-glass:rgba(255,255,255,.72);
+  /* text */
+  --au-ink:#141E33; --au-ink-2:#3E4A66; --au-muted:#7A8499;
+  /* lines */
+  --au-line:rgba(20,30,51,.08); --au-line-2:rgba(20,30,51,.05);
+  /* brand */
+  --au-primary:#0E7A6B; --au-pop:#FF7A59;
+  /* pastel tint + deep pair per hue */
+  --au-mint:#DFF6EE; --au-mint-d:#0E7A6B;
+  --au-lav:#EAE6FE; --au-lav-d:#6C4BF0;
+  --au-peach:#FFEDE4; --au-peach-d:#E8663A;
+  --au-sky:#E2F1FD; --au-sky-d:#1E7FC2;
+  --au-lemon:#FFF6DC; --au-lemon-d:#B98407;
+  /* semantic aliases (map onto the hue pairs — usage convention) */
+  --au-success:var(--au-mint); --au-success-d:var(--au-mint-d);
+  --au-warning:var(--au-lemon); --au-warning-d:var(--au-lemon-d);
+  --au-danger:var(--au-peach);  --au-danger-d:var(--au-peach-d);
+  --au-neutral:var(--au-sky);   --au-neutral-d:var(--au-sky-d);
+  /* radius (incl. pill) */
+  --au-r-s:14px; --au-r-m:22px; --au-r-l:30px; --au-r-pill:999px;
+  /* shadow */
+  --au-sh-s:0 2px 8px rgba(20,30,51,.05);
+  --au-sh:0 4px 14px rgba(20,30,51,.05), 0 20px 50px rgba(20,30,51,.07);
+  --au-sh-l:0 8px 24px rgba(20,30,51,.07), 0 34px 80px rgba(20,30,51,.11);
+  /* type — faces only; applied per screen, never globally in this phase */
+  --au-font-heading:'Outfit',system-ui,sans-serif;
+  --au-font-body:'Plus Jakarta Sans',system-ui,sans-serif;
+  --au-font-numeric:'DM Mono',ui-monospace,monospace;
+  /* motion */
+  --au-ease:cubic-bezier(.2,.9,.28,1);
   background:var(--bg); color:var(--txt);
   font-family:'Inter',system-ui,sans-serif; min-height:100vh; font-size:14px;
 }
+/* Aurora reveal keyframe (unused until a screen opts in via animation on .aurora-screen
+   elements; stagger with per-element animation-delay of ~60ms). */
+@keyframes au-reveal{from{opacity:0;transform:translateY(20px) scale(.985)}to{opacity:1;transform:none}}
+/* Accessibility guard — copied verbatim from the prototype. Global by design (universal
+   selector); only affects viewers who request reduced motion, collapsing animation to ~0. */
+@media(prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:.01ms!important;
+  animation-iteration-count:1!important;transition-duration:.01ms!important}}
 .root *{box-sizing:border-box}
 .mono{font-family:'IBM Plex Mono',monospace}
 h1,h2,h3,.brand,.topbar-title,.gauge-num,.cta-title{font-family:'Hanken Grotesk',sans-serif}
 
-/* switcher */
-.switcher{position:sticky;top:0;z-index:40;display:flex;gap:4px;justify-content:center;
-  padding:8px;background:var(--bg);border-bottom:1px solid var(--line)}
-.switcher button{background:transparent;border:1px solid transparent;color:var(--txt-mid);
-  padding:6px 14px;border-radius:7px;font-size:12.5px;cursor:pointer;font-weight:500}
-.switcher button.on{background:var(--panel-2);color:var(--txt);border-color:var(--line)}
 
-/* auth-aware marketing top bar — solid (not translucent) so scrolled hero content,
-   the stats strip and the footer never ghost through it behind the scan card. */
-.topbar-auth{position:sticky;top:0;z-index:40;display:flex;justify-content:space-between;align-items:center;
-  padding:12px 22px;background:var(--bg);border-bottom:1px solid var(--line)}
-.topbar-brand{display:flex;align-items:center;gap:8px;font-weight:700;font-size:15px;font-family:'Hanken Grotesk',sans-serif}
-.topbar-brand svg{color:var(--accent)}
-.topbar-actions{display:flex;align-items:center;gap:10px}
-.tb-btn{display:inline-flex;align-items:center;gap:7px;background:transparent;border:1px solid var(--line-2);
-  color:var(--txt);padding:8px 14px;border-radius:8px;font-size:13px;font-weight:500;cursor:pointer;font-family:'Inter',sans-serif}
-.tb-btn:hover{border-color:var(--txt-dim)}
-.tb-primary{background:var(--accent);color:#04222a;border-color:transparent;font-weight:600}
-.tb-link{border-color:transparent;color:var(--txt-mid)}
-.tb-link:hover{border-color:transparent;color:var(--txt)}
-.tb-avatar{background:none;border:none;cursor:pointer;padding:0;display:flex}
-
-/* site footer */
-.site-footer{border-top:1px solid var(--line);background:var(--panel);margin-top:40px}
-.footer-inner{max-width:1080px;margin:0 auto;padding:34px 24px 26px;display:flex;justify-content:space-between;gap:32px;flex-wrap:wrap}
-.footer-brand{max-width:360px}
-.footer-logo{display:flex;align-items:center;gap:8px;font-weight:700;font-size:15px;font-family:'Hanken Grotesk',sans-serif}
-.footer-logo svg{color:var(--accent)}
-.footer-tag{color:var(--txt-mid);font-size:13px;line-height:1.55;margin:10px 0 0}
-.footer-help{display:flex;flex-direction:column;gap:10px;align-items:flex-start}
-.footer-help-h{display:flex;align-items:center;gap:8px;font-weight:600;font-size:14px}
-.footer-help-h svg{color:var(--accent)}
-.footer-mail{display:inline-flex;align-items:center;gap:7px;color:var(--txt-mid);text-decoration:none;font-size:13.5px}
-.footer-mail:hover{color:var(--accent)}
-.footer-cta{display:inline-flex;align-items:center;gap:7px;background:var(--accent);color:#04222a;border:none;
-  padding:9px 15px;border-radius:8px;font-weight:600;font-size:13px;cursor:pointer;font-family:'Inter',sans-serif}
-.footer-bottom{border-top:1px solid var(--line);color:var(--txt-dim);font-size:12px;text-align:center;padding:16px 24px}
-
-/* marketing */
-.mkt{max-width:1080px;margin:0 auto;padding:56px 24px 80px;position:relative;z-index:0}
-.mkt-hero{position:relative;z-index:1}
-.eyebrow{display:inline-flex;align-items:center;gap:7px;color:var(--accent);font-size:11px;
-  letter-spacing:.12em;margin-bottom:22px;border:1px solid var(--line);padding:5px 11px;border-radius:20px}
-.mkt-hero h1{font-size:52px;line-height:1.03;font-weight:800;letter-spacing:-.02em;margin:0 0 20px}
-.mkt-lede{color:var(--txt-mid);font-size:16.5px;line-height:1.55;max-width:640px;margin:0 0 34px}
-.mkt-strip{position:relative;z-index:1;display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-top:52px;
-  padding-top:34px;border-top:1px solid var(--line)}
-.mkt-stat{color:var(--txt-mid);font-size:13px}
-.mkt-stat .big{font-size:30px;color:var(--txt);font-weight:600;margin-bottom:4px}
-
-/* scanner */
-.scanner{max-width:720px}
-.scan-input{display:flex;align-items:center;gap:10px;background:var(--panel);
-  border:1px solid var(--line-2);border-radius:12px;padding:8px 8px 8px 14px}
-.scan-input:focus-within{border-color:var(--accent)}
-.scan-globe{color:var(--txt-dim);flex:none}
-.scan-input input{flex:1;background:transparent;border:none;outline:none;color:var(--txt);
-  font-size:15px;font-family:'IBM Plex Mono',monospace}
-.scan-input input::placeholder{color:var(--txt-dim)}
-.scan-go{display:inline-flex;align-items:center;gap:7px;background:var(--accent);color:#04222a;
-  border:none;padding:10px 16px;border-radius:8px;font-weight:600;font-size:13.5px;cursor:pointer;white-space:nowrap}
-.scan-go:disabled{opacity:.7;cursor:default}
-.scan-hint{color:var(--txt-dim);font-size:12px;margin-top:10px;line-height:1.5}
-.scan-mode{display:inline-flex;gap:4px;margin-top:12px;padding:3px;border:1px solid var(--line);border-radius:9px;background:var(--panel)}
-.scan-mode button{background:transparent;border:none;color:var(--txt-mid);padding:6px 12px;border-radius:6px;
-  font-size:12.5px;cursor:pointer;font-family:'Inter',sans-serif;white-space:nowrap}
-.scan-mode button.on{background:var(--accent-dim);color:var(--accent);font-weight:600}
-/* bulk scan panel (homepage, signed-in) */
-.bulk{margin-top:14px;text-align:left}
-.bulk-badge{display:inline-flex;align-items:center;gap:5px;margin-bottom:10px;font-size:11.5px;font-weight:600;
-  color:var(--accent);background:var(--accent-dim);border:1px solid var(--accent);border-radius:20px;padding:3px 10px}
-.bulk-text{width:100%;box-sizing:border-box;background:var(--panel);border:1px solid var(--line-2);border-radius:10px;
-  color:var(--txt);font-size:13px;font-family:'IBM Plex Mono',monospace;padding:11px 13px;resize:vertical;line-height:1.6;outline:none}
-.bulk-text:focus{border-color:var(--accent)}
-.bulk-drop{display:flex;align-items:center;gap:9px;margin-top:10px;padding:11px 13px;border:1px dashed var(--line-2);
-  border-radius:10px;color:var(--txt-mid);font-size:12.5px;cursor:pointer;background:var(--panel)}
-.bulk-drop.over{border-color:var(--accent);background:var(--accent-dim)}
-.bulk-drop svg{flex:none;color:var(--txt-dim)}
-.bulk-drop span{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.bulk-clear{background:none;border:none;color:var(--txt-dim);font-size:12px;cursor:pointer;text-decoration:underline}
-.bulk-foot{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:12px}
-.bulk-count{font-size:12px;color:var(--txt-mid);font-family:'IBM Plex Mono',monospace}
-.bulk-count.over{color:var(--warn)}
-.bulk-skipped{margin-top:12px;border:1px solid var(--line);border-radius:10px;padding:10px 12px;background:var(--panel)}
-.bulk-skipped-h{font-size:12px;font-weight:600;color:var(--warn);margin-bottom:6px}
-.bulk-skipped-row{display:flex;justify-content:space-between;gap:12px;font-size:11.5px;padding:2px 0}
-.bulk-skipped-url{color:var(--txt-mid);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-family:'IBM Plex Mono',monospace}
-.bulk-skipped-reason{color:var(--txt-dim);flex:none}
-.scan-error{display:flex;align-items:center;gap:8px;margin-top:14px;padding:10px 12px;border:1px solid var(--bad);
-  border-radius:9px;background:rgba(229,97,91,.10);color:var(--bad);font-size:12.5px}
-.scan-error svg{flex:none}
-/* scan-quota (402) gate: amber, with an inline upgrade CTA */
-.scan-gate{border-color:var(--warn);background:rgba(230,169,74,.10);color:var(--warn)}
-.scan-gate-up{margin-left:auto;display:inline-flex;align-items:center;gap:5px;background:var(--warn);color:#2a1e05;
-  border:none;padding:6px 12px;border-radius:7px;font-weight:600;font-size:12px;cursor:pointer;white-space:nowrap}
-.score-band{display:inline-flex;align-items:center;font-weight:700;font-size:12.5px;font-family:'IBM Plex Mono';
-  border:1px solid;padding:3px 10px;border-radius:20px;margin-bottom:2px}
-
-.scan-progress{margin-top:24px}
-.scan-line{height:2px;background:linear-gradient(90deg,transparent,var(--accent),transparent);
-  background-size:40% 100%;animation:sweep 1.3s linear infinite;border-radius:2px}
-@keyframes sweep{0%{background-position:-40% 0}100%{background-position:140% 0}}
-.scan-steps{display:flex;gap:16px;margin-top:12px;color:var(--txt-dim);font-size:11px;flex-wrap:wrap}
+/* app-wide spinner (used by <Loader2 className="spin-slow"> in the loaders, guards,
+   admin, and the migrated Aurora screens). The rest of the old injected marketing +
+   walking-skeleton CSS was dead after the Aurora migration and removed in #14 cleanup. */
 .spin-slow{animation:spin 1.4s linear infinite}
 @keyframes spin{to{transform:rotate(360deg)}}
-
-/* report */
-.report{margin-top:30px;border:1px solid var(--line);border-radius:16px;background:var(--panel);padding:22px}
-.report-top{display:flex;justify-content:space-between;align-items:center;gap:20px;flex-wrap:wrap}
-.report-label{font-size:10px;letter-spacing:.14em;color:var(--txt-dim)}
-.report-url{font-size:22px;font-weight:700;font-family:'Hanken Grotesk';margin:3px 0 8px}
-.report-badge{font-size:11px;border:1px solid;padding:3px 9px;border-radius:20px;font-weight:600}
-.report-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin:22px 0}
-.report-cta{display:flex;justify-content:space-between;align-items:center;gap:16px;margin-top:20px;
-  padding:18px;border:1px solid var(--accent);border-radius:12px;background:var(--accent-dim);flex-wrap:wrap}
-.cta-title{font-size:16px;font-weight:700;margin-bottom:4px}
-.cta-sub{color:var(--txt-mid);font-size:13px;max-width:420px}
-.cta-btn{display:inline-flex;align-items:center;gap:8px;background:var(--accent);color:#04222a;
-  border:none;padding:11px 18px;border-radius:9px;font-weight:600;cursor:pointer;font-size:13.5px;white-space:nowrap}
-.cta-btn.small{padding:9px 14px;font-size:13px}
-.report-cta-actions{display:flex;flex-direction:column;align-items:flex-end;gap:8px}
-.cta-link{display:inline-flex;align-items:center;gap:6px;background:none;border:none;color:var(--accent);
-  cursor:pointer;font-size:12.5px;font-weight:500;padding:0;font-family:'Inter',sans-serif}
-.cta-link:hover{text-decoration:underline}
-.cta-link:disabled{opacity:.6;cursor:default;text-decoration:none}
-
-/* gauge */
-.gauge{position:relative;text-align:center;flex:none}
-.gauge-track{fill:none;stroke:var(--line);stroke-width:12;stroke-linecap:round}
-.gauge-val{fill:none;stroke-width:12;stroke-linecap:round;transition:all .9s cubic-bezier(.2,.7,.2,1)}
-.gauge-tick{fill:var(--txt-dim);font-size:9px;font-family:'IBM Plex Mono'}
-.gauge-center{position:absolute;top:46%;left:0;right:0;transform:translateY(-50%)}
-.gauge-num{font-size:46px;font-weight:800;line-height:1;font-family:'Hanken Grotesk'}
-.gauge-den{color:var(--txt-dim);font-size:12px;font-family:'IBM Plex Mono';margin-top:2px}
-.gauge-label{color:var(--txt-mid);font-size:12px;margin-top:2px;letter-spacing:.02em}
-
-/* panels */
-.panel{border:1px solid var(--line);border-radius:12px;padding:16px;background:var(--panel-2)}
-.panel-h{font-size:13px;font-weight:600;margin-bottom:14px;display:flex;gap:8px;align-items:baseline}
-.panel-sub,.card-sub{color:var(--txt-dim);font-size:11px;font-weight:400}
-
-/* family bars */
-.fam{display:flex;flex-direction:column;gap:11px}
-.fam-row{display:grid;grid-template-columns:120px 1fr 54px;align-items:center;gap:12px}
-.fam-label{font-size:12.5px;color:var(--txt-mid)}
-.fam-track{height:7px;background:var(--line);border-radius:4px;overflow:hidden}
-.fam-fill{height:100%;border-radius:4px;transition:width .8s ease}
-.fam-num{font-size:12px;text-align:right;color:var(--txt)}
-.fam-den{color:var(--txt-dim)}
-
-/* crawler strip */
-.strip{border:1px solid var(--line);border-radius:12px;padding:16px;background:var(--panel-2)}
-.strip-head{display:flex;flex-direction:column;margin-bottom:14px}
-.strip-head>span:first-child{font-size:13px;font-weight:600}
-.strip-sub{color:var(--txt-dim);font-size:11px;margin-top:2px}
-.strip-rows{display:flex;flex-direction:column;gap:10px}
-.strip-row{display:grid;grid-template-columns:34px 1fr auto;align-items:center;gap:12px}
-.strip-bars{display:flex;align-items:flex-end;gap:3px;height:20px}
-.strip-bars .bar{width:4px;border-radius:1px;transition:background .4s}
-.strip-n{font-size:12.5px;font-weight:500}
-.strip-s{font-size:10.5px;color:var(--txt-dim)}
-.strip-status{font-size:11.5px;font-weight:600;font-family:'IBM Plex Mono'}
-
-/* issues */
-.issues{display:flex;flex-direction:column;gap:8px}
-.issue{display:flex;align-items:center;gap:12px;padding:11px 12px;border:1px solid var(--line);
-  border-radius:9px;background:var(--panel)}
-.issue-chip{font-size:9.5px;font-weight:700;border:1px solid;border-radius:5px;padding:2px 6px;
-  font-family:'IBM Plex Mono';flex:none;width:44px;text-align:center}
-.issue-body{flex:1;min-width:0}
-.issue-label{font-size:13px;font-weight:500}
-.issue-fam{color:var(--txt-dim);font-size:10.5px;font-weight:400;margin-left:7px}
-.issue-fix{color:var(--txt-mid);font-size:11.5px;margin-top:3px;display:flex;align-items:center;gap:5px}
-.issue-btn{display:inline-flex;align-items:center;gap:5px;background:var(--panel-2);color:var(--txt);
-  border:1px solid var(--line-2);padding:6px 11px;border-radius:7px;font-size:12px;cursor:pointer;flex:none;font-weight:500}
-.issue-btn.locked{color:var(--txt-mid)}
-/* expandable issue (signed-in): whole row is a toggle, detail drops below */
-.issue.expandable{display:block;padding:0;overflow:hidden}
-.issue-main{width:100%;display:flex;align-items:center;gap:12px;padding:11px 12px;
-  background:transparent;border:none;color:var(--txt);cursor:pointer;text-align:left;font-family:'Inter',sans-serif}
-.issue-main:hover,.issue.expandable.open .issue-main{background:var(--panel-2)}
-.issue-chev{color:var(--txt-dim);flex:none;transition:transform .2s}
-.issue-detail{padding:2px 12px 13px 12px;border-top:1px solid var(--line);display:flex;flex-direction:column;gap:10px}
-.issue-detail-finding{color:var(--txt-mid);font-size:12px;line-height:1.5;margin:10px 0 0}
-.issue-detail-h{font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--txt-dim);
-  display:flex;align-items:center;gap:6px;margin-bottom:5px}
-.issue-detail-h svg{color:var(--accent)}
-.issue-detail-fix p{color:var(--txt-mid);font-size:12.5px;line-height:1.5;margin:0}
-
-/* signal report (Phase 3) */
-.sig{margin-top:16px}
-.sig .panel-h{justify-content:flex-start}
-.sig-overall{margin-left:auto;font-size:12.5px;font-weight:600}
-.sig-list{display:flex;flex-direction:column;gap:8px}
-.sig-card{border:1px solid var(--line);border-radius:10px;background:var(--panel);overflow:hidden}
-.sig-head{width:100%;display:flex;align-items:center;gap:10px;background:transparent;border:none;
-  color:var(--txt);padding:11px 13px;cursor:pointer;text-align:left;font-size:13px}
-.sig-head:hover{background:var(--panel-2)}
-.sig-dot{width:8px;height:8px;border-radius:50%;flex:none}
-.sig-name{flex:1;font-weight:500}
-.sig-chip{font-size:9.5px;font-weight:700;border:1px solid;border-radius:5px;padding:2px 6px;
-  font-family:'IBM Plex Mono';width:44px;text-align:center;flex:none}
-.sig-score{font-size:13px;font-weight:600;width:26px;text-align:right}
-.sig-chev{color:var(--txt-dim);transition:transform .2s;flex:none}
-.sig-body{padding:4px 13px 14px 31px;border-top:1px solid var(--line);display:flex;flex-direction:column;gap:12px}
-.sig-block-h{font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--txt-dim);margin:10px 0 6px}
-.sig-ul{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px}
-.sig-ul li{display:flex;align-items:flex-start;gap:7px;font-size:12.5px;line-height:1.45}
-.sig-ul li svg{margin-top:2px;flex:none}
-.sig-issue svg{color:var(--warn)} .sig-rec svg{color:var(--accent)}
-.sig-issue span{color:var(--txt-mid)} .sig-rec span{color:var(--txt-mid)}
-.sig-clean{display:flex;align-items:center;gap:7px;color:var(--good);font-size:12.5px;margin-top:8px}
-.sig-ev{display:grid;grid-template-columns:1fr 1fr;gap:4px 16px}
-.sig-ev-row{display:flex;justify-content:space-between;gap:10px;font-size:11px;border-bottom:1px solid var(--line);padding:3px 0}
-.sig-ev-k{color:var(--txt-dim)} .sig-ev-v{color:var(--txt-mid);text-align:right;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:60%}
-
-/* modal */
-.modal-wrap{position:fixed;inset:0;background:rgba(4,7,10,.72);backdrop-filter:blur(3px);
-  display:flex;align-items:center;justify-content:center;z-index:60;padding:20px}
-.modal{background:var(--panel);border:1px solid var(--line-2);border-radius:16px;padding:28px;max-width:400px;width:100%;position:relative}
-.modal-x{position:absolute;top:14px;right:14px;background:transparent;border:none;color:var(--txt-dim);cursor:pointer}
-.modal-title{font-size:18px;font-weight:700;font-family:'Hanken Grotesk';line-height:1.25;margin-bottom:8px}
-.modal-sub{color:var(--txt-mid);font-size:13px;margin-bottom:18px;line-height:1.5}
-.modal-input{width:100%;background:var(--panel-2);border:1px solid var(--line-2);border-radius:9px;
-  padding:11px 13px;color:var(--txt);font-size:14px;outline:none;font-family:'IBM Plex Mono'}
-.modal-input:focus{border-color:var(--accent)}
-.modal-btn{width:100%;margin-top:12px;display:inline-flex;align-items:center;justify-content:center;gap:8px;
-  background:var(--accent);color:#04222a;border:none;padding:12px;border-radius:9px;font-weight:600;cursor:pointer}
-.modal-fine{color:var(--txt-dim);font-size:10.5px;margin-top:14px;text-align:center}
-
-/* app shell */
-.app{display:grid;grid-template-columns:236px 1fr;min-height:calc(100vh - 41px)}
-.side{border-right:1px solid var(--line);padding:20px 14px;display:flex;flex-direction:column;gap:18px;background:var(--panel)}
-.brand{display:flex;align-items:center;gap:9px;font-size:17px;font-weight:700;color:var(--txt);padding:0 6px}
-.brand svg{color:var(--accent)}
-.site-switch{position:relative}
-.site-btn{width:100%;display:flex;align-items:center;gap:8px;background:var(--panel-2);
-  border:1px solid var(--line-2);border-radius:9px;padding:9px 11px;color:var(--txt);cursor:pointer;font-size:12.5px;font-family:'IBM Plex Mono'}
-.site-btn>span{flex:1;text-align:left}
-.site-menu{position:absolute;top:calc(100% + 4px);left:0;right:0;background:var(--panel-2);
-  border:1px solid var(--line-2);border-radius:9px;padding:5px;z-index:20}
-.site-menu button{width:100%;display:flex;align-items:center;gap:7px;background:transparent;border:none;
-  color:var(--txt-mid);padding:8px 9px;border-radius:6px;cursor:pointer;font-size:12.5px;font-family:'IBM Plex Mono';text-align:left}
-.site-menu button:hover,.site-menu button.on{background:var(--panel);color:var(--txt)}
-.nav{display:flex;flex-direction:column;gap:2px}
-.nav-item{display:flex;align-items:center;gap:11px;background:transparent;border:none;color:var(--txt-mid);
-  padding:9px 11px;border-radius:8px;cursor:pointer;font-size:13.5px;font-weight:500;text-align:left}
-.nav-item:hover{background:var(--panel-2);color:var(--txt)}
-.nav-item.on{background:var(--accent-dim);color:var(--accent)}
-.nav-item span{flex:1}
-.nav-tag{font-size:8.5px;font-weight:700;letter-spacing:.06em;color:var(--txt-dim);border:1px solid var(--line-2);
-  padding:1px 5px;border-radius:4px;font-family:'IBM Plex Mono'}
-.exit{margin-top:auto;display:flex;align-items:center;gap:8px;background:transparent;border:1px solid var(--line);
-  color:var(--txt-mid);padding:9px 11px;border-radius:8px;cursor:pointer;font-size:12.5px}
-
-.main{display:flex;flex-direction:column;min-width:0}
-.topbar{display:flex;justify-content:space-between;align-items:center;padding:18px 26px;border-bottom:1px solid var(--line)}
-.crumb{font-size:10px;letter-spacing:.12em;color:var(--txt-dim)}
-.topbar-title{font-size:20px;font-weight:700;margin-top:3px}
-.rescan{display:inline-flex;align-items:center;gap:7px;background:var(--panel-2);border:1px solid var(--line-2);
-  color:var(--txt);padding:9px 14px;border-radius:8px;cursor:pointer;font-size:13px;font-weight:500}
-.content{padding:24px 26px;overflow:auto}
-
-/* grids + cards */
-.grid-main{display:grid;grid-template-columns:1fr 1fr;gap:16px}
-.card{border:1px solid var(--line);border-radius:14px;padding:18px;background:var(--panel)}
-.card.wide{grid-column:1 / -1}
-.card-h{font-size:14px;font-weight:600;margin-bottom:16px;display:flex;gap:9px;align-items:baseline}
-.score-card{grid-column:1 / -1;display:flex;align-items:center;gap:34px;flex-wrap:wrap}
-.score-side{flex:1;min-width:220px}
-.delta{display:inline-flex;align-items:center;gap:6px;font-weight:700;font-size:15px;font-family:'IBM Plex Mono'}
-.delta.up{color:var(--good)} .delta span{color:var(--txt-dim);font-weight:400;font-size:12px;font-family:'Inter'}
-.score-copy{color:var(--txt-mid);font-size:13px;line-height:1.55;margin:12px 0 10px;max-width:560px}
-.rubric{font-size:10.5px;color:var(--txt-dim)}
-
-/* competitor mini */
-.comp-mini{display:flex;flex-direction:column;gap:10px}
-.comp-mini.big-gap{gap:16px}
-.comp-row{display:grid;grid-template-columns:180px 1fr 34px;align-items:center;gap:12px}
-.comp-name{font-size:12.5px;color:var(--txt-mid);display:flex;align-items:center;gap:7px;font-family:'IBM Plex Mono'}
-.comp-row.you .comp-name{color:var(--txt)}
-.you-tag{font-size:9px;background:var(--accent-dim);color:var(--accent);padding:1px 6px;border-radius:4px;font-family:'Inter';font-weight:600}
-.comp-track{height:7px;background:var(--line);border-radius:4px;overflow:hidden}
-.comp-fill{height:100%;border-radius:4px;transition:width .8s}
-.comp-s{font-size:12px;text-align:right}
-
-/* table */
-.tbl{width:100%;border-collapse:collapse;font-size:13px}
-.tbl th{text-align:left;color:var(--txt-dim);font-weight:500;font-size:11px;letter-spacing:.05em;
-  padding:8px 10px;border-bottom:1px solid var(--line)}
-.tbl td{padding:11px 10px;border-bottom:1px solid var(--line)}
-.pill{font-size:11px;background:var(--panel-2);border:1px solid var(--line-2);padding:2px 9px;border-radius:20px;color:var(--txt-mid)}
-.pill.accent{background:var(--accent-dim);color:var(--accent);border-color:transparent}
-.pill.dim{color:var(--txt-dim)}
-.dim{color:var(--txt-dim)}
-.link-btn{display:inline-flex;align-items:center;gap:5px;background:transparent;border:none;color:var(--accent);cursor:pointer;font-size:12px}
-
-/* answers */
-.paid-banner{display:flex;align-items:center;gap:10px;color:var(--txt-mid);font-size:12.5px;background:var(--accent-dim);border-color:transparent}
-.paid-banner svg{color:var(--accent);flex:none}
-.prompt-h{font-family:'IBM Plex Mono';font-size:13px;color:var(--txt)}
-.prompt-score{display:flex;align-items:baseline;gap:9px;margin-bottom:14px}
-.prompt-score .big{font-size:28px;font-weight:600}
-.engine-dots{display:flex;gap:6px}
-.edot{font-size:9.5px;font-weight:600;color:#04222a;padding:3px 7px;border-radius:5px;font-family:'IBM Plex Mono'}
-
-/* fixes */
-.fix-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:12px}
-.fix-card{border:1px solid var(--line);border-radius:11px;padding:15px;background:var(--panel-2)}
-.fix-t{font-size:14px;font-weight:600;font-family:'Hanken Grotesk'}
-.fix-d{color:var(--txt-mid);font-size:12px;margin:5px 0 13px;line-height:1.4}
-.fix-btn{display:inline-flex;align-items:center;gap:6px;background:var(--panel);border:1px solid var(--line-2);
-  color:var(--txt);padding:7px 12px;border-radius:7px;font-size:12.5px;cursor:pointer;font-weight:500}
-
-/* empty + plan */
-.empty{text-align:center;padding:44px 20px;color:var(--txt-mid)}
-.empty svg{color:var(--txt-dim);margin-bottom:12px}
-.empty-t{font-size:15px;font-weight:600;color:var(--txt)}
-.empty-s{font-size:13px;margin:6px 0 18px}
-.plan-row{display:flex;justify-content:space-between;align-items:center;padding:11px 0;border-bottom:1px solid var(--line);font-size:13px;color:var(--txt-mid)}
-.plan-row:last-child{border-bottom:none}
-
-@media(max-width:820px){
-  .app{grid-template-columns:1fr}
-  .side{flex-direction:row;flex-wrap:wrap;align-items:center;border-right:none;border-bottom:1px solid var(--line)}
-  .nav{flex-direction:row;flex-wrap:wrap}.exit{margin:0}
-  .grid-main,.report-grid,.fix-grid{grid-template-columns:1fr}
-  .mkt-hero h1{font-size:38px}.mkt-strip{grid-template-columns:1fr}
-}
 `;

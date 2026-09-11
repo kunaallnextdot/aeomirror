@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
-import { AuthShell, Alert } from "../ui.jsx";
+import { AuAuthShell, AuAlert } from "../../dashboard/aurora.jsx";
 import { Loader2 } from "lucide-react";
 import { verifyEmail } from "../api.js";
 import { useAuth } from "../AuthContext.jsx";
@@ -28,20 +28,20 @@ export default function VerifyEmail() {
   const goNext = () => navigate(isAuthenticated ? "/app" : "/login");
 
   return (
-    <AuthShell title="Email verification">
+    <AuAuthShell title="Email verification">
       {state === "verifying" && (
-        <div className="alert alert-info"><Loader2 size={15} className="spin-slow" /> <span>Verifying your email…</span></div>
+        <div className="au-alert au-alert-info"><Loader2 size={15} className="au-spin" /> <span>Verifying your email…</span></div>
       )}
-      {state === "missing" && <Alert>This verification link is missing its token. Use the link from your email.</Alert>}
-      {state === "error" && <Alert>This verification link is invalid or has expired. You can request a new one from your profile.</Alert>}
+      {state === "missing" && <AuAlert>This verification link is missing its token. Use the link from your email.</AuAlert>}
+      {state === "error" && <AuAlert>This verification link is invalid or has expired. You can request a new one from your profile.</AuAlert>}
       {state === "ok" && (
         <>
-          <Alert kind="ok">Your email is verified. Thanks for confirming!</Alert>
-          <button className="btn btn-primary btn-block" style={{ marginTop: 16 }} onClick={goNext}>
+          <AuAlert kind="ok">Your email is verified. Thanks for confirming!</AuAlert>
+          <button className="au-btn au-accent au-block" style={{ marginTop: 16 }} onClick={goNext}>
             {isAuthenticated ? "Go to dashboard" : "Continue to sign in"}
           </button>
         </>
       )}
-    </AuthShell>
+    </AuAuthShell>
   );
 }
