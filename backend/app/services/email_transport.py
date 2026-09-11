@@ -20,6 +20,7 @@ from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 
 from app.config import settings
+from app.services import email_resend
 
 logger = logging.getLogger("aeomirror.email")
 
@@ -44,6 +45,15 @@ def send_email(to: str, subject: str, text: str, html_body: str,
             logger.info("[%s:%s] email not configured; would send to %s: %s",
                         log_prefix, kind, _one_line(to), _one_line(subject))
         return "skipped"
+
+    # Resend HTTPS is preferred when configured (works where outbound SMTP is blocked);
+    # the SMTP path below is the fallback (local dev / Resend unset).
+    if email_resend.resend_configured():
+        ok = email_resend.send(to=_one_line(to), subject=_one_line(subject), text=text,
+                               html=html_body, from_addr=_one_line(settings.smtp_from or ""),
+                               reply_to=_one_line(settings.gmail_user or "") or None,
+                               headers=headers)
+        return "sent" if ok else "failed"
 
     try:
         msg = MIMEMultipart("alternative")

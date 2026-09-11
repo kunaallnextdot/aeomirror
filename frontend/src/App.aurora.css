@@ -6,8 +6,8 @@
    Scope: 13a = single-page scan. `BulkScanPanel`/`SkippedList` (the signed-in Bulk tab) and
    the Contact page body stay dark until #13b — a bounded, shippable mismatch. */
 
-/* light ground wrapper (the page still lives inside the dark `.root`; this paints over it) */
-.au-site{background:var(--au-app);color:var(--au-ink);font-family:var(--au-font-body);
+/* atmospheric ground wrapper (dark-brown→burnt-orange gradient behind the cream cards) */
+.au-site{background:var(--au-atmos);background-attachment:fixed;color:var(--au-ink);font-family:var(--au-font-body);
   font-size:15px;line-height:1.5;min-height:100vh}
 .au-site *{box-sizing:border-box}
 
@@ -23,7 +23,7 @@
   font-family:inherit;transition:border-color .15s,color .15s}
 .au-tb-btn:hover{border-color:var(--au-primary);color:var(--au-primary)}
 .au-tb-primary{background:var(--au-primary);color:#fff;border-color:transparent;font-weight:600}
-.au-tb-primary:hover{color:#fff;border-color:transparent;box-shadow:0 8px 18px rgba(14,122,107,.26)}
+.au-tb-primary:hover{color:#fff;border-color:transparent;box-shadow:0 8px 18px rgba(163,74,21,.26)}
 .au-tb-link{border-color:transparent;color:var(--au-muted)}
 .au-tb-link:hover{border-color:transparent;color:var(--au-ink)}
 .au-tb-avatar{background:none;border:none;cursor:pointer;padding:0;display:flex}
@@ -42,7 +42,7 @@
 .au-footer-mail:hover{color:var(--au-primary)}
 .au-footer-cta{display:inline-flex;align-items:center;gap:7px;background:var(--au-primary);color:#fff;border:none;
   padding:9px 15px;border-radius:var(--au-r-s);font-weight:600;font-size:13px;cursor:pointer;font-family:inherit}
-.au-footer-cta:hover{box-shadow:0 8px 18px rgba(14,122,107,.26)}
+.au-footer-cta:hover{box-shadow:0 8px 18px rgba(163,74,21,.26)}
 .au-footer-bottom{border-top:1px solid var(--au-line);color:var(--au-muted);font-size:12px;text-align:center;padding:16px 24px}
 
 /* ---------- marketing hero ---------- */
@@ -63,7 +63,7 @@
   border:1px solid var(--au-line);border-radius:14px;padding:8px 8px 8px 15px;box-shadow:var(--au-sh-s);
   transition:border-color .18s,box-shadow .18s}
 /* soft, hugging focus ring (no detached outline) — visible but minimal */
-.au-scan-input:focus-within{border-color:var(--au-primary);box-shadow:0 0 0 3px rgba(14,122,107,.16)}
+.au-scan-input:focus-within{border-color:var(--au-primary);box-shadow:0 0 0 3px rgba(163,74,21,.16)}
 /* wrapper shows focus for the group, so the inner input needs no separate ring */
 .au-scan-input input:focus-visible{outline:none}
 .au-scan-globe{color:var(--au-muted);flex:none;transition:color .18s}
@@ -74,7 +74,7 @@
 .au-scan-go{display:inline-flex;align-items:center;gap:7px;background:var(--au-primary);color:#fff;
   border:none;padding:10px 16px;border-radius:var(--au-r-s);font-weight:600;font-size:13.5px;cursor:pointer;
   white-space:nowrap;font-family:inherit;transition:transform .16s,box-shadow .16s}
-.au-scan-go:hover:not(:disabled){transform:translateY(-1px);box-shadow:0 8px 18px rgba(14,122,107,.26)}
+.au-scan-go:hover:not(:disabled){transform:translateY(-1px);box-shadow:0 8px 18px rgba(163,74,21,.26)}
 .au-scan-go:disabled{opacity:.7;cursor:default}
 .au-scan-hint{color:var(--au-muted);font-size:12px;margin-top:10px;line-height:1.5}
 .au-scan-mode{display:inline-flex;gap:3px;margin-top:12px;padding:3px;border-radius:10px;background:rgba(20,30,51,.05)}
@@ -122,7 +122,7 @@
 .au-cta-btn{display:inline-flex;align-items:center;gap:8px;background:var(--au-primary);color:#fff;
   border:none;padding:11px 18px;border-radius:var(--au-r-s);font-weight:600;cursor:pointer;font-size:13.5px;
   white-space:nowrap;font-family:inherit;transition:transform .16s,box-shadow .16s}
-.au-cta-btn:hover{transform:translateY(-1px);box-shadow:0 8px 18px rgba(14,122,107,.26)}
+.au-cta-btn:hover{transform:translateY(-1px);box-shadow:0 8px 18px rgba(163,74,21,.26)}
 .au-report-cta-actions{display:flex;flex-direction:column;align-items:flex-end;gap:8px}
 .au-cta-link{display:inline-flex;align-items:center;gap:6px;background:none;border:none;color:var(--au-primary);
   cursor:pointer;font-size:12.5px;font-weight:500;padding:0;font-family:inherit}

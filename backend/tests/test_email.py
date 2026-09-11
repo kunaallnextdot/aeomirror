@@ -56,6 +56,8 @@ def test_send_raises_are_swallowed(monkeypatch):
 
 
 def test_missing_config_skips_send(monkeypatch):
+    # Email is disabled only when BOTH transports are unconfigured (Resend + Gmail SMTP).
+    monkeypatch.setattr(settings, "resend_api_key", None)
     monkeypatch.setattr(settings, "gmail_user", None)
     monkeypatch.setattr(settings, "gmail_app_password", None)
     called = {"n": 0}

@@ -807,30 +807,35 @@ html,body{margin:0;padding:0;background:#0B0F14}
      wrapper; see design/token-map.md. Dark tokens + the injected .root base rules are
      removed only in the final cleanup phase. */
   /* surfaces */
-  --au-app:#ECEFF4; --au-panel:#FBFCFD; --au-solid:#FFFFFF; --au-glass:rgba(255,255,255,.72);
-  /* text */
-  --au-ink:#141E33; --au-ink-2:#3E4A66; --au-muted:#7A8499;
-  /* lines */
-  --au-line:rgba(20,30,51,.08); --au-line-2:rgba(20,30,51,.05);
-  /* brand */
-  --au-primary:#0E7A6B; --au-pop:#FF7A59;
-  /* pastel tint + deep pair per hue */
-  --au-mint:#DFF6EE; --au-mint-d:#0E7A6B;
+  /* Warm "atmospheric" theme (v2): dark-brown→burnt-orange ground behind warm CREAM cards.
+     Cards stay light, so all dark-on-light text/contrast is preserved. */
+  --au-app:#EFE6D6; --au-panel:#FBF6EE; --au-solid:#FCF8F1; --au-glass:rgba(252,248,241,.74);
+  /* text (dark charcoal heading + readable blue-gray secondary) */
+  --au-ink:#231A12; --au-ink-2:#4A5265; --au-muted:#616876;
+  /* lines (warm) */
+  --au-line:rgba(60,40,22,.12); --au-line-2:rgba(60,40,22,.07);
+  /* brand — burnt orange/brown CTA + brighter orange/gold accent */
+  --au-primary:#A34A15; --au-pop:#E8823C;
+  /* pastel tint + deep pair per hue (semantic; deeps tuned for AA on cream cards) */
+  --au-mint:#DCF1E4; --au-mint-d:#157A4E;
   --au-lav:#EAE6FE; --au-lav-d:#6C4BF0;
-  --au-peach:#FFEDE4; --au-peach-d:#E8663A;
-  --au-sky:#E2F1FD; --au-sky-d:#1E7FC2;
-  --au-lemon:#FFF6DC; --au-lemon-d:#B98407;
+  --au-peach:#FBE6D8; --au-peach-d:#BA501D;
+  --au-sky:#E2F1FD; --au-sky-d:#1C76B4;
+  --au-lemon:#FBEFD3; --au-lemon-d:#956808;
   /* semantic aliases (map onto the hue pairs — usage convention) */
   --au-success:var(--au-mint); --au-success-d:var(--au-mint-d);
   --au-warning:var(--au-lemon); --au-warning-d:var(--au-lemon-d);
   --au-danger:var(--au-peach);  --au-danger-d:var(--au-peach-d);
   --au-neutral:var(--au-sky);   --au-neutral-d:var(--au-sky-d);
+  /* atmospheric ground — LIGHT + minimal warm: soft cream with one gentle orange glow
+     (was a heavy dark→burnt-orange; lightened so it reads airy, not dull). */
+  --au-atmos:radial-gradient(1000px 540px at 78% -8%,rgba(232,140,70,.14),transparent 58%),linear-gradient(168deg,#FCF7F0 0%,#F7EEE2 55%,#F3E7D8 100%);
   /* radius (incl. pill) */
   --au-r-s:14px; --au-r-m:22px; --au-r-l:30px; --au-r-pill:999px;
-  /* shadow */
-  --au-sh-s:0 2px 8px rgba(20,30,51,.05);
-  --au-sh:0 4px 14px rgba(20,30,51,.05), 0 20px 50px rgba(20,30,51,.07);
-  --au-sh-l:0 8px 24px rgba(20,30,51,.07), 0 34px 80px rgba(20,30,51,.11);
+  /* shadow (warm-tinted, a touch deeper for lift on the dark ground) */
+  --au-sh-s:0 2px 8px rgba(40,24,10,.07);
+  --au-sh:0 4px 14px rgba(40,24,10,.08), 0 20px 50px rgba(40,24,10,.12);
+  --au-sh-l:0 10px 30px rgba(40,24,10,.14), 0 40px 90px rgba(40,24,10,.20);
   /* type — faces only; applied per screen, never globally in this phase */
   --au-font-heading:'Outfit',system-ui,sans-serif;
   --au-font-body:'Plus Jakarta Sans',system-ui,sans-serif;

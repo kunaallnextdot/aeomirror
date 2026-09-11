@@ -100,6 +100,8 @@ def test_rate_limited_after_budget(monkeypatch):
 
 def test_smtp_disabled_is_best_effort(monkeypatch):
     from app.core import email_smtp
+    # Disable BOTH transports (Resend primary + Gmail SMTP fallback) so the send is skipped.
+    monkeypatch.setattr(email_smtp.settings, "resend_api_key", None)
     monkeypatch.setattr(email_smtp.settings, "gmail_user", None)
     monkeypatch.setattr(email_smtp.settings, "gmail_app_password", None)
     assert email_smtp.send_email(to="x@y.com", subject="s", text_body="b") is False

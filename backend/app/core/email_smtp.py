@@ -21,6 +21,7 @@ import smtplib
 from email.message import EmailMessage
 
 from app.config import settings
+from app.services import email_resend
 
 logger = logging.getLogger("aeomirror.email_smtp")
 
@@ -49,16 +50,26 @@ def send_email(
     configured or the send fails, so the caller's request path is never broken.
     """
     from_addr = settings.smtp_from
-    if not settings.smtp_configured or not from_addr:
-        # In dev this is expected (no credentials); log so it's visible, never the
-        # message body or any secret.
-        logger.info("SMTP not configured (GMAIL_USER/GMAIL_APP_PASSWORD); skipping send to %s",
+    if not from_addr:
+        # No resolvable From (neither EMAIL_FROM nor a Gmail user). Expected in dev.
+        logger.info("Email not configured (no From address); skipping send to %s",
                     _one_line(to)[:120])
         return False
 
     to_addr = _one_line(to)
     if "@" not in to_addr:
-        logger.warning("SMTP send skipped: invalid recipient")
+        logger.warning("Email send skipped: invalid recipient")
+        return False
+
+    # Resend HTTPS is preferred when configured (works where outbound SMTP is blocked).
+    if email_resend.resend_configured():
+        return email_resend.send(to=to_addr, subject=subject, text=text_body,
+                                 html=html_body, from_addr=from_addr, reply_to=reply_to)
+
+    if not settings.smtp_configured:
+        # No Gmail credentials for the SMTP fallback; expected in dev.
+        logger.info("SMTP not configured (GMAIL_USER/GMAIL_APP_PASSWORD); skipping send to %s",
+                    to_addr[:120])
         return False
 
     msg = EmailMessage()

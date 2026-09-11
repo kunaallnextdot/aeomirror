@@ -100,9 +100,12 @@ class Settings(BaseSettings):
     expose_docs: bool = False
 
     # --- email (lead welcome + auth) ---
-    # All email now sends over Gmail SMTP (see the SMTP block below). EMAIL_FROM, when set,
-    # overrides the From header; otherwise the From is composed from EMAIL_FROM_NAME + the
-    # Gmail user. There is no third-party HTTP email API.
+    # Transport resolution: the Resend HTTPS API is PRIMARY when RESEND_API_KEY is set (it
+    # works on hosts that block outbound SMTP, e.g. Render); otherwise Gmail SMTP (block
+    # below). EMAIL_FROM, when set, is the From header verbatim — REQUIRED for Resend, and it
+    # must be an address on a Resend-verified domain; otherwise From is composed from
+    # EMAIL_FROM_NAME + the Gmail user.
+    resend_api_key: str | None = None        # Resend API key — enables the HTTPS transport
     email_from: str | None = None            # e.g. "AEOMirror <hi@aeomirror.com>"
     email_from_name: str = "AEOMirror"       # display name used when EMAIL_FROM is unset
     app_base_url: str = "http://localhost:5173"
@@ -357,9 +360,9 @@ class Settings(BaseSettings):
 
     @property
     def email_enabled(self) -> bool:
-        """True when outbound email can send. Email is Gmail-SMTP only now, so this simply
-        mirrors smtp_configured (Gmail user + app password present)."""
-        return self.smtp_configured
+        """True when outbound email can send — via the Resend HTTPS API (RESEND_API_KEY set)
+        OR Gmail SMTP (Gmail user + app password set)."""
+        return self.resend_configured or self.smtp_configured
 
     @property
     def digest_email_backend(self) -> str:
@@ -374,6 +377,11 @@ class Settings(BaseSettings):
         """True when an Anthropic key is configured. Both AI features check this and
         degrade to the rule-based path when it is False."""
         return bool(self.anthropic_api_key)
+
+    @property
+    def resend_configured(self) -> bool:
+        """True when the Resend HTTPS transport can send (API key present)."""
+        return bool(self.resend_api_key)
 
     @property
     def smtp_configured(self) -> bool:

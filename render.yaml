@@ -65,9 +65,10 @@ services:
         sync: false
       - key: STRIPE_PRICE_PRO
         sync: false
+      # Outbound email = Resend HTTPS API (SMTP is blocked on Render). Set both:
       - key: RESEND_API_KEY
         sync: false
-      - key: EMAIL_FROM
+      - key: EMAIL_FROM        # must be an address on a Resend-verified domain, e.g. "AEOMirror <noreply@aeomirror.com>"
         sync: false
       - key: ADMIN_EMAILS
         sync: false
@@ -103,9 +104,10 @@ services:
           property: connectionString
       - key: APP_BASE_URL
         value: https://aeomirror.com
+      # Outbound email = Resend HTTPS API (worker sends monitoring alerts + weekly digest).
       - key: RESEND_API_KEY
         sync: false
-      - key: EMAIL_FROM
+      - key: EMAIL_FROM        # address on a Resend-verified domain, e.g. "AEOMirror <noreply@aeomirror.com>"
         sync: false
       - key: SENTRY_DSN
         sync: false
