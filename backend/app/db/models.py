@@ -5,7 +5,7 @@ import uuid
 from datetime import datetime
 
 from sqlalchemy import (
-    JSON, Boolean, Column, DateTime, Float, Index, Integer, String, Text, text,
+    JSON, Boolean, Column, DateTime, Float, Index, Integer, String, Text, false, text,
 )
 
 from app.db.session import Base
@@ -693,7 +693,7 @@ class PromptRun(Base):
                       server_default="provider_tracking")
     # Simulator runs only: whether the optional LLM step was requested for any
     # question in this run (a deterministic-only batch leaves this False).
-    llm_step_requested = Column(Boolean, nullable=False, default=False, server_default="0")
+    llm_step_requested = Column(Boolean, nullable=False, default=False, server_default=false())
     created_at = Column(DateTime, default=datetime.utcnow)
 
 
@@ -728,7 +728,7 @@ class PromptResult(Base):
     # signal from evidence_coverage_pct (how strongly retrieval matched).
     topic_alignment_score = Column(Float, nullable=True)
     question_token_coverage = Column(Float, nullable=True)
-    llm_step_used = Column(Boolean, nullable=False, default=False, server_default="0")
+    llm_step_used = Column(Boolean, nullable=False, default=False, server_default=false())
     created_at = Column(DateTime, default=datetime.utcnow)
 
 

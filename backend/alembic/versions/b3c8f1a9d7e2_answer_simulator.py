@@ -10,6 +10,19 @@ head with no gsc_connections table anymore).
 Revision ID: b3c8f1a9d7e2
 Revises: e9a1c7b53d20
 Create Date: 2026-09-21 00:00:00.000000
+
+Fixed post-creation (still pre-deploy, never applied to Postgres): the two BOOLEAN
+NOT NULL columns below (llm_step_requested / llm_step_used) originally used
+`server_default=sa.text("0")`, which renders as an UNQUOTED integer literal
+(`DEFAULT 0`) — SQLite accepts that (booleans are stored as 0/1 integers there), but
+PostgreSQL's BOOLEAN type does not implicitly cast a bare integer default, raising
+`DatatypeMismatch`. Switched to `sa.false()`, the same dialect-aware boolean-default
+helper already used for every other add-column-with-server_default Boolean elsewhere
+in this migration history (see e.g. 7a1c9e4b2f60, a3d9e5c71f04) — renders `DEFAULT
+false` on Postgres and the SQLite-equivalent `DEFAULT 0`, correctly on both. Existing
+rows are unaffected: this is purely which literal the DDL emits for NEW rows / the
+one-time backfill of already-existing rows during the ADD COLUMN, and `false`/`0`
+are the same value.
 """
 from typing import Sequence, Union
 
@@ -32,13 +45,13 @@ def upgrade() -> None:
                            server_default="provider_tracking"))
     op.add_column("prompt_runs",
                   sa.Column("llm_step_requested", sa.Boolean(), nullable=False,
-                           server_default=sa.text("0")))
+                           server_default=sa.false()))
 
     op.add_column("prompt_results", sa.Column("answerability", sa.String(), nullable=True))
     op.add_column("prompt_results", sa.Column("evidence_coverage_pct", sa.Float(), nullable=True))
     op.add_column("prompt_results",
                   sa.Column("llm_step_used", sa.Boolean(), nullable=False,
-                           server_default=sa.text("0")))
+                           server_default=sa.false()))
 
     op.add_column("prompt_result_analysis", sa.Column("missing_information", sa.JSON(), nullable=True))
     op.add_column("prompt_result_analysis", sa.Column("simulator_confidence", sa.String(), nullable=True))
