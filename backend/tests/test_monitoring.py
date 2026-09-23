@@ -130,6 +130,46 @@ def test_manual_run_records_history_and_score(monkeypatch):
     assert hist["history"][0]["changes"]["first_scan"] is True
 
 
+def test_ordinary_rescan_of_a_monitored_url_keeps_latest_scan_id_current(monkeypatch):
+    """Bug fix regression: Monitor.latest_scan_id must stay current even when a site
+    is rescanned through the ordinary Scan/Report UI (create_scan/rerun_scan), not
+    only when the monitor scheduler itself runs the scan. Otherwise anything reading
+    latest_scan_id (e.g. the Answer Simulator's scan-derived question bank,
+    GET /monitors/{id}/answer-simulator/questions) keeps reflecting an older scan's
+    data forever — the root cause of stale keyword/question suggestions."""
+    set_fetch(monkeypatch, good_bundle)
+    client, _ = auth_client()
+    mid = client.post("/monitors", json={"url": "http://synced.example/", "frequency": "manual"}).json()["id"]
+    first = client.post(f"/monitors/{mid}/run").json()
+    first_scan_id = first["monitor"]["latest_scan_id"]
+    assert first_scan_id
+
+    # An ORDINARY manual rescan of the same URL — NOT via the monitor scheduler.
+    second = client.post("/v1/scan", json={"url": "http://synced.example/"})
+    assert second.status_code == 200
+    second_scan_id = second.json()["scan_id"]
+    assert second_scan_id != first_scan_id
+
+    updated = client.get(f"/monitors/{mid}").json()
+    assert updated["monitor"]["latest_scan_id"] == second_scan_id   # advanced, not stuck on the scheduler's own scan
+
+
+def test_rescan_of_an_unmonitored_url_does_not_touch_other_monitors(monkeypatch):
+    """A rescan of a URL nobody monitors must not accidentally attach to (or
+    otherwise disturb) an unrelated monitor in the same org."""
+    set_fetch(monkeypatch, good_bundle)
+    client, _ = auth_client()
+    mid = client.post("/monitors", json={"url": "http://tracked.example/", "frequency": "manual"}).json()["id"]
+    baseline = client.post(f"/monitors/{mid}/run").json()
+    baseline_scan_id = baseline["monitor"]["latest_scan_id"]
+
+    other = client.post("/v1/scan", json={"url": "http://untracked.example/"})
+    assert other.status_code == 200
+
+    unchanged = client.get(f"/monitors/{mid}").json()
+    assert unchanged["monitor"]["latest_scan_id"] == baseline_scan_id
+
+
 # ------------------------------- scheduler -------------------------------
 def test_enqueue_due_and_dedupe(monkeypatch):
     client, _ = auth_client()

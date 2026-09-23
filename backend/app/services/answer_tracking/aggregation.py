@@ -401,6 +401,35 @@ def _previous_terminal_run(db: Session, run: PromptRun) -> PromptRun | None:
             .first())
 
 
+def _leaderboard_for_run(db: Session, run: PromptRun) -> list[dict]:
+    """The run-level leaderboard ONLY — the minimal subset of `run_metrics`'s work that
+    `_attach_rank_delta` actually needs from a PREVIOUS run (just entity ranks), skipping
+    the per-provider/per-prompt/citation/competitor/sentiment computation `run_metrics`
+    also does. Deliberately mirrors run_metrics's own setup for `_leaderboard`'s inputs
+    (a small, intentional duplication) rather than restructuring that larger, well-
+    tested function — see run_metrics for the full Share-of-Voice computation."""
+    results = _results_by_id(db, run.id)
+    analyses = (db.query(PromptResultAnalysis)
+                .filter(PromptResultAnalysis.run_id == run.id).all())
+    successful = [a for a in analyses if not a.extraction_failed]
+    denom = len(successful)
+
+    prompt_hit: Counter = Counter()
+    for a in successful:
+        if a.brand_mentioned:
+            r = results.get(a.result_id)
+            prompt_hit[r.prompt_id if r else "unknown"] += 1
+
+    ps = db.get(PromptSet, run.prompt_set_id)
+    brand_fields = _brand_fields(db, ps)
+    excluded_entities = settings.answer_tracking_excluded_entity_set()
+    leaderboard, _excluded = _leaderboard(
+        successful, results, denom, prompt_hit, brand_fields, excluded_entities,
+        settings.answer_tracking_leaderboard_min_appearances,
+    )
+    return leaderboard
+
+
 def _attach_rank_delta(db: Session, run: PromptRun, leaderboard: list[dict]) -> None:
     """Annotate each leaderboard entry with its rank in the previous run and the delta
     (positive = moved UP toward #1). null when there is no prior run or the entity is new."""
@@ -408,7 +437,7 @@ def _attach_rank_delta(db: Session, run: PromptRun, leaderboard: list[dict]) -> 
     prev_rank = {}
     if prev is not None:
         prev_rank = {_normalise_entity_key(e["name"]): e["rank"]
-                     for e in run_metrics(db, prev)["leaderboard"]}
+                     for e in _leaderboard_for_run(db, prev)}
     for e in leaderboard:
         pr = prev_rank.get(_normalise_entity_key(e["name"]))
         e["prev_rank"] = pr

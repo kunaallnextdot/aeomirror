@@ -83,10 +83,18 @@ async def _read_capped(resp: httpx.Response) -> tuple[int, str, dict]:
     return resp.status_code, text, dict(resp.headers)
 
 
-async def _fetch_page(client: httpx.AsyncClient, start_url: str) -> tuple[int, str, dict]:
+async def _fetch_page(client: httpx.AsyncClient, start_url: str) -> tuple[int, str, dict, list, str]:
     """Follow redirects manually, revalidating each hop for SSRF, and stream the
-    final body under the size cap. Raises UnsafeUrlError on a disallowed hop."""
+    final body under the size cap. Raises UnsafeUrlError on a disallowed hop.
+
+    Every hop was already being fetched to follow the redirect; this just RECORDS what
+    was already seen (no extra requests) so Technical SEO indexability intelligence can
+    tell a caller a URL redirected, and to where, instead of only ever seeing the
+    already-resolved final response. Returns (status, html, headers, redirect_chain,
+    final_url) — `redirect_chain` is `[]` and `final_url == start_url` when there was no
+    redirect."""
     current = start_url
+    chain: list[dict] = []
     for _ in range(settings.fetch_max_redirects + 1):
         async with client.stream("GET", current) as resp:
             if resp.status_code in _REDIRECT_CODES:
@@ -97,11 +105,13 @@ async def _fetch_page(client: httpx.AsyncClient, start_url: str) -> tuple[int, s
                     # Location (raw space/pipe) must not kill an otherwise-safe scan; the
                     # IP-range checks still run. httpx encodes the path when it requests.
                     validate_url(target, check_chars=False)
+                    chain.append({"url": current, "status_code": resp.status_code, "to": target})
                     current = target
                     continue
             if resp.status_code in _RETRY_STATUS:
                 raise _Transient()
-            return await _read_capped(resp)
+            status, html, headers = await _read_capped(resp)
+            return status, html, headers, chain, current
     raise FetchError("Too many redirects.")
 
 
@@ -133,7 +143,8 @@ async def fetch(url: str, *, transport: "httpx.BaseTransport | None" = None,
         follow_redirects=False,  # we follow manually so each hop is revalidated
         transport=transport,
     ) as client:
-        status, html, resp_headers = await _with_retry(lambda: _fetch_page(client, url), retries)
+        status, html, resp_headers, redirect_chain, final_url = await _with_retry(
+            lambda: _fetch_page(client, url), retries)
 
         robots = ""
         try:
@@ -160,4 +171,5 @@ async def fetch(url: str, *, transport: "httpx.BaseTransport | None" = None,
         llms_txt_present=llms_present, sitemap_present=sitemap_present,
         sitemap_xml=sitemap_xml,
         status_code=status, headers=resp_headers,
+        redirect_chain=redirect_chain, final_url=final_url,
     )

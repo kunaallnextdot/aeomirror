@@ -660,7 +660,9 @@ function MarketingRoot() {
   const body = (
     <div className="au-site">
       <TopBar />
-      <Marketing onFull={() => navigate(isAuthenticated ? "/app" : "/register")} onScanComplete={() => {}} />
+      <div className="au-site-content">
+        <Marketing onFull={() => navigate(isAuthenticated ? "/app" : "/register")} onScanComplete={() => {}} />
+      </div>
       <SiteFooter />
     </div>
   );
@@ -677,7 +679,9 @@ function ContactRoot() {
   return (
     <div className="au-site">
       <TopBar />
-      <Suspense fallback={<FullScreenLoader />}><Contact /></Suspense>
+      <div className="au-site-content">
+        <Suspense fallback={<FullScreenLoader />}><Contact /></Suspense>
+      </div>
       <SiteFooter />
     </div>
   );

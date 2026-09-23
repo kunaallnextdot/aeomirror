@@ -1,0 +1,50 @@
+/* Action Center (/app/action-center) — screen-scoped `au-ac-*`. Reuses shared tokens and
+   the existing panel-header, card-center, lock-banner and priority-pill primitives
+   already used elsewhere (Report/Scan Details) so this reads as the same diagnostic
+   system, just more operational — never a second visual language. */
+.au-ac-eyebrow{display:flex;align-items:center;gap:6px;font-family:var(--au-font-numeric);
+  font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--au-primary);
+  font-weight:700;margin-bottom:6px}
+.au-ac-headline{font-family:var(--au-font-heading);font-size:19px;font-weight:700;
+  color:var(--au-ink);letter-spacing:-.01em}
+.au-ac-clean{display:flex;align-items:center;gap:8px;margin-top:10px;color:var(--au-mint-d);
+  font-size:13px}
+.au-ac-counts{display:flex;gap:22px;margin-top:14px;flex-wrap:wrap}
+.au-ac-count{text-align:center}
+.au-ac-count-n{font-family:var(--au-font-numeric);font-size:26px;font-weight:700;line-height:1}
+.au-ac-count-l{font-size:11px;color:var(--au-muted);margin-top:4px;text-transform:uppercase;
+  letter-spacing:.04em}
+
+.au-ac-list{display:flex;flex-direction:column;gap:8px}
+.au-ac-card{border:1px solid var(--au-line);border-radius:var(--au-r-m);
+  background:var(--au-app);overflow:hidden}
+.au-ac-card-h{display:flex;align-items:center;gap:11px;width:100%;background:none;border:0;
+  cursor:pointer;padding:12px 14px;text-align:left;font-family:inherit}
+.au-ac-card-h:hover{background:rgba(20,30,51,.02)}
+.au-ac-card-h:focus-visible{outline:2px solid var(--au-primary);outline-offset:-2px}
+.au-ac-card-t{flex:1;min-width:0;font-size:13.5px;font-weight:600;color:var(--au-ink)}
+.au-ac-card-src{font-size:11px;color:var(--au-muted);white-space:nowrap}
+.au-ac-chev{color:var(--au-muted);flex:none;transition:transform .2s}
+
+.au-ac-preview{padding:0 14px 14px;display:flex;flex-direction:column;gap:7px}
+.au-ac-problem{font-size:13px;line-height:1.5;color:var(--au-ink-2);margin:0}
+.au-ac-ev-preview,.au-ac-fix-preview{font-size:12px;color:var(--au-ink-2);line-height:1.5}
+.au-ac-fix-preview{color:var(--au-primary);font-weight:500}
+.au-ac-actions{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-top:4px}
+.au-ac-openlink{display:inline-flex;align-items:center;gap:5px;font-size:12px;
+  font-weight:600;color:var(--au-primary);text-decoration:none}
+.au-ac-openlink:hover{text-decoration:underline}
+
+.au-ac-ev-full{margin-top:4px}
+.au-ac-ev-full .au-sd-ul li{font-size:12.5px;word-break:break-word}
+
+.au-ac-viewall{display:block;margin:12px auto 2px;background:none;border:0;cursor:pointer;
+  font:inherit;font-size:12.5px;font-weight:600;color:var(--au-primary)}
+.au-ac-viewall:hover{text-decoration:underline}
+.au-ac-viewall:focus-visible{outline:2px solid var(--au-primary);outline-offset:2px;border-radius:4px}
+
+@media(max-width:480px){
+  .au-ac-card-h{flex-wrap:wrap}
+  .au-ac-card-src{flex-basis:100%;order:3}
+  .au-ac-actions{flex-direction:column;align-items:flex-start}
+}

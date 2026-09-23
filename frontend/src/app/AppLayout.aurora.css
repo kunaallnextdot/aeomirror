@@ -5,12 +5,33 @@
    never used `.dash*`, so this is additive. Every class is `au-`-prefixed.
 
    The shell provides ONE light ground; each migrated screen still brings its own
-   `.aurora-screen` wrapper (+ Shell blob field) — redundant nesting that #14 collapses. */
+   `.aurora-screen` wrapper (+ Shell blob field) — redundant nesting that #14 collapses.
+
+   App-shell scroll model: the sidebar is navigation, and navigation should stay visible
+   while you scroll — that's the standard pattern every sidebar-based app uses (Notion,
+   Linear, Gmail, GitHub), and it's what a person actually expects: it should not vanish
+   off-screen just because the page underneath is long. `.au-dash-side` is
+   `position:sticky;top:0;height:100vh` — pinned to fill exactly ONE viewport, never
+   stretched into a tall empty panel to match a much-longer `.au-dash-main` (that was a
+   real regression: CSS Grid's default `align-items:stretch` on a plain, non-sticky
+   sidebar padded it with dead visual space below its real content). `overflow-y:auto`
+   is a small, ordinary safety net — the sidebar's own content (nav + "New scan" etc.)
+   fits within 100vh on any real viewport, so this virtually never engages, but if it
+   ever doesn't fit (a very short browser window), the sidebar scrolls that little bit
+   internally rather than ever permanently hiding "New scan" — exactly like Notion's or
+   Slack's sidebar does. This is a deliberate, ordinary internal scrollbar for genuine
+   overflow, not the earlier "sidebar/main permanently fight over every scroll gesture"
+   bug — that was caused by other CSS forcing the sidebar to overflow even when its
+   content already fit. The footer is a separate, independent concern: it lives in
+   main's own flow (`.au-dash-content{flex:1 0 auto}` below pushes it to the bottom on a
+   short page), and its position was never actually tied to the sidebar's.
+   (`box-sizing:border-box` for this tree already comes from the app-wide `.root *` rule
+   in App.jsx.) */
 .au-dash{display:grid;grid-template-columns:240px 1fr;min-height:100vh;
   background:var(--au-atmos);background-attachment:fixed;
   color:var(--au-ink);font-family:var(--au-font-body);font-size:15px;line-height:1.5}
 .au-dash-side{border-right:1px solid var(--au-line);background:var(--au-glass);backdrop-filter:blur(18px) saturate(1.1);
-  display:flex;flex-direction:column;padding:18px 12px;gap:16px;position:sticky;top:0;height:100vh}
+  display:flex;flex-direction:column;padding:18px 12px;gap:16px;position:sticky;top:0;height:100vh;overflow-y:auto}
 .au-dash-brand{display:flex;align-items:center;gap:9px;font-family:var(--au-font-heading);font-size:16px;
   font-weight:700;letter-spacing:-.02em;padding:2px 8px;color:var(--au-ink)}
 .au-dash-brand svg{color:var(--au-primary)}
@@ -38,8 +59,34 @@
   backdrop-filter:blur(18px) saturate(1.1);z-index:10}
 .au-dash-top-title{font-family:var(--au-font-heading);font-size:19px;font-weight:700;letter-spacing:-.02em;color:var(--au-ink)}
 .au-dash-top-sub{font-size:12px;color:var(--au-muted);margin-top:2px}
-.au-dash-content{padding:22px 26px 60px;animation:au-dfade .25s ease}
+.au-dash-content{padding:22px 26px 40px;flex:1 0 auto;animation:au-dfade .25s ease}
 @keyframes au-dfade{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
+
+/* App-shell footer (Part 1 redesign) — plain flow inside the flex-column `.au-dash-main`,
+   scrolled by the SAME single page scroll as the sidebar (never a second, independent
+   scroll region; never fixed/sticky itself). `.au-dash-content{flex:1 0 auto}` above is
+   what pushes it to the bottom of the viewport on short pages; on long pages it simply
+   follows the content. Same warm/brand tokens as the rest of the shell (not a dark
+   marketing-style footer). */
+.au-dash-footer{border-top:1px solid var(--au-line);padding:22px 26px 18px;flex:none}
+.au-dash-footer-top{display:flex;flex-wrap:wrap;gap:32px;justify-content:space-between}
+.au-dash-footer-brand{flex:1 1 200px;min-width:180px}
+.au-dash-footer-logo{display:flex;align-items:center;gap:7px;font-family:var(--au-font-heading);
+  font-size:14px;font-weight:700;letter-spacing:-.02em;color:var(--au-ink)}
+.au-dash-footer-logo svg{color:var(--au-primary)}
+.au-dash-footer-tag{font-size:11.5px;color:var(--au-muted);margin:7px 0 0;line-height:1.5;max-width:240px}
+.au-dash-footer-col{display:flex;flex-direction:column;gap:7px;min-width:120px}
+.au-dash-footer-col-h{font-family:var(--au-font-numeric);font-size:10px;letter-spacing:.06em;
+  text-transform:uppercase;color:var(--au-muted);margin-bottom:2px}
+.au-dash-footer-link{display:flex;align-items:center;gap:5px;font-size:12px;color:var(--au-ink-2);
+  text-decoration:none}
+.au-dash-footer-link:hover{color:var(--au-primary)}
+.au-dash-footer-bottom{margin-top:18px;padding-top:14px;border-top:1px solid var(--au-line-2);
+  font-size:11px;color:var(--au-muted)}
+@media(max-width:640px){
+  .au-dash-footer{padding:18px 14px 16px}
+  .au-dash-footer-top{gap:20px}
+}
 
 /* sidebar footer user block (port of auth.css .dash-user*) */
 .au-dash-user{display:flex;align-items:center;gap:10px;padding:9px 8px;border-top:1px solid var(--au-line);margin-top:6px}
@@ -58,11 +105,13 @@
   cursor:pointer;color:var(--au-primary);font-family:var(--au-font-numeric);font-size:11.5px}
 .au-side-meter-up:hover{text-decoration:underline}
 
-/* mobile: single column, sidebar becomes a horizontal wrapping bar (mirrors the dark
-   shell's max-width:900px collapse). */
+/* mobile: single column, sidebar becomes a horizontal wrapping bar at the top (mirrors
+   the dark shell's max-width:900px collapse) — no longer a vertical column, so it's no
+   longer sticky/viewport-height either; it just wraps at its natural height and scrolls
+   away with the page like the topbar does. */
 @media(max-width:900px){
   .au-dash{grid-template-columns:1fr}
-  .au-dash-side{position:static;height:auto;flex-direction:row;flex-wrap:wrap;align-items:center;
+  .au-dash-side{position:static;height:auto;overflow-y:visible;flex-direction:row;flex-wrap:wrap;align-items:center;
     border-right:none;border-bottom:1px solid var(--au-line)}
   .au-dash-nav{flex-direction:row;flex-wrap:wrap}
   .au-dash-side-foot{margin:0}

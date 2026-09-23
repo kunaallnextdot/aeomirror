@@ -57,6 +57,10 @@ def analyze(ctx: SignalContext) -> SignalResult:
             "valid_xml": looks_xml,
             "url_count": url_count,
             "sample_urls": urls[:10],
+            # Technical SEO sitemap<->crawl parity needs the fuller URL list, not just
+            # the 10-URL display sample above; capped so a huge sitemap can't bloat the
+            # stored report (no score impact — sample_urls/url_count still drive scoring).
+            "urls": urls[:1000],
             "referenced_in_robots": referenced,
         },
     )

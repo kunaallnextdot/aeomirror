@@ -30,3 +30,9 @@ anthropic==0.40.0
 # sentry-sdk==2.14.0
 gunicorn==22.0.0          # production process manager for uvicorn workers
 psycopg2-binary==2.9.9
+# --- Google Search Console Intelligence ---
+# Authenticated symmetric encryption (Fernet: AES-128-CBC + HMAC-SHA256) for the ONE
+# secret this app persists that isn't already a hash/JWT: a connected org's GSC OAuth
+# refresh token. No home-grown cipher — this is the standard, audited choice; the
+# stdlib has no symmetric cipher of its own. See app/core/gsc_crypto.py.
+cryptography==43.0.1

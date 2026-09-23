@@ -8,6 +8,7 @@ import { ScanError } from "../api.js";
 import { useUpgrade } from "./UpgradeModal.jsx";
 import { queryParam } from "../auth/router.jsx";
 import { Shell, Cell, Ring, Button } from "./aurora.jsx";
+import { diffSignals } from "./verification.js";
 
 export default function Compare({ scans = [], onCompare }) {
   const { openUpgrade, handleGated, reloadSubscription } = useUpgrade();
@@ -57,17 +58,16 @@ export default function Compare({ scans = [], onCompare }) {
     </select>
   );
 
-  const secMap = (rep) => Object.fromEntries((rep?.sections || []).map((s) => [s.id, s]));
   const issueSet = (rep) => new Set((rep?.sections || []).flatMap((s) => s.issues || []));
 
+  // Signal-level score/status deltas: the SAME shared utility Fix Verification uses
+  // (see verification.js) — one comparison engine, not two.
   let improved = [], regressed = [], newIssues = [], resolved = [];
   if (a && b) {
-    const ma = secMap(a), mb = secMap(b);
-    for (const id of Object.keys(mb)) {
-      const before = ma[id]?.score, after = mb[id]?.score;
-      if (before == null) continue;
-      if (after > before) improved.push({ label: mb[id].label, before, after });
-      else if (after < before) regressed.push({ label: mb[id].label, before, after });
+    for (const d of diffSignals(a, b)) {
+      if (!d.comparable) continue;
+      if (d.score_after > d.score_before) improved.push({ label: d.label, before: d.score_before, after: d.score_after });
+      else if (d.score_after < d.score_before) regressed.push({ label: d.label, before: d.score_before, after: d.score_after });
     }
     const ia = issueSet(a), ib = issueSet(b);
     newIssues = [...ib].filter((x) => !ia.has(x));

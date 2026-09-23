@@ -36,7 +36,11 @@ export class ScanError extends Error {
 // Map a backend status + optional detail string to a safe, user-facing message.
 // The backend's HTTPException `detail` values are curated, non-sensitive strings,
 // so we surface them when present; otherwise we fall back to a generic message.
-function messageForStatus(status, detail, requestId) {
+// `opts.context` opts a call into preferring that curated `detail` even on a >=500
+// (the scanner's own >=500 copy below assumes a scan-specific cause, which can be
+// wrong for other subsystems); `opts.genericMessage` overrides the >=500 fallback
+// text used when no detail was sent.
+function messageForStatus(status, detail, requestId, opts = {}) {
   const safe = typeof detail === "string" && detail.trim() ? detail.trim() : null;
   if (status === 429) return safe || "Free scan limit reached. Add an email to keep scanning.";
   if (status === 422) return safe || "That URL can't be scanned. It may be a private, local, or invalid address.";
@@ -45,8 +49,9 @@ function messageForStatus(status, detail, requestId) {
   if (status === 413) return safe || "That page is too large to scan.";
   if (status === 504) return safe || "That request took too long and timed out. Please try again.";
   if (status >= 500) {
+    if (safe && opts.context) return safe;
     // Include the server request_id (when present) so a user can quote it in support.
-    const base = "The scanner hit an unexpected error. Please try again in a moment.";
+    const base = opts.genericMessage || "The scanner hit an unexpected error. Please try again in a moment.";
     return requestId ? `${base} (ref: ${requestId})` : base;
   }
   return safe || `Scan failed (status ${status}).`;
@@ -196,11 +201,12 @@ export async function captureLead(email, url) {
 const REQUEST_TIMEOUT_MS = 60000;
 
 async function request(path, opts = {}) {
+  const { errorContext, genericMessage, ...fetchOpts } = opts;
   let res;
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), REQUEST_TIMEOUT_MS);
   try {
-    res = await authFetch(path, { ...opts, signal: ctrl.signal });  // Bearer token + refresh-on-401
+    res = await authFetch(path, { ...fetchOpts, signal: ctrl.signal });  // Bearer token + refresh-on-401
   } catch (e) {
     if (e?.name === "AbortError") {
       // Our timeout fired (or the request was aborted) — report it honestly as a
@@ -216,7 +222,8 @@ async function request(path, opts = {}) {
   }
   if (!res.ok) {
     const { detail, requestId } = await readError(res);
-    throw new ScanError(messageForStatus(res.status, detail, requestId), res.status);
+    throw new ScanError(
+      messageForStatus(res.status, detail, requestId, { context: errorContext, genericMessage }), res.status);
   }
   return res.status === 204 ? null : await res.json();
 }
@@ -247,6 +254,27 @@ export function compareScans(aId, bId) {
   return request(`/api/compare`, { method: "POST", body: JSON.stringify({ a_id: aId, b_id: bId }) });
 }
 
+/* Fix Verification V2 — persisted verification history (server-authoritative: the
+   comparison itself is computed backend-side, see app/services/verification.py).
+   Same metered quota as Compare (throws ScanError code 402 when exhausted); throws
+   code 422 when the two scans/signal genuinely aren't comparable. */
+export function createVerification({ baselineScanId, verificationScanId, signalId }) {
+  return request(`/api/verifications`, {
+    method: "POST",
+    body: JSON.stringify({
+      baseline_scan_id: baselineScanId, verification_scan_id: verificationScanId, signal_id: signalId,
+    }),
+  });
+}
+
+// Persisted verification history for one scan (as the baseline) — newest first.
+// Optionally narrowed to one signal. Returns { verifications: [...] }.
+export function getVerifications(scanId, signalId) {
+  let qs = `scan_id=${encodeURIComponent(scanId)}`;
+  if (signalId) qs += `&signal_id=${encodeURIComponent(signalId)}`;
+  return request(`/api/verifications?${qs}`);
+}
+
 export function deleteScan(id) {
   return request(`/api/scans/${encodeURIComponent(id)}`, { method: "DELETE" });
 }
@@ -267,6 +295,14 @@ export function getReport(scanId) {
 // Lightweight unlock check for a report's exports: resolves { unlocked: bool }.
 export function getReportAccess(scanId) {
   return request(`/reports/${encodeURIComponent(scanId)}/access`);
+}
+
+// Read-only AEO Answer Simulator summary for this scan's monitor: the most recently
+// PERSISTED run's answerability breakdown. Never triggers a new simulation. Used by
+// Action Center to surface a real "N questions have insufficient evidence" count
+// without ever touching individual question text (see actionSources.js).
+export function getReportAnswerSimulation(scanId) {
+  return request(`/reports/${encodeURIComponent(scanId)}/answer-simulation`);
 }
 
 /* Public report share links (owner-side, authenticated). Create throws ScanError 402
@@ -401,6 +437,49 @@ export function getPromptRun(id) { return request(`/prompt-runs/${encodeURICompo
 export function getPromptRunSummary(id) {
   return request(`/prompt-runs/${encodeURIComponent(id)}/summary`);
 }
+// Phase 3 — the gated AI Visibility layer for a run (negative-first coverage,
+// answerability, content gaps, competitor intelligence, opportunity finder, trend).
+export function getPromptRunVisibility(id) {
+  return request(`/prompt-runs/${encodeURIComponent(id)}/visibility`);
+}
+// Phase 3 report integration — the AI Visibility for a scan's site (its monitor's latest
+// Answer Tracking run). Resolves { available: false, reason } when there's no run yet.
+export function getReportAIVisibility(scanId) {
+  return request(`/reports/${encodeURIComponent(scanId)}/ai-visibility`);
+}
+// Question Bank: real questions from scan Question Mining + Answer Tracking, merged and
+// cross-linked to opportunities. { available: false, reason: "scan_incomplete" } while
+// the scan is still processing.
+export function getQuestionBank(scanId) {
+  return request(`/reports/${encodeURIComponent(scanId)}/question-bank`);
+}
+// Technical SEO & Indexability: for every crawled URL, technically-grounded
+// crawlability/indexability signals (HTTP status, robots/meta-robots/X-Robots-Tag,
+// canonical, redirects, sitemap presence) — never a claim about actual Google
+// indexing. { available: false, reason: "scan_incomplete" } while the scan is still
+// processing. Also embedded (already gated) at report.technical_seo from getReport().
+export function getTechnicalSeo(scanId) {
+  return request(`/reports/${encodeURIComponent(scanId)}/technical-seo`);
+}
+// Real Crawl Graph + True Orphan Detection: for a multi-page (bulk) scan, the real
+// internal-link graph — inbound/outbound counts, reachability/depth from the crawl
+// seed, and true orphan pages (zero inbound internal links). A single-page scan
+// resolves { available: false, reason: "multi_page_crawl_required" }.
+// { available: false, reason: "scan_incomplete" } while the scan is still processing.
+// Also embedded (already gated) at report.crawl_graph from getReport().
+export function getCrawlGraph(scanId) {
+  return request(`/reports/${encodeURIComponent(scanId)}/crawl-graph`);
+}
+// Content Cannibalization & Duplicate Content Intelligence: for a multi-page (bulk)
+// scan, near-duplicate/overlap/potential-cannibalization clusters, duplicate page
+// elements (title/H1/meta description), and relative thin-content candidates. Never a
+// claim of confirmed search-result cannibalization. A single-page scan resolves
+// { available: false, reason: "multi_page_crawl_required" }.
+// { available: false, reason: "scan_incomplete" } while the scan is still processing.
+// Also embedded (already gated) at report.content_intelligence from getReport().
+export function getContentIntelligence(scanId) {
+  return request(`/reports/${encodeURIComponent(scanId)}/content-intelligence`);
+}
 export function getPromptSetTrend(id, { n } = {}) {
   const qs = n ? `?n=${encodeURIComponent(n)}` : "";
   return request(`/prompt-sets/${encodeURIComponent(id)}/trend${qs}`);
@@ -410,6 +489,40 @@ export function getPromptRunResults(id) {
 }
 export function reanalysePromptRun(id) {
   return request(`/prompt-runs/${encodeURIComponent(id)}/reanalyse`, { method: "POST" });
+}
+
+/* =====================================================================
+   AEO Answer Simulator — deterministic, zero-external-call-by-default answer
+   simulation from a site's own scanned content. Distinct from Provider Tracking
+   above (which calls live OpenAI/Anthropic/Perplexity/Gemini APIs); the simulator
+   never does unless the caller explicitly opts into the optional AI step.
+   ===================================================================== */
+export function getSimulatorQuestions(monitorId) {
+  return request(`/monitors/${encodeURIComponent(monitorId)}/answer-simulator/questions`);
+}
+export function runAnswerSimulation(monitorId, { questionIds, customQuestions, questionBankKeys, requestLlmStep } = {}) {
+  return request(`/monitors/${encodeURIComponent(monitorId)}/answer-simulator/run`, {
+    method: "POST",
+    body: JSON.stringify({
+      question_ids: questionIds || undefined,
+      custom_questions: customQuestions || undefined,
+      question_bank_keys: questionBankKeys || undefined,
+      request_llm_step: !!requestLlmStep,
+    }),
+  });
+}
+export function getSimulatorResults(monitorId, runId) {
+  return request(`/monitors/${encodeURIComponent(monitorId)}/answer-simulator/runs/${encodeURIComponent(runId)}/results`);
+}
+export function explainSimulatorQuestion(monitorId, runId, promptId) {
+  return request(
+    `/monitors/${encodeURIComponent(monitorId)}/answer-simulator/runs/${encodeURIComponent(runId)}/questions/${encodeURIComponent(promptId)}/explain`,
+    { method: "POST" },
+  );
+}
+export function getSimulatorEstimate(monitorId, { questionCount = 0, requestLlmStep = false } = {}) {
+  const qs = `?question_count=${encodeURIComponent(questionCount)}&request_llm_step=${requestLlmStep ? "true" : "false"}`;
+  return request(`/monitors/${encodeURIComponent(monitorId)}/answer-simulator/estimate${qs}`);
 }
 
 /* =====================================================================

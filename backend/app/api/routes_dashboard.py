@@ -27,18 +27,19 @@ from app.api.routes_scan import (
 from app.core.cache import rate_limiter
 from app.core.fetch import fetch
 from app.core.ssrf import UnsafeUrlError, validate_url
-from app.db.models import USAGE_COMPARE, AiContentInsight, Scan
+from app.db.models import USAGE_COMPARE, AiContentInsight, MonitorHistory, Scan, Verification
 from app.db.session import get_db
 from app.scanner.signals.base import SignalContext, status_from_score
-from app.schemas.dashboard import CompareRequest, DashboardSummary, ScanSummary
+from app.schemas.dashboard import CompareRequest, DashboardSummary, ScanSummary, VerifyRequest
 from app.schemas.scan import ScanResponse
+from app.services.verification import verify_signal
 
 router = APIRouter(prefix="/api", tags=["dashboard"])
 
 _MAX_ROWS = 500
 
 
-def _summary(row: Scan) -> dict:
+def _summary(row: Scan, monitor_scan_ids: set[str] = frozenset()) -> dict:
     r = row.result or {}
     overall = r.get("overall_score")
     return {
@@ -56,7 +57,21 @@ def _summary(row: Scan) -> dict:
         "status": status_from_score(overall) if overall is not None else "complete",
         "scanner_version": r.get("scanner_version"),
         "signal_scores": {s.get("id"): s.get("score") for s in r.get("sections", [])},
+        "billable": row.id not in monitor_scan_ids,
     }
+
+
+def _monitor_scan_ids(db: Session, scan_ids: list[str]) -> set[str]:
+    """Which of these scan ids were triggered by a monitor (scheduled check / "Run
+    Now"), via the same monitor_history table entitlements/the runner already use to
+    track monitor scans — never a second, separate classification. ONE query for the
+    whole page (never per-row), so listing scans stays a single round trip."""
+    if not scan_ids:
+        return set()
+    rows = (db.query(MonitorHistory.scan_id)
+            .filter(MonitorHistory.scan_id.in_(scan_ids))
+            .all())
+    return {sid for (sid,) in rows}
 
 
 def _org_rows(db: Session, ctx: AuthContext) -> list[Scan]:
@@ -94,7 +109,9 @@ def list_scans(
     sort: str = "newest",
 ):
     """List the caller's organization's scans, with search/filter/sort."""
-    items = [_summary(r) for r in _org_rows(db, ctx)]
+    rows = _org_rows(db, ctx)
+    monitor_scan_ids = _monitor_scan_ids(db, [r.id for r in rows])
+    items = [_summary(r, monitor_scan_ids) for r in rows]
 
     if q:
         ql = q.lower()
@@ -261,6 +278,93 @@ def compare_scans(body: CompareRequest,
             "b": build_scan_response(b, hide_page_details=hide_b)}
 
 
+def _serialize_verification(row: Verification) -> dict:
+    # score_delta is derived (score_after - score_before), not stored as its own
+    # column — no new persisted field for a value trivially computable from the two
+    # already-stored scores.
+    delta = (round(row.score_after - row.score_before, 1)
+            if row.score_after is not None and row.score_before is not None else None)
+    return {
+        "id": row.id, "baseline_scan_id": row.baseline_scan_id,
+        "verification_scan_id": row.verification_scan_id, "signal_id": row.signal_id,
+        "verification_status": row.verification_status,
+        "status_before": row.status_before, "status_after": row.status_after,
+        "score_before": row.score_before, "score_after": row.score_after, "score_delta": delta,
+        "resolved_issues": row.resolved_issues or [], "remaining_issues": row.remaining_issues or [],
+        "new_issues": row.new_issues or [], "evidence_changes": row.evidence_changes or [],
+        "created_at": (row.created_at.replace(tzinfo=timezone.utc).isoformat()
+                      if row.created_at else None),
+    }
+
+
+@router.post("/verifications")
+def create_verification(body: VerifyRequest,
+                        ctx: AuthContext = Depends(require_permission("report:view")),
+                        db: Session = Depends(get_db)):
+    """Compute AND persist a Fix Verification result for one signal, from two of the
+    caller's own scans. Server-authoritative: the comparison is computed HERE (see
+    app/services/verification.py — a 1:1 port of the existing frontend verification.js
+    engine, never a second/divergent algorithm), never trusted from the client. Both
+    scans must belong to the caller's org (404 otherwise) — reuses the exact
+    ownership check `compare_scans` already uses. Metered exactly like Compare (same
+    quota, same usage-event kind) — Fix Verification has always driven its comparison
+    through the same Compare API/quota; this preserves that behavior rather than
+    silently changing it."""
+    from app.billing import entitlements
+    baseline = _owned_scan_or_404(db, ctx, body.baseline_scan_id)
+    verification_scan = _owned_scan_or_404(db, ctx, body.verification_scan_id)
+
+    q = entitlements.compare_quota(db, ctx.org_id)
+    if not q["unlimited"] and q["remaining"] <= 0:
+        raise HTTPException(status_code=402,
+            detail=f"Free plan includes {q['limit']} comparisons per month. "
+                   "Upgrade to Pro for unlimited comparisons.")
+
+    result = verify_signal(
+        body.signal_id, baseline.result, verification_scan.result,
+        before_status=getattr(baseline, "status", None) or "completed",
+        after_status=getattr(verification_scan, "status", None) or "completed")
+    if result is None:
+        raise HTTPException(status_code=422, detail="These scans cannot be compared reliably.")
+
+    entitlements.record_usage(db, ctx.org_id, USAGE_COMPARE)
+
+    row = Verification(
+        organization_id=ctx.org_id,   # derived from authenticated context, never client input
+        baseline_scan_id=baseline.id, verification_scan_id=verification_scan.id,
+        signal_id=body.signal_id, verification_status=result["verification_status"],
+        status_before=result["status_before"], status_after=result["status_after"],
+        score_before=result["score_before"], score_after=result["score_after"],
+        resolved_issues=result["resolved_issues"], remaining_issues=result["remaining_issues"],
+        new_issues=result["new_issues"], evidence_changes=result["evidence_changes"],
+    )
+    db.add(row)
+    db.commit()
+    db.refresh(row)
+    return _serialize_verification(row)
+
+
+@router.get("/verifications")
+def list_verifications(scan_id: str, signal_id: str | None = None,
+                       ctx: AuthContext = Depends(require_permission("report:view")),
+                       db: Session = Depends(get_db)):
+    """Persisted verification history for one scan (as the BASELINE) — newest first.
+    Org-scoped directly on the query, never on the client-supplied scan_id alone:
+    only rows whose organization_id matches the caller's authenticated org are ever
+    returned. `_owned_scan_or_404` additionally 404s outright if `scan_id` isn't the
+    caller's own scan. `signal_id` narrows to one signal's history; omitted, returns
+    every signal's history for this scan (newest first per signal), letting the
+    caller pick the latest per signal_id without a request per signal."""
+    _owned_scan_or_404(db, ctx, scan_id)
+    query = (db.query(Verification)
+            .filter(Verification.organization_id == ctx.org_id,
+                    Verification.baseline_scan_id == scan_id))
+    if signal_id:
+        query = query.filter(Verification.signal_id == signal_id)
+    rows = query.order_by(Verification.created_at.desc()).limit(200).all()
+    return {"verifications": [_serialize_verification(r) for r in rows]}
+
+
 @router.delete("/scans/{scan_id}")
 def delete_scan(scan_id: str,
                 ctx: AuthContext = Depends(require_permission("scan:delete")),
@@ -277,7 +381,6 @@ async def rerun_scan(scan_id: str, request: Request,
                      db: Session = Depends(get_db)):
     from app.api.routes_scan import _scan_quota_message
     from app.billing import entitlements
-    from app.db.models import USAGE_SCAN_JOB
     row = _owned_scan_or_404(db, ctx, scan_id)
 
     # A rerun is a user-initiated scan job — metered against the monthly quota.
@@ -298,10 +401,10 @@ async def rerun_scan(scan_id: str, request: Request,
     except UnsafeUrlError as e:
         raise HTTPException(status_code=422, detail=str(e))
 
-    # A rerun always produces a FRESH scan row (bypasses the read cache),
-    # attributed to the caller's organization, and records one scan job.
+    # A rerun always produces a FRESH scan row (bypasses the read cache), attributed
+    # to the caller's organization. run_scan() itself records the scan job the moment
+    # the row is persisted — see its own docstring — so there is nothing to do here.
     payload = await run_scan(db, safe_url, ip, ctx.org_id, ctx.user.id)
-    entitlements.record_usage(db, ctx.org_id, USAGE_SCAN_JOB)
     return ScanResponse(**payload, remaining_free_scans=remaining)
 
 

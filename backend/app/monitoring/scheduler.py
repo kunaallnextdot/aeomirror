@@ -12,8 +12,10 @@ The actual scanning happens in runner.py; this module never fetches or scores.
 """
 from __future__ import annotations
 
+import logging
 from datetime import datetime, timedelta
 
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.config import settings
@@ -21,6 +23,8 @@ from app.db.models import (
     JOB_COMPLETED, JOB_FAILED, JOB_KIND_BULK_SCAN, JOB_PENDING, JOB_RUNNING,
     MONITOR_ACTIVE, Monitor, ScheduledJob,
 )
+
+logger = logging.getLogger("aeomirror.scheduler")
 
 FREQ_DELTA = {
     "daily": timedelta(days=1),
@@ -69,9 +73,15 @@ def enqueue_due(db: Session, now: datetime | None = None) -> int:
             continue
         db.add(_new_job(m, "scheduled", now))
         m.next_scan_at = compute_next_scan(m.frequency, now)
-        created += 1
-    if created:
-        db.commit()
+        # Commit per monitor so the partial unique index makes the enqueue atomic: if a
+        # second scheduler already enqueued this monitor, the insert raises IntegrityError
+        # and we skip it (its next_scan_at advance rolls back with the failed insert).
+        try:
+            db.commit()
+            created += 1
+        except IntegrityError:
+            db.rollback()
+            logger.info("enqueue race: monitor %s already has an active job; skipped", m.id)
     return created
 
 
@@ -102,7 +112,12 @@ def enqueue_manual(db: Session, monitor: Monitor, now: datetime | None = None) -
     now = now or datetime.utcnow()
     job = _new_job(monitor, "manual", now)
     db.add(job)
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError:
+        # A concurrent enqueue won the race; return the active job that exists now.
+        db.rollback()
+        return has_active_job(db, monitor.id)
     db.refresh(job)
     return job
 

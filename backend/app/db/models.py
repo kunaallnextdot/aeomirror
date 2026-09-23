@@ -4,7 +4,9 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 
-from sqlalchemy import JSON, Boolean, Column, DateTime, Float, Index, Integer, String, Text
+from sqlalchemy import (
+    JSON, Boolean, Column, DateTime, Float, Index, Integer, String, Text, text,
+)
 
 from app.db.session import Base
 
@@ -325,6 +327,13 @@ class ScheduledJob(Base):
     __table_args__ = (
         Index("ix_jobs_claimable", "status", "run_after"),
         Index("ix_jobs_monitor_status", "monitor_id", "status"),
+        # At most ONE active (pending|running) job per monitor — enforced atomically at the
+        # DB level so two concurrent scheduler processes cannot both enqueue the same
+        # monitor (partial unique index; NULL monitor_id bulk jobs are excluded). Same
+        # predicate on SQLite + Postgres so create_all (tests) and Alembic (prod) match.
+        Index("uq_scheduled_jobs_active_per_monitor", "monitor_id", unique=True,
+              sqlite_where=text("status IN ('pending','running') AND monitor_id IS NOT NULL"),
+              postgresql_where=text("status IN ('pending','running') AND monitor_id IS NOT NULL")),
     )
     id = Column(String, primary_key=True, default=_uuid)
     # Monitor jobs reference a monitor; site_scan jobs reference a scan instead, so
@@ -653,6 +662,10 @@ class TrackedPrompt(Base):
     organization_id = Column(String, index=True, nullable=False)
     text = Column(Text, nullable=False)
     is_active = Column(Boolean, nullable=False, default=True)
+    # Provenance only — never changes execution semantics. "question_bank" means this
+    # prompt was created FROM a Question Bank entry (scan FAQ/heading text or an
+    # already-tracked prompt) rather than typed by hand; see services/answer_simulator.
+    source = Column(String, nullable=False, default="manual", server_default="manual")
     created_at = Column(DateTime, default=datetime.utcnow)
 
 
@@ -674,6 +687,13 @@ class PromptRun(Base):
     estimated_cost_usd = Column(Float, nullable=False, default=0.0)
     # Part B — the analysis phase, tracked separately from the answer phase above.
     extraction_status = Column(String, nullable=False, default=EXTRACTION_PENDING)
+    # "provider_tracking" (existing OpenAI/Anthropic/Perplexity/Gemini flow, unchanged)
+    # or "simulator" (the deterministic/optional-local-LLM AEO Answer Simulator).
+    run_mode = Column(String, nullable=False, default="provider_tracking",
+                      server_default="provider_tracking")
+    # Simulator runs only: whether the optional LLM step was requested for any
+    # question in this run (a deterministic-only batch leaves this False).
+    llm_step_requested = Column(Boolean, nullable=False, default=False, server_default="0")
     created_at = Column(DateTime, default=datetime.utcnow)
 
 
@@ -698,6 +718,17 @@ class PromptResult(Base):
     latency_ms = Column(Integer, nullable=True)
     token_usage = Column(JSON, nullable=True)
     error = Column(String, nullable=True)
+    # Simulator rows only (null for provider_tracking rows). See
+    # services/answer_simulator/scoring.py for the HIGH|MEDIUM|LOW|INSUFFICIENT_EVIDENCE
+    # enum and the evidence_coverage_pct calculation.
+    answerability = Column(String, nullable=True)
+    evidence_coverage_pct = Column(Float, nullable=True)
+    # Off-topic/low-relevance guard (see services/answer_simulator/topic_alignment.py)
+    # — "does this question align with the site's evidence at all", a separate
+    # signal from evidence_coverage_pct (how strongly retrieval matched).
+    topic_alignment_score = Column(Float, nullable=True)
+    question_token_coverage = Column(Float, nullable=True)
+    llm_step_used = Column(Boolean, nullable=False, default=False, server_default="0")
     created_at = Column(DateTime, default=datetime.utcnow)
 
 
@@ -732,6 +763,9 @@ class PromptResultAnalysis(Base):
     extraction_failed = Column(Boolean, nullable=False, default=False)
     extraction_model = Column(String, nullable=False)         # exact model string used to extract
     raw_output = Column(Text, nullable=True)                  # unparseable LLM output (on failure)
+    # Simulator rows only (null for provider_tracking rows).
+    missing_information = Column(JSON, nullable=True)         # list[str]
+    simulator_confidence = Column(String, nullable=True)      # "high"|"medium"|"low"|null
     created_at = Column(DateTime, default=datetime.utcnow)
 
 
@@ -751,3 +785,55 @@ class PromptGapAnalysis(Base):
     has_signal = Column(Boolean, nullable=False, default=True)   # False => said "not enough signal"
     model = Column(String, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class SimulatorEvidence(Base):
+    """One retrieved evidence unit that backed an AEO Answer Simulator answer (see
+    services/answer_simulator/). Kept separate from PromptResult.citations (the
+    provider-tracking citations contract: [{url,title}] | [] | None) since simulator
+    evidence also carries the FIELD it came from, its retrieval score, and matched
+    terms — a retrieval audit trail, not a citation list. One row per unit surfaced to
+    a given answer (top_k per question, small)."""
+    __tablename__ = "simulator_evidence"
+    __table_args__ = (Index("ix_simulator_evidence_result", "result_id"),)
+    id = Column(String, primary_key=True, default=_uuid)
+    result_id = Column(String, index=True, nullable=False)   # -> prompt_results.id
+    organization_id = Column(String, index=True, nullable=False)
+    monitor_id = Column(String, index=True, nullable=True)
+    url = Column(String, nullable=False)
+    field = Column(String, nullable=False)          # "title"|"h1"|"faq_question"|"heading_question"|...
+    snippet = Column(Text, nullable=False)           # verbatim evidence text (already capped upstream)
+    score = Column(Float, nullable=False)            # boosted retrieval score
+    matched_terms = Column(JSON, nullable=True)       # list[str]
+    rank = Column(Integer, nullable=False)            # 1-based order surfaced to the answer/LLM
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class Verification(Base):
+    """A persisted Fix Verification result (see services/verification.py — the ONE
+    comparison engine, a 1:1 port of frontend/src/dashboard/verification.js, never a
+    second/divergent algorithm). References the two existing Scan rows it was
+    computed from rather than duplicating either scan's full result payload — the
+    derived comparison (status/score deltas + issue/evidence diffs) is the only new
+    data this table stores. One row per "Verify" action; multiple rows can exist for
+    the same (baseline_scan_id, signal_id) pair over time (see PHASE 8 history)."""
+    __tablename__ = "verifications"
+    __table_args__ = (
+        Index("ix_verifications_baseline_signal", "baseline_scan_id", "signal_id", "created_at"),
+        Index("ix_verifications_org_created", "organization_id", "created_at"),
+    )
+    id = Column(String, primary_key=True, default=_uuid)
+    organization_id = Column(String, index=True, nullable=False)   # derived from ctx, never client input
+    baseline_scan_id = Column(String, index=True, nullable=False)  # -> scans.id
+    verification_scan_id = Column(String, index=True, nullable=False)   # -> scans.id
+    signal_id = Column(String, nullable=False)        # stable scanner signal id (same as recommendations)
+    verification_status = Column(String, nullable=False)   # verified|partially_improved|unchanged|regressed
+    status_before = Column(String, nullable=True)
+    status_after = Column(String, nullable=True)
+    score_before = Column(Float, nullable=True)
+    score_after = Column(Float, nullable=True)
+    resolved_issues = Column(JSON, nullable=False, default=list)
+    remaining_issues = Column(JSON, nullable=False, default=list)
+    new_issues = Column(JSON, nullable=False, default=list)
+    evidence_changes = Column(JSON, nullable=False, default=list)
+    created_at = Column(DateTime, default=datetime.utcnow, index=True)

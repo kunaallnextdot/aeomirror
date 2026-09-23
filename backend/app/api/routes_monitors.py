@@ -158,7 +158,8 @@ def create_monitor(body: CreateMonitorRequest,
     # (tests/dev) the quota is unlimited, so this never blocks.
     mq = entitlements.monitor_quota(db, ctx.org_id)
     if not mq["unlimited"] and mq["remaining"] <= 0:
-        if entitlements.current_plan(db, ctx.org_id) == "pro":
+        from app.billing.plans import PLAN_PRO
+        if entitlements.current_plan(db, ctx.org_id) == PLAN_PRO:
             detail = f"You've reached your Pro plan monitor limit ({mq['limit']})."
         else:
             detail = (f"Free plan includes {mq['limit']} monitor. "

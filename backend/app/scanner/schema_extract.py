@@ -115,6 +115,67 @@ def detect_content_types(nodes: list[dict]) -> dict[str, bool]:
     return {name: _nodes_have_any(nodes, tset) for name, tset in CONTENT_TYPES.items()}
 
 
+# ------------------------- Phase 4: entity + FAQ evidence (additive) -------------------------
+# Pulled from the SAME already-parsed nodes, purely additive to the signal's evidence —
+# no scoring change. Used by Schema/Entity Intelligence and Question Mining, never by
+# the schema signal's own score.
+def _str(v) -> str | None:
+    return v.strip() if isinstance(v, str) and v.strip() else None
+
+
+def entity_evidence(nodes: list[dict]) -> dict:
+    """Real Organization/LocalBusiness field values actually present in the page's own
+    JSON-LD (name/url/logo/sameAs) — never invented. `sameAs` is deduped and capped;
+    an empty list here means "no sameAs relationship detected", not an error."""
+    wanted = ORGANIZATION_TYPES | LOCAL_BUSINESS_SUBTYPES
+    name = url = logo = None
+    same_as: list[str] = []
+    seen = set()
+    for n in nodes:
+        if not any(t in wanted for t in types_of(n)):
+            continue
+        name = name or _str(n.get("name"))
+        url = url or _str(n.get("url"))
+        logo_v = n.get("logo")
+        if isinstance(logo_v, dict):
+            logo_v = logo_v.get("url")
+        logo = logo or _str(logo_v)
+        sa = n.get("sameAs")
+        for s in (sa if isinstance(sa, list) else [sa] if sa else []):
+            s = _str(s)
+            if s and s not in seen:
+                seen.add(s)
+                same_as.append(s)
+    return {"name": name, "url": url, "logo": logo, "same_as": same_as[:20]}
+
+
+def faq_questions(nodes: list[dict], *, limit: int = 20) -> list[dict]:
+    """Real {question, answer} pairs from FAQPage `mainEntity` Question nodes — the
+    text is copied verbatim from the page's own schema, never generated. `answer` is
+    None when the node has no acceptedAnswer.text (kept, not dropped, so the question
+    itself is still surfaced)."""
+    out: list[dict] = []
+    seen = set()
+    for n in nodes:
+        if "FAQPage" not in types_of(n):
+            continue
+        main = n.get("mainEntity")
+        items = main if isinstance(main, list) else [main] if main else []
+        for q in items:
+            if not isinstance(q, dict) or "Question" not in types_of(q):
+                continue
+            text = _str(q.get("name"))
+            if not text or text in seen:
+                continue
+            seen.add(text)
+            ans = q.get("acceptedAnswer")
+            ans_text = _str(ans.get("text")) if isinstance(ans, dict) else None
+            out.append({"question": text, "answer": ans_text})
+            if len(out) >= limit:
+                return out
+    return out
+
+
 def analyze_jsonld(blocks: list) -> dict:
     """Classify a page's JSON-LD into one of THREE states the report must not collapse:
 
@@ -131,11 +192,15 @@ def analyze_jsonld(blocks: list) -> dict:
 
     if block_count == 0:
         return {"state": "absent", "has_entity": False, "types": [],
-                "entity_types": [], "content": {}, "malformed": 0, "blocks": 0}
+                "entity_types": [], "content": {}, "malformed": 0, "blocks": 0,
+                "entity_evidence": {"name": None, "url": None, "logo": None, "same_as": []},
+                "faq_questions": []}
     if not parsed:
         return {"state": "malformed", "has_entity": False, "types": [],
                 "entity_types": [], "content": {}, "malformed": malformed,
-                "blocks": block_count}
+                "blocks": block_count,
+                "entity_evidence": {"name": None, "url": None, "logo": None, "same_as": []},
+                "faq_questions": []}
 
     nodes = collect_nodes(parsed)
     return {
@@ -146,4 +211,6 @@ def analyze_jsonld(blocks: list) -> dict:
         "content": detect_content_types(nodes),
         "malformed": malformed,           # >0 → present but partially malformed
         "blocks": block_count,
+        "entity_evidence": entity_evidence(nodes),   # Phase 4: real name/url/logo/sameAs
+        "faq_questions": faq_questions(nodes),        # Phase 4: real FAQPage Q&A text
     }

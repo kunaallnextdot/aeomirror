@@ -4,10 +4,10 @@
    are passed to route children through the Outlet context so behaviour matches the old
    single-component dashboard (one load, shared across views). */
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
+import { Link, NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import {
-  Radar, LayoutDashboard, ScanLine, GitCompare, Globe, ArrowLeft, FileText,
-  Activity, User, Users, Building2, LogOut, Shield, CreditCard, MessageSquare,
+  Radar, LayoutDashboard, ScanLine, GitCompare, Globe, ArrowLeft, FileText, FileSearch,
+  Activity, User, Users, Building2, LogOut, Shield, CreditCard, MessageSquare, Mail, ListChecks,
 } from "lucide-react";
 import {
   getDashboard, getScans, deleteScan, rerunScan, bulkScanUrls, ScanError,
@@ -18,14 +18,18 @@ import { AuAvatar } from "../dashboard/aurora.jsx";
 import { RouteErrorBoundary, InLayoutErrorState } from "./RouteErrorBoundary.jsx";
 import "./AppLayout.aurora.css";
 
-const NAV = [
+const SUPPORT_EMAIL = "aeomirror.support@gmail.com";
+
+export const NAV = [
   { to: "/app/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { to: "/app/scans", label: "Recent Scans", icon: ScanLine },
+  { to: "/app/scans/latest", label: "View Report", icon: FileSearch },
+  { to: "/app/action-center", label: "Action Center", icon: ListChecks },
   { to: "/app/monitoring", label: "Monitoring", icon: Activity },
   { to: "/app/answer-tracking", label: "Answer Tracking", icon: MessageSquare },
-  { to: "/app/report", label: "AI Visibility Report", icon: FileText },
+  { to: "/app/report", label: "Full Report", icon: FileText },
   { to: "/app/compare", label: "Compare", icon: GitCompare },
-  { to: "/app/website-summary", label: "Website Summary", icon: Globe },
+  { to: "/app/website-summary", label: "Websites", icon: Globe },
 ];
 const ACCOUNT_NAV = [
   { to: "/app/billing", label: "Billing", icon: CreditCard },
@@ -34,20 +38,41 @@ const ACCOUNT_NAV = [
   { to: "/app/organization", label: "Organization", icon: Building2 },
 ];
 
+const FOOTER_PRODUCT = [
+  { to: "/app/dashboard", label: "Dashboard" },
+  { to: "/app/scans", label: "Recent Scans" },
+  { to: "/app/action-center", label: "Action Center" },
+  { to: "/app/report", label: "Full Report" },
+  { to: "/app/answer-tracking", label: "Answer Tracking" },
+  { to: "/app/monitoring", label: "Monitoring" },
+];
+const FOOTER_RESOURCES = [
+  { to: "/app/website-summary", label: "Websites" },
+  { to: "/app/compare", label: "Compare" },
+];
+const FOOTER_ACCOUNT = [
+  { to: "/app/profile", label: "Profile" },
+  { to: "/app/organization", label: "Organization" },
+  { to: "/app/billing", label: "Billing" },
+];
+
 // [title, subtitle] + document title, derived from the pathname (not state).
 function routeMeta(pathname) {
   const p = pathname.replace(/\/+$/, "");
   const seg = p.split("/")[2] || "dashboard";     // segment after /app
-  const isDetail = p.split("/").length > 3;
+  const isLatest = p.split("/")[3] === "latest";
+  const isDetail = p.split("/").length > 3 && !isLatest;
   const M = {
     dashboard: ["Dashboard", "Your AI-visibility overview"],
-    scans: isDetail ? ["Scan Details", "Full signal report"] : ["Recent Scans", "Every scan you have run"],
+    scans: isLatest ? ["View Report", "Your latest completed scan"]
+                    : isDetail ? ["Scan Details", "Full diagnosis"] : ["Recent Scans", "Every scan you have run"],
+    "action-center": ["Action Center", "What to fix next, in priority order"],
     monitoring: isDetail ? ["Monitor", "Historical timeline, trends, changes and alerts"]
                          : ["Monitoring", "Track AI visibility over time and get alerted on changes"],
-    "answer-tracking": ["AI Answer Tracking", "Track whether AI assistants mention and cite your brand"],
-    report: ["AI Visibility Report", "What's wrong, why it matters, and how to fix it"],
+    "answer-tracking": ["Answer Tracking", "Track whether AI assistants mention and cite your brand"],
+    report: ["Full Report", "What's wrong, why it matters, and how to fix it"],
     compare: ["Compare Scans", "Diff two scans signal by signal"],
-    "website-summary": ["Website Summary", "Per-domain rollup"],
+    "website-summary": ["Websites", "Every domain you've scanned, with its latest and best/worst scores"],
     billing: ["Billing", "Your plan, usage, invoices and payments"],
     profile: ["Profile", "Your account settings"],
     team: ["Team Members", "Manage who can access this workspace"],
@@ -161,7 +186,8 @@ function LayoutBody() {
         <div className="au-dash-brand"><Radar size={18} /> AEOMirror</div>
         <nav className="au-dash-nav">
           {NAV.map((n) => (
-            <NavLink key={n.to} to={n.to} className={({ isActive }) => "au-dash-nav-item" + (isActive ? " on" : "")}>
+            <NavLink key={n.to} to={n.to} end={n.to === "/app/scans"}
+                     className={({ isActive }) => "au-dash-nav-item" + (isActive ? " on" : "")}>
               <n.icon size={16} /> <span>{n.label}</span>
             </NavLink>
           ))}
@@ -206,7 +232,42 @@ function LayoutBody() {
             <Outlet context={ctx} />
           </RouteErrorBoundary>
         </div>
+        <AppFooter />
       </main>
+    </div>
+  );
+}
+
+/* App-shell footer — normal document flow (never fixed/sticky), pushed to the bottom
+   of the viewport on short pages by `.au-dash-content{flex:1}` and simply following
+   the content on long pages. Renders on every /app/* route (loading/error/empty
+   states included) since it lives in the shell, not in any individual route view. */
+function AppFooter() {
+  const year = new Date().getFullYear();
+  return (
+    <footer className="au-dash-footer">
+      <div className="au-dash-footer-top">
+        <div className="au-dash-footer-brand">
+          <div className="au-dash-footer-logo"><Radar size={15} /> AEOMirror</div>
+          <p className="au-dash-footer-tag">AI visibility and AEO intelligence for modern websites.</p>
+        </div>
+        <FooterCol title="Product" items={FOOTER_PRODUCT} />
+        <FooterCol title="Resources" items={FOOTER_RESOURCES}>
+          <a className="au-dash-footer-link" href={`mailto:${SUPPORT_EMAIL}`}><Mail size={11} /> Help</a>
+        </FooterCol>
+        <FooterCol title="Account" items={FOOTER_ACCOUNT} />
+      </div>
+      <div className="au-dash-footer-bottom">© {year} AEOMirror. All rights reserved.</div>
+    </footer>
+  );
+}
+
+function FooterCol({ title, items, children }) {
+  return (
+    <div className="au-dash-footer-col">
+      <div className="au-dash-footer-col-h">{title}</div>
+      {items.map((it) => <Link key={it.to} className="au-dash-footer-link" to={it.to}>{it.label}</Link>)}
+      {children}
     </div>
   );
 }
@@ -219,7 +280,7 @@ function SideScanMeter({ scans, onUpgrade }) {
   return (
     <div className="au-side-meter">
       <div className="au-side-meter-top">
-        <span className="au-side-meter-lbl">Scan jobs</span>
+        <span className="au-side-meter-lbl">Billable scans</span>
         <span className="au-side-meter-n">{scans.used}/{scans.limit}</span>
       </div>
       <div className="au-side-meter-bar"><div style={{ width: `${pct}%`, background: color }} /></div>

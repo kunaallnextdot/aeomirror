@@ -18,6 +18,7 @@ import ReportView from "../dashboard/ReportView.jsx";
 import Monitoring from "../dashboard/Monitoring.jsx";
 import MonitorDetail from "../dashboard/MonitorDetail.jsx";
 import AnswerTracking from "../dashboard/AnswerTracking.jsx";
+import ActionCenter from "../dashboard/ActionCenter.jsx";
 import BillingView from "../dashboard/BillingView.jsx";
 import ProfilePage from "../auth/pages/ProfilePage.jsx";
 import TeamPage from "../auth/pages/TeamPage.jsx";
@@ -39,6 +40,43 @@ function AuroraGated({ children }) {
 export function DashboardHomeRoute() {
   const { dashboard, openDetail } = useAppCtx();
   return <AuroraGated><DashboardHome data={dashboard} onOpenLatest={openDetail} /></AuroraGated>;
+}
+
+/* Sidebar "View Report" entry point: resolves the org's latest scan (same
+   `dashboard.latest_scan` the Dashboard/Report routes already use — no new
+   backend endpoint, no duplicated selection logic) and redirects straight to its
+   Scan Details page — the same destination the Recent Scans "eye" action opens,
+   now discoverable from primary navigation. Loading/error states reuse the shared
+   Aurora states; no scans yet shows a dedicated empty state (not the generic one,
+   since the copy here is report-specific). */
+export function LatestScanRoute() {
+  const { dashboard, loading, error, reload, onRunScan } = useAppCtx();
+  if (error) return <AuroraError message={error} onRetry={reload} />;
+  if (loading) return <AuroraSkeletonPage />;
+  const id = dashboard?.latest_scan?.id;
+  if (!id) return <NoReportYet onRun={onRunScan} />;
+  return <Navigate to={`/app/scans/${encodeURIComponent(id)}`} replace />;
+}
+
+function NoReportYet({ onRun }) {
+  return (
+    <div className="aurora-screen"><Shell>
+      <Cell solid><div className="au-card-center">
+        <div className="au-card-t">No report yet</div>
+        <div className="au-card-s">Run your first scan to generate your report.</div>
+        <button className="au-btn au-accent" onClick={onRun}>Run Scan</button>
+      </div></Cell>
+    </Shell></div>
+  );
+}
+
+/* Action Center — "what should I fix next", built entirely from the SAME latest-scan
+   report data GET /reports/{scan_id} already provides (one call, the existing report
+   cache) — no new endpoint. Reuses the same latest-scan resolution as LatestScanRoute/
+   ReportRoute (dashboard.latest_scan), not a new "latest completed scan" lookup. */
+export function ActionCenterRoute() {
+  const { dashboard } = useAppCtx();
+  return <ActionCenter scanId={dashboard?.latest_scan?.id || null} />;
 }
 
 export function ScansRoute() {
@@ -78,7 +116,7 @@ export function SummaryRoute() {
 export function ScanDetailRoute() {
   const { scanId } = useParams();
   const navigate = useNavigate();
-  const { onRerun, busyId, canRun, openReport, retryBulkScan, reloadSubscription } = useAppCtx();
+  const { onRerun, busyId, canRun, openReport, retryBulkScan, reloadSubscription, scans } = useAppCtx();
   const [scan, setScan] = useState(null);
   const [error, setError] = useState(null);
 
@@ -101,7 +139,7 @@ export function ScanDetailRoute() {
     <ScanDetails scan={scan} onBack={() => navigate("/app/scans")} onRerun={onRerun}
                  busy={busyId === scan.scan_id} canRun={canRun}
                  onReport={() => openReport(scan.scan_id)}
-                 onRefresh={refresh} onRetryBulk={retryBulkScan} />
+                 onRefresh={refresh} onRetryBulk={retryBulkScan} scans={scans} />
   );
 }
 
@@ -120,7 +158,14 @@ export function MonitorDetailRoute() {
 
 export function AnswerTrackingRoute() {
   const { monitorId, runId } = useParams();
-  return <AnswerTracking selectedMonitorId={monitorId || null} selectedRunId={runId || null} />;
+  // The org's own scans, newest-first (already loaded once by AppLayout — no new
+  // fetch). The most recent scan's domain lets AnswerTracking avoid silently
+  // auto-selecting an unrelated, pre-existing monitor when the user has just
+  // scanned a different, not-yet-monitored site (see AnswerTracking.jsx).
+  const { scans } = useAppCtx() || {};
+  const currentScanDomain = scans?.[0]?.domain || null;
+  return <AnswerTracking selectedMonitorId={monitorId || null} selectedRunId={runId || null}
+                         currentScanDomain={currentScanDomain} />;
 }
 
 export function BillingRoute() { return <BillingView />; }

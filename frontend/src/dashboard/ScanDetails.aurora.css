@@ -33,6 +33,7 @@
 .au-sd-sig-head{display:flex;align-items:center;gap:11px;width:100%;background:none;border:0;
   cursor:pointer;padding:13px 15px;font-family:inherit;text-align:left}
 .au-sd-sig-head:hover{background:rgba(20,30,51,.02)}
+.au-sd-sig-head:focus-visible{outline:2px solid var(--au-primary);outline-offset:-2px}
 .au-sd-dot{width:9px;height:9px;border-radius:50%;flex:none}
 .au-sd-sig-name{flex:1;min-width:0;font-size:14px;font-weight:600;color:var(--au-ink)}
 .au-sd-score{font-family:var(--au-font-numeric);font-size:13px;width:28px;text-align:right;font-weight:500}
@@ -50,8 +51,58 @@
 .au-sd-ev{display:flex;flex-direction:column;gap:4px}
 .au-sd-ev-row{display:flex;gap:12px;font-size:12.5px}
 .au-sd-ev-k{color:var(--au-muted)}
+/* Wraps <RecommendationCard> (from ReportView.jsx — the ONE fix_template renderer,
+   reused verbatim, not re-implemented). Its own .au-rep-card-b already has 16px side
+   padding meant for a bare top-level card; here it nests inside .au-sd-sig-body (which
+   already indents 35px), so that inner padding is zeroed to avoid double-indenting —
+   everything else about its appearance (impact grid, fix headers, code block) is
+   untouched, matching ReportView's Recommendations section exactly. */
+.au-sd-fix{border-top:1px solid var(--au-line-2);padding-top:10px}
+.au-sd-fix .au-rep-card-b{padding:0}
 .au-sd-ev-v{font-family:var(--au-font-numeric);color:var(--au-ink-2);text-align:right;margin-left:auto;
   max-width:60%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+/* Fix Verification (Scan -> Fix -> Re-scan -> Verify). Reuses .au-sd-bh/.au-sd-ul/
+   .au-sd-ev* for the resolved/remaining/new-issue lists and evidence rows so it reads
+   as the SAME visual language as the rest of the signal card, not a separate feature. */
+.au-sd-verify{border-top:1px solid var(--au-line-2);padding-top:10px}
+.au-sd-verify-toggle{display:inline-flex;align-items:center;gap:6px;background:none;border:0;
+  padding:0;cursor:pointer;font:inherit;font-size:12px;font-weight:600;color:var(--au-primary)}
+.au-sd-verify-toggle:hover{text-decoration:underline}
+.au-sd-verify-toggle:focus-visible{outline:2px solid var(--au-primary);outline-offset:2px;border-radius:4px}
+.au-sd-verify-body{margin-top:10px;display:flex;flex-direction:column;gap:10px}
+.au-sd-verify-cta{display:flex;flex-direction:column;align-items:flex-start;gap:8px}
+.au-sd-verify-pick{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.au-sd-verify-pick .au-select{flex:1;min-width:200px}
+.au-sd-verify-nc{display:flex;align-items:center;gap:6px;color:var(--au-muted);font-size:12.5px}
+.au-sd-verify-result{border:1px solid var(--au-line);border-radius:var(--au-r-s);padding:11px 13px;
+  display:flex;flex-direction:column;gap:9px;background:var(--au-app)}
+.au-sd-verify-ok{border-left:3px solid var(--au-mint-d)}
+.au-sd-verify-warn{border-left:3px solid var(--au-lemon-d)}
+.au-sd-verify-bad{border-left:3px solid var(--au-peach-d)}
+.au-sd-verify-info{border-left:3px solid var(--au-muted)}
+.au-sd-verify-h{display:flex;align-items:center;gap:7px;font-weight:700;font-size:13.5px;color:var(--au-ink)}
+.au-sd-verify-ok .au-sd-verify-h svg{color:var(--au-mint-d)}
+.au-sd-verify-warn .au-sd-verify-h svg{color:var(--au-lemon-d)}
+.au-sd-verify-bad .au-sd-verify-h svg{color:var(--au-peach-d)}
+.au-sd-verify-info .au-sd-verify-h svg{color:var(--au-muted)}
+.au-sd-verify-ba{display:flex;flex-wrap:wrap;gap:6px 14px;font-size:12px;color:var(--au-ink-2)}
+.au-sd-verify-ba b{color:var(--au-ink);font-family:var(--au-font-numeric)}
+.au-sd-verify-list{display:flex;flex-direction:column;gap:6px}
+/* the before->after evidence value can be longer than a single plain value — wrap
+   instead of the base .au-sd-ev-v's nowrap+ellipsis truncation. */
+.au-sd-verify-list .au-sd-ev-v{white-space:normal;text-align:left;max-width:100%;overflow-wrap:break-word}
+.au-sd-verify-list .au-sd-ev-row{flex-direction:column;gap:2px}
+/* Phase 8 — minimal verification history (only shown when >1 record exists for this
+   signal); each row is a real persisted record, never a synthesized entry. */
+.au-sd-verify-history{border-top:1px solid var(--au-line-2);padding-top:8px;
+  display:flex;flex-direction:column;gap:5px}
+.au-sd-verify-hrow{display:flex;gap:12px;flex-wrap:wrap;font-size:12px;color:var(--au-ink-2)}
+@media(max-width:480px){
+  .au-sd-verify-pick{flex-direction:column;align-items:stretch}
+  .au-sd-verify-pick .au-select{min-width:0}
+  .au-sd-verify-hrow{flex-direction:column;gap:2px}
+}
 
 /* bulk pages table (no prototype archetype — token-styled) */
 .au-sd-best{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:12px}

@@ -20,6 +20,9 @@ import {
 import { fmtDate } from "./ui.jsx";
 import { useAuth } from "../auth/AuthContext.jsx";
 import { Shell, Cell, Button, Skeleton } from "./aurora.jsx";
+import { AIVisibilityPanel } from "./AIVisibility.jsx";
+import AnswerSimulator from "./AnswerSimulator.jsx";
+import { useUpgrade } from "./UpgradeModal.jsx";
 import "./AnswerTracking.aurora.css";
 
 const RUN_STATUS_LABEL = {
@@ -31,7 +34,7 @@ const RUN_STATUS_COLOR = {
   running: "var(--au-primary)", pending: "var(--au-muted)",
 };
 
-export default function AnswerTracking({ selectedMonitorId = null, selectedRunId = null }) {
+export default function AnswerTracking({ selectedMonitorId = null, selectedRunId = null, currentScanDomain = null }) {
   const { hasPermission } = useAuth();
   const navigate = useNavigate();
   const canRun = hasPermission("scan:run");
@@ -50,8 +53,20 @@ export default function AnswerTracking({ selectedMonitorId = null, selectedRunId
   }, []);
   useEffect(() => { load(); }, [load]);
 
-  // A single site is auto-selected (no selector) — redirect so the URL carries the choice.
-  const sole = monitors && monitors.length === 1 ? monitors[0] : null;
+  // A single site is auto-selected (no selector) — redirect so the URL carries the
+  // choice. BUT: when we know what site the user is actually working with right now
+  // (currentScanDomain, from their most recent scan), auto-select ONLY a monitor
+  // whose domain matches it — never the org's sole PRE-EXISTING monitor for an
+  // unrelated site. Without this guard, an org with exactly one (old) monitor would
+  // silently land a user who just scanned a brand-new, not-yet-monitored site on
+  // that old monitor's questions/evidence/tracked state — a real cross-site data
+  // leak, not a convenience. When currentScanDomain is unknown (e.g. no scans at
+  // all yet), the original single-monitor convenience still applies.
+  const matchingCurrentDomain = (monitors && currentScanDomain)
+    ? monitors.filter((m) => m.domain === currentScanDomain) : [];
+  const sole = currentScanDomain
+    ? (matchingCurrentDomain.length === 1 ? matchingCurrentDomain[0] : null)
+    : (monitors && monitors.length === 1 ? monitors[0] : null);
   useEffect(() => {
     if (sole && !selectedMonitorId) {
       navigate(`/app/answer-tracking/${encodeURIComponent(sole.id)}`, { replace: true });
@@ -59,7 +74,12 @@ export default function AnswerTracking({ selectedMonitorId = null, selectedRunId
   }, [sole, selectedMonitorId, navigate]);
 
   const active = monitors && selectedMonitorId ? monitors.find((m) => m.id === selectedMonitorId) || null : null;
-  const showSelector = monitors && monitors.length > 1;
+  // No monitor at all matches the site the user is currently working with — real
+  // monitors may still exist (for OTHER sites), so offer the selector rather than
+  // showing nothing, but never silently default into one of them.
+  const noDomainMatch = !!(currentScanDomain && monitors && monitors.length > 0
+    && matchingCurrentDomain.length === 0);
+  const showSelector = monitors && (monitors.length > 1 || noDomainMatch);
 
   return (
     <div className="aurora-screen">
@@ -83,6 +103,24 @@ export default function AnswerTracking({ selectedMonitorId = null, selectedRunId
           </Cell>
         ) : (
           <>
+            {active && (
+              // Compact context indicator — makes it immediately obvious which site's
+              // data is on screen, so a cross-site mismatch (like the one this fixes)
+              // is never silently invisible again.
+              <div className="au-at-context">
+                Answer Tracking <span className="au-at-context-domain">{active.domain || active.normalized_url || active.url}</span>
+              </div>
+            )}
+
+            {noDomainMatch && !active && (
+              <Cell solid style={{ marginTop: 14 }}>
+                <div className="au-dim" style={{ padding: "10px 2px", fontSize: 13 }}>
+                  No Answer Tracking site is set up yet for <b>{currentScanDomain}</b>. Add it under{" "}
+                  <b>Monitoring</b>, or pick one of your existing tracked sites below.
+                </div>
+              </Cell>
+            )}
+
             {showSelector && (
               <div className="au-at-siteselect">
                 <label className="au-at-siteselect-h" htmlFor="at-site">Site</label>
@@ -100,7 +138,7 @@ export default function AnswerTracking({ selectedMonitorId = null, selectedRunId
             {active
               ? <SiteAnswerTracking key={active.id} monitorId={active.id}
                                     selectedRunId={selectedRunId} canRun={canRun} />
-              : showSelector && (
+              : showSelector && !noDomainMatch && (
                   <Cell solid style={{ marginTop: 14 }}>
                     <div className="au-dim" style={{ fontSize: 13, padding: "6px 2px" }}>
                       Select a site above to manage its prompts and see results.
@@ -119,10 +157,11 @@ function Explainer() {
     <div className="au-at-explainer">
       <Info size={15} />
       <span>
-        Answer Tracking samples AI assistants through their <b>provider APIs</b>. Results are
-        sampled and may differ from what a person sees in the consumer chat apps. It measures
-        whether your brand appears in those API responses — not a guarantee of what any one user
-        will be shown.
+        The <b>AEO Answer Simulator</b> below estimates how well an AI answer can be supported
+        using your website&apos;s own scanned content — at no cost, with no external AI calls by
+        default. It is not a live measurement of ChatGPT, Claude, Gemini, or Perplexity responses.
+        For that, see the <b>Provider Tracking (Premium)</b> section, which samples real AI
+        assistants through their provider APIs.
       </span>
     </div>
   );
@@ -194,6 +233,11 @@ function SiteAnswerTracking({ monitorId, selectedRunId, canRun }) {
 
   return (
     <>
+      <AnswerSimulator monitorId={monitorId} canRun={canRun} />
+
+      <details className="au-at-premium">
+        <summary className="au-at-premium-summary">Provider Tracking (Premium)</summary>
+        <div className="au-at-premium-body">
       <Cell solid className="au-at-detail">
         <div className="au-at-detail-h">
           <span>{data.site_name || data.brand_name || data.site_url}</span>
@@ -296,6 +340,8 @@ function SiteAnswerTracking({ monitorId, selectedRunId, canRun }) {
         )}
       </Cell>
       <ResultsPanel monitorId={monitorId} runs={data.runs} selectedRunId={selectedRunId} />
+        </div>
+      </details>
     </>
   );
 }
@@ -318,8 +364,8 @@ function PromptRow({ p, canRun, onToggle, onRemove, onSaved, onError }) {
           <input className="au-input" value={val} maxLength={2000} autoFocus
                  onChange={(e) => setVal(e.target.value)}
                  onKeyDown={(e) => e.key === "Enter" && save()} />
-          <button className="au-iconbtn" onClick={save} title="Save"><Check size={14} /></button>
-          <button className="au-iconbtn" onClick={() => { setEditing(false); setVal(p.text); }} title="Cancel">
+          <button className="au-iconbtn" onClick={save} title="Save" aria-label="Save"><Check size={14} /></button>
+          <button className="au-iconbtn" onClick={() => { setEditing(false); setVal(p.text); }} title="Cancel" aria-label="Cancel">
             <X size={14} />
           </button>
         </>
@@ -373,6 +419,7 @@ function citationWhy(diag) {
 }
 
 function ResultsPanel({ monitorId, runs, selectedRunId }) {
+  const { openUpgrade } = useUpgrade();
   const target = selectedRunId
     ? (runs || []).find((r) => r.id === selectedRunId) || null
     : (runs && runs.length ? runs[0] : null);
@@ -382,7 +429,6 @@ function ResultsPanel({ monitorId, runs, selectedRunId }) {
   const [trend, setTrend] = useState(null);
   const [results, setResults] = useState(null);
   const [expanded, setExpanded] = useState(null);
-  const [filterEntity, setFilterEntity] = useState(null);   // leaderboard row -> filters prompts
   const [error, setError] = useState(null);
 
   // Poll the target run until its extraction phase completes, then load the analysis.
@@ -437,7 +483,10 @@ function ResultsPanel({ monitorId, runs, selectedRunId }) {
   }
 
   return (
-    <Cell solid className="au-at-results">
+    <>
+      {/* Phase 3: negative-first AI Visibility framing, above the detailed run breakdown. */}
+      {summary && !analysing && <AIVisibilityPanel runId={targetId} />}
+      <Cell solid className="au-at-results">
       <div className="au-panel-h">Results <span className="au-sub">latest run</span></div>
 
       {error && <div className="au-at-err">{error}</div>}
@@ -476,41 +525,10 @@ function ResultsPanel({ monitorId, runs, selectedRunId }) {
             )}
           </div>
 
-          {/* provider breakdown */}
-          {summary.per_provider.length > 0 && (
-            <div className="au-at-block">
-              <div className="au-at-block-h">By provider</div>
-              {summary.per_provider.map((p) => <Bar key={p.provider} label={p.provider} value={p.mention_rate} />)}
-            </div>
-          )}
-
-          {/* competitor share of voice */}
-          <div className="au-at-block">
-            <div className="au-at-block-h">Share of voice</div>
-            <Bar label="Your brand" value={summary.mention_rate} highlight />
-            {summary.competitors.length === 0 ? (
-              <div className="au-dim" style={{ fontSize: 12 }}>No competitors recommended in these answers.</div>
-            ) : (
-              <>
-                {summary.competitors.some((c) => c.tracked) && (
-                  <div className="au-at-comp-group">
-                    <div className="au-at-comp-sub">Tracked competitors</div>
-                    {summary.competitors.filter((c) => c.tracked).map((c) => (
-                      <Bar key={c.name} label={c.name} value={c.mention_rate} />
-                    ))}
-                  </div>
-                )}
-                {summary.competitors.some((c) => !c.tracked) && (
-                  <div className="au-at-comp-group">
-                    <div className="au-at-comp-sub">Other entities detected</div>
-                    {summary.competitors.filter((c) => !c.tracked).map((c) => (
-                      <Bar key={c.name} label={c.name} value={c.mention_rate} />
-                    ))}
-                  </div>
-                )}
-              </>
-            )}
-          </div>
+          {/* Provider breakdown, competitor share of voice and the run-level leaderboard
+              now live ONLY in the AI Visibility panel above (see AIVisibility.jsx) — this
+              page stays the operational workspace for individual prompt runs/results and
+              no longer repeats that aggregate/competitive intelligence. */}
 
           {/* sentiment */}
           {Object.keys(summary.sentiment || {}).length > 0 && (
@@ -526,25 +544,13 @@ function ResultsPanel({ monitorId, runs, selectedRunId }) {
             </div>
           )}
 
-          {/* run-level competitive leaderboard */}
-          <Leaderboard summary={summary} filterEntity={filterEntity}
-                       onSelect={(e) => setFilterEntity(
-                         filterEntity && filterEntity.name === e.name ? null : e)} />
-
-          {/* per-prompt table */}
+          {/* per-prompt table — the operational, prompt-level view: does your brand
+              appear for THIS query, and the raw provider evidence behind that verdict.
+              The aggregate "who's winning your category" leaderboard is in AI Visibility. */}
           <div className="au-at-block">
             <div className="au-at-block-h">By prompt <span className="au-dim">· {gapCountLabel(summary.per_prompt)}</span></div>
-            {filterEntity && (
-              <div className="au-at-lb-filter">
-                Showing prompts where <b>{filterEntity.name}</b> appears
-                <button className="au-at-lb-clear" onClick={() => setFilterEntity(null)}>clear</button>
-              </div>
-            )}
             <div className="au-at-ptable">
-              {(filterEntity
-                ? summary.per_prompt.filter((r) => (filterEntity.prompt_ids || []).includes(r.prompt_id))
-                : summary.per_prompt
-              ).map((row) => (
+              {summary.per_prompt.map((row) => (
                 <PromptResultRow key={row.prompt_id} row={row}
                                  open={expanded === row.prompt_id}
                                  onToggle={() => setExpanded(expanded === row.prompt_id ? null : row.prompt_id)}
@@ -553,8 +559,8 @@ function ResultsPanel({ monitorId, runs, selectedRunId }) {
             </div>
           </div>
 
-          {/* cited URLs */}
-          {summary.cited_urls.length > 0 && (
+          {/* cited URLs (full list is Pro — see backend gate_run_summary) */}
+          {(summary.cited_urls.length > 0 || summary.locked_cited_url_count > 0) && (
             <div className="au-at-block">
               <div className="au-at-block-h">Cited brand URLs</div>
               {summary.cited_urls.map((u) => (
@@ -563,6 +569,11 @@ function ResultsPanel({ monitorId, runs, selectedRunId }) {
                   <span className="au-at-url-n">{u.count}×</span>
                 </div>
               ))}
+              {summary.locked_cited_url_count > 0 && (
+                <button type="button" className="au-at-lb-clear" onClick={() => openUpgrade("ai_visibility")}>
+                  {summary.locked_cited_url_count} cited URL{summary.locked_cited_url_count === 1 ? "" : "s"} — unlock with Pro
+                </button>
+              )}
             </div>
           )}
 
@@ -570,7 +581,8 @@ function ResultsPanel({ monitorId, runs, selectedRunId }) {
           {trend && trend.runs.length >= 2 && <TrendChart trend={trend} />}
         </>
       )}
-    </Cell>
+      </Cell>
+    </>
   );
 }
 
@@ -662,19 +674,6 @@ function DeltaBadge({ d }) {
   );
 }
 
-function Bar({ label, value, highlight }) {
-  const w = value == null ? 0 : Math.max(2, value);
-  return (
-    <div className="au-at-bar-row">
-      <span className="au-at-bar-lbl" title={label}>{label}</span>
-      <div className="au-at-bar-track">
-        <div className="au-at-bar-fill" style={{ width: `${w}%`, background: highlight ? "var(--au-primary)" : "var(--au-muted)" }} />
-      </div>
-      <span className="au-at-bar-v">{pct(value)}</span>
-    </div>
-  );
-}
-
 function PromptResultRow({ row, open, onToggle, results }) {
   const group = results && results.prompts ? results.prompts.find((p) => p.prompt_id === row.prompt_id) : null;
   return (
@@ -690,9 +689,9 @@ function PromptResultRow({ row, open, onToggle, results }) {
       </button>
       {open && (
         <div className="au-at-prow-body">
-          {row.gap
-            ? <GapToAction gap={row.gap} />
-            : row.irrelevant_hint && <InformationalHint />}
+          {/* "Why not you — and what to do" now lives ONLY in the AI Visibility panel's
+              Content gaps section above, so it isn't shown twice on this page. */}
+          {row.irrelevant_hint && <InformationalHint />}
           {group && groupByProvider(group.results).map((g) => (
             <ProviderGroup key={g.provider} g={g}
                            ctx={{ hasGap: !!row.gap, informational: !!row.irrelevant_hint }} />
@@ -840,7 +839,7 @@ export function ProviderGroup({ g, ctx }) {
 function EmptyRecommendation({ ctx }) {
   if (ctx?.hasGap) {
     return <div className="au-dim" style={{ fontSize: 12 }}>
-      No brand recommended — see “Why not you — and what to do” above.</div>;
+      No brand recommended — see “Content gaps” in AI Visibility above for why and what to do.</div>;
   }
   if (ctx?.informational) {
     return <div className="au-dim" style={{ fontSize: 12 }}>
@@ -898,21 +897,6 @@ function SampleVerdict({ r, label, ctx }) {
   );
 }
 
-/* Gap-to-action for a zero-mention prompt: why not you, and 2–4 grounded actions. */
-function GapToAction({ gap }) {
-  if (!gap) return null;
-  return (
-    <div className="au-at-gap">
-      <div className="au-at-gap-h">Why not you — and what to do</div>
-      {gap.why && <div className="au-at-gap-why">{gap.why}</div>}
-      {gap.has_signal && (gap.actions || []).length > 0 ? (
-        <ul className="au-at-gap-actions">{gap.actions.map((a, i) => <li key={i}>{a}</li>)}</ul>
-      ) : (
-        <div className="au-dim" style={{ fontSize: 12 }}>Not enough signal yet to give specific actions.</div>
-      )}
-    </div>
-  );
-}
 
 function RawText({ text, error, highlight }) {
   if (error) return <div className="au-at-raw-t au-dim">No answer — {error}</div>;

@@ -81,6 +81,30 @@ def export_unlocked(db: Session, org_id: str, scan_id: str) -> bool:
 can_download_report = export_unlocked
 
 
+def ai_visibility_access(db: Session, org_id: str | None) -> dict:
+    """The three granular AI-Visibility capability flags for an org (Phase 3). Free is all
+    False (limited preview); Pro (and billing-off) is all True (full depth). Used by the
+    visibility endpoint to trim each section without a new billing mechanism."""
+    ent = entitlements(db, org_id)
+    return {
+        "ai_visibility": bool(ent.get("ai_visibility")),
+        "competitor_intelligence": bool(ent.get("competitor_intelligence")),
+        "opportunity_finder": bool(ent.get("opportunity_finder")),
+    }
+
+
+def answer_simulator_access(db: Session, org_id: str | None) -> dict:
+    """{"batch_limit": int|None, "llm_step": bool, "full_evidence": bool} for the
+    AEO Answer Simulator — same ENTITLEMENTS.get(plan, ...) lookup
+    ai_visibility_access already uses."""
+    ent = entitlements(db, org_id)
+    return {
+        "batch_limit": ent.get("answer_simulator_batch_limit", 5),
+        "llm_step": bool(ent.get("answer_simulator_llm_step")),
+        "full_evidence": bool(ent.get("answer_simulator_full_evidence")),
+    }
+
+
 def _quota(limit: int | None, used: int) -> dict:
     """Shape a {limit, used, remaining, unlimited} quota. limit None => unlimited."""
     if limit is None:

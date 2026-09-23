@@ -32,7 +32,8 @@ def analyze(ctx: SignalContext) -> SignalResult:
         recs.append("Add a meta description summarizing the page.")
 
     canonical = soup.find("link", attrs={"rel": "canonical"})
-    if canonical and canonical.get("href"):
+    canonical_href = (canonical.get("href") or "").strip() if canonical else ""
+    if canonical_href:
         score += 15
     else:
         issues.append("No canonical URL.")
@@ -66,7 +67,18 @@ def analyze(ctx: SignalContext) -> SignalResult:
         ID, LABEL, WEIGHT, score, issues=issues, recommendations=recs,
         evidence={
             "title": title[:120], "title_length": len(title),
-            "has_description": bool(desc_val), "has_canonical": bool(canonical),
+            "has_description": bool(desc_val), "has_canonical": bool(canonical_href),
             "robots_meta": robots_val, "open_graph_tags": len(og), "twitter_tags": len(tw),
+            # Technical SEO & Indexability (additive; no score impact): the raw
+            # canonical href and the X-Robots-Tag response header, already available
+            # here (this signal already parses <link rel=canonical> and has the
+            # response headers via `ctx`) but not previously surfaced as evidence.
+            "canonical": canonical_href or None,
+            "x_robots_tag": ctx.header("x-robots-tag"),
+            # Content Cannibalization & Duplicate Content Intelligence (additive; no
+            # score impact): the raw meta-description TEXT, already parsed above
+            # (only `has_description` was previously surfaced) — needed to detect a
+            # duplicate meta description across pages.
+            "description": desc_val[:300] or None,
         },
     )

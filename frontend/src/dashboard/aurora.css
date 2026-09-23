@@ -78,6 +78,15 @@
 .au-tag.au-ok{background:var(--au-mint);color:var(--au-mint-d)}
 .au-tag.au-info{background:var(--au-sky);color:var(--au-sky-d)}
 
+/* Compact verification badge (VerificationBadge.jsx) — reused by Action Center,
+   ReportView and Scan Details. Status is never color-only: icon + text together. */
+.au-verify-badge{display:inline-flex;align-items:center;gap:4px;font-family:var(--au-font-numeric);
+  font-size:10px;letter-spacing:.03em;padding:3px 8px;border-radius:999px;font-weight:600;flex:none}
+.au-verify-ok{background:var(--au-mint);color:var(--au-mint-d)}
+.au-verify-warn{background:var(--au-lemon);color:var(--au-lemon-d)}
+.au-verify-info{background:var(--au-line-2);color:var(--au-muted)}
+.au-verify-bad{background:var(--au-peach);color:var(--au-peach-d)}
+
 /* ---------- 7. Button ---------- */
 .au-btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;border:0;cursor:pointer;text-decoration:none;
   font-family:var(--au-font-body);font-weight:600;font-size:13.5px;padding:9px 18px;border-radius:var(--au-r-pill);
@@ -90,6 +99,10 @@
 .au-btn.au-ghost:hover:not(:disabled){background:rgba(163,74,21,.09);color:var(--au-primary)}
 .au-btn:disabled{opacity:.5;cursor:not-allowed}
 .au-btn:active:not(:disabled){transform:translateY(0) scale(.98)}
+/* Branded keyboard-focus ring — .au-btn/.au-iconbtn had no explicit focus-visible
+   style anywhere in the app (unlike .au-dash-nav-item), so keyboard focus fell back
+   to whatever the browser/OS default happened to render, inconsistent site-wide. */
+.au-btn:focus-visible{outline:2px solid var(--au-primary);outline-offset:2px}
 .au-btn-spin{width:14px;height:14px;border-radius:50%;border:2px solid currentColor;border-right-color:transparent;
   animation:au-spin .7s linear infinite;flex:none}
 @keyframes au-spin{to{transform:rotate(360deg)}}
@@ -295,6 +308,7 @@ button.au-pr{cursor:pointer;text-align:left}
   cursor:pointer;transition:border-color .15s,color .15s;font:inherit;font-size:12px}
 .au-iconbtn:hover:not(:disabled){border-color:var(--au-primary);color:var(--au-primary)}
 .au-iconbtn:disabled{opacity:.5;cursor:not-allowed}
+.au-iconbtn:focus-visible{outline:2px solid var(--au-primary);outline-offset:2px}
 .au-iconbtn.au-danger:hover:not(:disabled){border-color:var(--au-peach-d);color:var(--au-peach-d)}
 
 /* centred empty / error / status card */
@@ -305,6 +319,12 @@ button.au-pr{cursor:pointer;text-align:left}
 .au-ill.au-ill-warn{background:var(--au-lemon);color:var(--au-lemon-d)}
 .au-card-t{font-family:var(--au-font-heading);font-size:20px;font-weight:700;color:var(--au-ink);margin-bottom:8px}
 .au-card-s{font-size:13.5px;color:var(--au-muted);max-width:440px;margin:0 auto 20px;line-height:1.6}
+
+/* compact bullet row for short empty-state copy (shared by au-card-s / au-sc-cs) */
+.au-empty-bullets{list-style:none;display:flex;flex-wrap:wrap;justify-content:center;gap:5px 16px;
+  margin:8px 0 0;padding:0}
+.au-empty-bullets li{font-size:12.5px;color:var(--au-ink-2)}
+.au-empty-bullets li::before{content:"•";color:var(--au-primary);margin-right:6px}
 
 /* score bar (report categories, meters) */
 .au-bar{display:flex;align-items:center;gap:10px;margin:6px 0}
@@ -317,14 +337,19 @@ button.au-pr{cursor:pointer;text-align:left}
 .au-code{background:#0E1B24;color:#CFE8ff;border-radius:var(--au-r-s);padding:12px 14px;
   font-family:var(--au-font-numeric);font-size:12px;overflow-x:auto;white-space:pre-wrap;word-break:break-word}
 
-/* public shared-report chrome (/r/:token) */
-.au-pub{min-height:100vh;background:var(--au-atmos);background-attachment:fixed;color:var(--au-ink);font-family:var(--au-font-body)}
-.au-pub-bar{display:flex;align-items:center;padding:16px 24px;border-bottom:1px solid var(--au-line);
+/* public shared-report chrome (/r/:token). Flex column, min-height:100vh, same sticky-
+   footer pattern as `.au-dash`/`.au-site`: `.au-pub-main{flex:1}` (already the single
+   wrapper around all page content) absorbs the leftover space on a short report so the
+   footer sits at the bottom of the viewport, and simply follows a long report — never
+   position:fixed/sticky, never clipped. */
+.au-pub{min-height:100vh;background:var(--au-atmos);background-attachment:fixed;color:var(--au-ink);font-family:var(--au-font-body);
+  display:flex;flex-direction:column}
+.au-pub-bar{flex:none;display:flex;align-items:center;padding:16px 24px;border-bottom:1px solid var(--au-line);
   background:var(--au-glass);backdrop-filter:blur(18px) saturate(1.1);position:sticky;top:0;z-index:20}
 .au-pub-brand{display:inline-flex;align-items:center;gap:8px;color:var(--au-ink-2);text-decoration:none;font-size:14px}
 .au-pub-brand svg{color:var(--au-primary)}
-.au-pub-main{max-width:1180px;margin:0 auto;padding:24px}
-.au-pub-foot{text-align:center;padding:28px 24px;border-top:1px solid var(--au-line);color:var(--au-muted)}
+.au-pub-main{flex:1 0 auto;max-width:1180px;margin:0 auto;padding:24px;width:100%}
+.au-pub-foot{flex:none;text-align:center;padding:28px 24px;border-top:1px solid var(--au-line);color:var(--au-muted)}
 .au-pub-foot a{color:var(--au-primary);text-decoration:none;font-size:13.5px;font-weight:600}
 
 /* chart containers + common-failures list (Aurora) */

@@ -21,7 +21,7 @@ from app.core.observability import metrics
 from app.core.ssrf import UnsafeUrlError, validate_url
 from app.db.models import (
     SCAN_COMPLETED, SCAN_PENDING, SCAN_RUNNING, USAGE_SCAN_JOB,
-    OrganizationMember, Scan, User,
+    Monitor, OrganizationMember, Scan, User,
 )
 from app.db.session import get_db
 from app.scanner import bulk
@@ -65,7 +65,8 @@ def _families_payload(report) -> list[dict]:
 
 
 def _report_payload(scan_id: str, report, signals: dict, scanned_at: str,
-                    duration_ms: int, crawler_access: dict | None = None) -> dict:
+                    duration_ms: int, crawler_access: dict | None = None,
+                    page=None) -> dict:
     """JSON-serializable representation cached in Redis and reused to build the
     response. No live objects are cached (JSON only, never pickle)."""
     return {
@@ -83,6 +84,10 @@ def _report_payload(scan_id: str, report, signals: dict, scanned_at: str,
         # Single-page scans are complete the moment they return (only site scans run
         # in the background), so the response carries the terminal status directly.
         "status": SCAN_COMPLETED,
+        # Technical SEO & Indexability (additive) — see run_scan's row.result.
+        "status_code": getattr(page, "status_code", None),
+        "redirect_chain": getattr(page, "redirect_chain", None) or [],
+        "final_url": (getattr(page, "final_url", None) or getattr(page, "url", None)),
     }
 
 
@@ -149,6 +154,9 @@ def _persist_from_payload(db: Session, payload: dict, ip: str,
             "scanned_at": payload.get("scanned_at"),
             "duration_ms": payload.get("duration_ms"),
             "sections": payload.get("sections", []),
+            "status_code": payload.get("status_code"),
+            "redirect_chain": payload.get("redirect_chain") or [],
+            "final_url": payload.get("final_url"),
         },
         requester_ip_hash=_ip_hash(ip),
         organization_id=org_id, user_id=user_id,
@@ -156,7 +164,37 @@ def _persist_from_payload(db: Session, payload: dict, ip: str,
     db.add(row)
     db.commit()
     db.refresh(row)
+    _sync_monitor_latest_scan(db, org_id, row.normalized_url, row.id, row.result.get("overall_score"))
     return row
+
+
+def _sync_monitor_latest_scan(db: Session, org_id: str | None, normalized_url: str,
+                              scan_id: str, overall_score: int | None) -> None:
+    """Keep Monitor.latest_scan_id current for any ORDINARY scan of a URL this org
+    already monitors (a manual rerun from Scan Details, a fresh or cache-hit scan
+    from the scanner) — not only scans the monitor scheduler itself triggered.
+
+    Without this, anything that reads latest_scan_id (e.g. the Answer Simulator's
+    scan-derived question bank, GET /monitors/{id}/answer-simulator/questions) keeps
+    reflecting whichever scan the scheduler last ran, even after a newer manual scan
+    exists for the same site — the root cause of an older scan's keywords/questions
+    still showing up as suggestions for a site that has since been rescanned.
+
+    Only the pointer/score/timestamp are touched here — never MonitorHistory/alerts/
+    notifications, which stay exclusively the monitor scan's own responsibility (see
+    monitoring/runner.py::run_scan_for_monitor)."""
+    if not org_id:
+        return
+    monitor = (db.query(Monitor)
+               .filter(Monitor.organization_id == org_id,
+                       Monitor.normalized_url == normalized_url)
+               .first())
+    if not monitor:
+        return
+    monitor.latest_scan_id = scan_id
+    monitor.latest_score = overall_score
+    monitor.last_scan_at = datetime.utcnow()
+    db.commit()
 
 
 async def _crawler_access_for(safe_url: str) -> dict | None:
@@ -258,6 +296,12 @@ async def run_scan(db: Session, safe_url: str, ip: str,
             "sections": signals["sections"],
             "crawler_access": crawler_access,
             "change_set": [],   # filled below, only after the snapshot baseline is safe
+            # Technical SEO & Indexability: the raw HTTP/redirect facts for this page,
+            # already captured by `fetch()` — stored so `scan_to_input` can hand them to
+            # `build_technical_seo_block` without a second fetch.
+            "status_code": page.status_code,
+            "redirect_chain": page.redirect_chain,
+            "final_url": page.final_url or page.url,
         },
         requester_ip_hash=_ip_hash(ip),
         organization_id=org_id, user_id=user_id,
@@ -265,6 +309,21 @@ async def run_scan(db: Session, safe_url: str, ip: str,
     db.add(row)
     db.commit()
     db.refresh(row)
+
+    # A scan job is billed the MOMENT its row is durably persisted — never after any
+    # later step (snapshot/diff/report-payload building below) that could still raise.
+    # Recording usage here (rather than in each caller, after awaiting this function)
+    # closes the exact window that could leave a real, completed, quota-consuming scan
+    # with no recorded usage event — the cause of "Recent Scans" and the sidebar's
+    # quota meter disagreeing on how many scans an org has used. Monitor-triggered
+    # scans (monitor_id set) are deliberately excluded, matching the existing quota
+    # contract (see entitlements.scans_this_month's docstring) — they don't consume
+    # scan-job quota.
+    if org_id and not monitor_id:
+        from app.billing import entitlements
+        entitlements.record_usage(db, org_id, USAGE_SCAN_JOB)
+    if not monitor_id:
+        _sync_monitor_latest_scan(db, org_id, normalized, row.id, signals["overall_score"])
 
     change_set: list = []
     if monitor_id and snapshot_payload is not None:
@@ -281,7 +340,7 @@ async def run_scan(db: Session, safe_url: str, ip: str,
             row.result = {**row.result, "change_set": change_set}
             db.commit()
 
-    payload = _report_payload(row.id, report, signals, scanned_at, duration_ms, crawler_access)
+    payload = _report_payload(row.id, report, signals, scanned_at, duration_ms, crawler_access, page=page)
     scan_cache.set(normalized, payload)
     return payload
 
@@ -311,8 +370,26 @@ def _top_issue(sig: dict) -> str | None:
     return None
 
 
-def _bulk_page_entry(url: str, sig: dict) -> dict:
-    """The per-page record stored under result['bulk']['pages']."""
+def _bulk_page_entry(url: str, sig: dict, page) -> dict:
+    """The per-page record stored under result['bulk']['pages'].
+
+    `sections_summary` intentionally drops each signal's `evidence` (see
+    reports/phase4.py's `_bulk_signal_summary` docstring) to keep a bulk scan's stored
+    result small. Technical SEO & Indexability, the Real Crawl Graph, and Content
+    Intelligence still need a handful of per-page facts though (status/redirects +
+    the metadata/robots/links/content signals' own evidence), so those are pulled out
+    explicitly here — the SAME evidence `run_signals` already computed for this page,
+    just not otherwise discarded, and never a second fetch or a second HTML parse.
+
+    `body_evidence` (bounded, chunked body-content text — see
+    scanner/signals/content.py::build_body_evidence) is pulled through the same way
+    for the AEO Answer Simulator's retrieval; execute_bulk_scan() additionally caps
+    the RUNNING TOTAL across the whole scan (MAX_TOTAL_BODY_WORDS_PER_SCAN), since
+    only that layer has cross-page state — this function only knows about one page."""
+    meta_ev = next((s["evidence"] for s in sig["sections"] if s["id"] == "metadata"), {}) or {}
+    robots_ev = next((s["evidence"] for s in sig["sections"] if s["id"] == "robots"), {}) or {}
+    links_ev = next((s["evidence"] for s in sig["sections"] if s["id"] == "links"), {}) or {}
+    content_ev = next((s["evidence"] for s in sig["sections"] if s["id"] == "content"), {}) or {}
     return {
         "url": url,
         "overall_score": sig["overall_score"],
@@ -323,7 +400,45 @@ def _bulk_page_entry(url: str, sig: dict) -> dict:
              "issues": s.get("issues", []), "recommendations": s.get("recommendations", [])}
             for s in sig["sections"]
         ],
+        "status_code": page.status_code,
+        "redirect_chain": page.redirect_chain,
+        "final_url": page.final_url or page.url,
+        "canonical": meta_ev.get("canonical"),
+        "meta_robots": meta_ev.get("robots_meta") or "",
+        "x_robots_tag": meta_ev.get("x_robots_tag") or "",
+        "robots_exists": robots_ev.get("exists", False),
+        "robots_crawlable": robots_ev.get("crawlable", True),
+        # Real Crawl Graph: this page's own outgoing internal link targets + anchor
+        # text (already extracted by the `links` signal — see scanner/signals/links.py).
+        "link_targets": links_ev.get("link_targets") or [],
+        # Content Intelligence: title (already parsed by `metadata`), H1 text/word
+        # count/content fingerprint (already parsed by `content` — see
+        # scanner/signals/content.py).
+        "title": meta_ev.get("title") or None,
+        "description": meta_ev.get("description"),
+        "h1": content_ev.get("h1_text"),
+        "word_count": content_ev.get("word_count", 0),
+        "content_shingles": content_ev.get("content_shingles") or [],
+        "body_evidence": content_ev.get("body_evidence"),
     }
+
+
+def _apply_scan_wide_body_cap(entry: dict, *, words_used: int) -> int:
+    """Enforces MAX_TOTAL_BODY_WORDS_PER_SCAN across an entire bulk scan. Once the
+    running total is exhausted, later pages keep every other field (title/H1/word
+    count/score/etc — nothing else is affected) but their body_evidence chunks are
+    dropped and flagged truncated=true, never silently omitted without a reason.
+    Returns the updated running total."""
+    from app.scanner.signals.content import MAX_TOTAL_BODY_WORDS_PER_SCAN
+
+    body_ev = entry.get("body_evidence")
+    if not body_ev or not body_ev.get("chunks"):
+        return words_used
+    if words_used >= MAX_TOTAL_BODY_WORDS_PER_SCAN:
+        entry["body_evidence"] = {**body_ev, "chunks": [], "truncated": True}
+        return words_used
+    page_words = sum(len(c["text"].split()) for c in body_ev["chunks"])
+    return words_used + page_words
 
 
 async def execute_bulk_scan(db: Session, scan: Scan, *, transport=None) -> dict:
@@ -356,6 +471,7 @@ async def execute_bulk_scan(db: Session, scan: Scan, *, transport=None) -> dict:
     first_signals: dict | None = None
     budget_truncated = False
     processed = 0
+    body_words_used = 0            # running total for MAX_TOTAL_BODY_WORDS_PER_SCAN
 
     async for u, res in bulk.fetch_pages(
         urls, concurrency=settings.bulk_concurrency,
@@ -371,7 +487,9 @@ async def execute_bulk_scan(db: Session, scan: Scan, *, transport=None) -> dict:
             failed += 1
         else:
             sig = run_signals(res)
-            pages.append(_bulk_page_entry(u, sig))
+            entry = _bulk_page_entry(u, sig, res)
+            body_words_used = _apply_scan_wide_body_cap(entry, words_used=body_words_used)
+            pages.append(entry)
             sc = sig["overall_score"]
             score_sum += sc
             scored += 1
@@ -393,6 +511,13 @@ async def execute_bulk_scan(db: Session, scan: Scan, *, transport=None) -> dict:
         "pages": pages, "page_count": scored, "avg_score": avg_score,
         "best": best, "worst": worst, "requested": total,
         "truncated": bool(budget_truncated),
+        # Real Crawl Graph: preserve the ORIGINAL user-submitted URL order (distinct
+        # from `pages`, which is stored in concurrent-fetch completion order and is
+        # therefore not deterministic run-to-run) — this is the crawl graph's "seed"
+        # source (see reports/crawl_graph.py). Without this, the pending row's own
+        # `bulk.urls` (see _create_pending_bulk_scan) would be lost the moment the scan
+        # completes, since this dict wholesale-replaces scan.result["bulk"].
+        "urls": urls,
     }
     # Single-page fields come from the first successful page so the row deserializes
     # like any scan; the headline overall_score is the bulk average.
@@ -505,11 +630,10 @@ async def create_scan(body: ScanRequest, request: Request,
         return _response_from_payload(cached, remaining)
     metrics.incr("cache_misses")
 
-    # Fetch + score + signals + persist (caches its own payload). Record the scan job
-    # only for signed-in callers and only after success (run_scan raises on failure).
+    # Fetch + score + signals + persist (caches its own payload). run_scan() itself
+    # records the scan job (for signed-in callers) the moment the row is persisted —
+    # see its own docstring/comment — so there is nothing to do here on success.
     payload = await run_scan(db, safe_url, ip, org_id, user_id)
-    if org_id:
-        entitlements.record_usage(db, org_id, USAGE_SCAN_JOB)
     metrics.incr("total_scans")
     metrics.observe_scan_latency((time.perf_counter() - started) * 1000)
     return _response_from_payload(payload, remaining)

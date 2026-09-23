@@ -63,6 +63,21 @@ dashboard (Render / Vercel), never in Git.
 - **Vars:** `ADMIN_EMAILS` (auto-grant platform-admin to these emails), `ADMIN_TOKEN`
   (guards `/metrics` and `/debug/*` in production).
 
+### B6. AEO Answer Simulator (optional AI explanation step)
+- **Vars:** `ANSWER_SIMULATOR_ENABLED`, `ANSWER_SIMULATOR_PROVIDER` (`local`|`anthropic`|`none`),
+  `ANSWER_SIMULATOR_BASE_URL`, `ANSWER_SIMULATOR_MODEL`, `ANSWER_SIMULATOR_TIMEOUT_SECONDS`,
+  `ANSWER_SIMULATOR_MAX_EVIDENCE_UNITS` — all optional, documented inline in
+  `backend/.env.example`.
+- The AEO Answer Simulator (Answer Tracking's primary flow) is deterministic and makes
+  **zero external calls by default** — it retrieves evidence from a site's own already-
+  scanned content and scores answerability with no LLM involved. Unset →
+  `ANSWER_SIMULATOR_ENABLED=false`, the true $0 default. The optional "Explain why" AI
+  step (Pro-only) can be pointed at either a self-hosted Ollama-compatible endpoint
+  (`ANSWER_SIMULATOR_PROVIDER=local`; Render's instances are not assumed to have a GPU,
+  so this is realistically dev/self-hosted-only) or the same `ANTHROPIC_API_KEY` already
+  used for the report narrative (`ANSWER_SIMULATOR_PROVIDER=anthropic`, a small per-call
+  cost). No new secret to manage either way.
+
 ---
 
 ## C. Frontend

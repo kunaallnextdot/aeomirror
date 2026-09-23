@@ -13,14 +13,16 @@ from app.api.deps import AuthContext, require_permission
 from app.config import settings
 from app.db.models import (
     EXTRACTION_PENDING, ROLE_ADMIN, ROLE_OWNER,
-    Monitor, PromptResult, PromptResultAnalysis, PromptRun, PromptSet, TrackedPrompt,
+    Monitor, PromptResult, PromptResultAnalysis, PromptRun, PromptSet, Scan, TrackedPrompt,
 )
 from app.db.session import get_db
 from app.schemas.answer_tracking import (
     CreatePromptRequest, CreatePromptSetRequest, UpdateMonitorBrandRequest,
     UpdatePromptRequest, UpdatePromptSetRequest,
 )
-from app.services.answer_tracking import aggregation, extraction, gap_analysis, runner, service
+from app.services.answer_tracking import (
+    aggregation, extraction, gap_analysis, runner, service, visibility,
+)
 from app.services.answer_tracking.errors import RunRefused
 
 router = APIRouter(tags=["answer-tracking"])
@@ -398,9 +400,61 @@ def run_summary(run_id: str,
                 db: Session = Depends(get_db)):
     """Share-of-Voice summary for one run: mention rate (across ALL samples, excluding
     extraction failures from the denominator), per-provider + per-prompt breakdowns,
-    citations, competitor share, sentiment, and average position."""
+    citations, competitor share, sentiment, and average position.
+
+    Gated (Decision 1): FREE keeps every basic/operational field — mention_rate and
+    is_gap for EVERY prompt, sentiment, average position — since "did my brand appear"
+    is never locked. The deeper competitor/gap/provider/citation intelligence (now
+    consolidated in AI Visibility) is trimmed to a small preview + locked counts, via
+    the same granular entitlement flags `gate_visibility` already uses — no second
+    paywall mechanism."""
     run = _owned_run(db, ctx, run_id)
-    return aggregation.run_summary(db, run)
+    from app.billing import entitlements
+    access = entitlements.ai_visibility_access(db, ctx.org_id)
+    return visibility.gate_run_summary(aggregation.run_summary(db, run), access)
+
+
+def _scan_report_for_run(db: Session, run: PromptRun) -> dict | None:
+    """The linked site's latest scan report (for cross-linking score-loss opportunities),
+    or None. Best-effort — a missing/failed scan must never break AI Visibility."""
+    if not run.monitor_id:
+        return None
+    m = db.get(Monitor, run.monitor_id)
+    if not m or not getattr(m, "latest_scan_id", None):
+        return None
+    scan = db.get(Scan, m.latest_scan_id)
+    if not scan:
+        return None
+    try:
+        from app.reports.engine import build_report
+        from app.reports.service import scan_to_input
+        return build_report(scan_to_input(scan))
+    except Exception:   # noqa: BLE001 — cross-link is optional
+        return None
+
+
+def _gate_visibility(payload: dict, access: dict) -> dict:
+    """Backward-compatible shim → the shared, pure gating rule in the visibility service
+    (kept so both the run and report endpoints trim identically)."""
+    return visibility.gate_visibility(payload, access)
+
+
+@router.get("/prompt-runs/{run_id}/visibility")
+def run_visibility(run_id: str,
+                   ctx: AuthContext = Depends(require_permission("report:view")),
+                   db: Session = Depends(get_db)):
+    """Phase 3 — the first-class AI Visibility layer for one run: negative-first coverage,
+    answerability, content gaps (grounded), competitor intelligence, and the deterministic
+    AEO Opportunity Finder (cross-linked to the site's scan where one exists). Org-scoped
+    (a run outside your org is 404); gated per entitlement (Free preview vs Pro full)."""
+    run = _owned_run(db, ctx, run_id)
+    summary = aggregation.run_summary(db, run)
+    ps = db.get(PromptSet, run.prompt_set_id)
+    trend = aggregation.set_trend(db, ps, n=10) if ps else None
+    scan_report = _scan_report_for_run(db, run)
+    payload = visibility.build_ai_visibility(summary, scan_report=scan_report, trend=trend)
+    from app.billing import entitlements
+    return _gate_visibility(payload, entitlements.ai_visibility_access(db, ctx.org_id))
 
 
 @router.get("/prompt-runs/{run_id}/results")

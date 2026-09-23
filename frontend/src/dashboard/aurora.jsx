@@ -235,9 +235,10 @@ export function AuroraEmptyScans({ onRun }) {
         <div className="au-ill"><_AuRadarIcon size={26} /></div>
         <div className="au-card-t">No scans yet</div>
         <div className="au-card-s">
-          AEOMirror checks whether AI systems like ChatGPT, Claude, Gemini and Perplexity
-          can reach, read and understand any website — then scores it across 10 signals.
-          Run your first scan to populate this dashboard.
+          Run your first scan to see:
+          <ul className="au-empty-bullets">
+            <li>visibility score</li><li>biggest problems</li><li>evidence</li><li>recommended fixes</li>
+          </ul>
         </div>
         <button className="au-btn au-accent" onClick={onRun}><_AuRadarIcon size={16} /> Run first scan</button>
       </div></Cell>

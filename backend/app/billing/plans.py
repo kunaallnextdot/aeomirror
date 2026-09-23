@@ -68,6 +68,15 @@ ENTITLEMENTS = {
         "plan": PLAN_FREE, "monitoring": True, "downloads": False, "team": False,
         "alerts": False, "weekly_reports": False, "unlimited_scans": False,
         "bulk_trial": True,
+        # AI Visibility (Phase 3): Free sees a limited, negative-first preview; the full
+        # depth (complete provider/prompt/gap analysis, full competitor leaderboard +
+        # head-to-head, full Opportunity Finder) is Pro. Granular so the UI can gate each.
+        "ai_visibility": False, "competitor_intelligence": False, "opportunity_finder": False,
+        # AEO Answer Simulator: Free gets a small batch, deterministic-only (no LLM
+        # step), and a real (never blurred) 2-item evidence preview per question —
+        # the full retrieved passage set is Pro.
+        "answer_simulator_batch_limit": 5, "answer_simulator_llm_step": False,
+        "answer_simulator_full_evidence": False,
         "scan_limit": settings.free_monthly_scan_jobs, "history_limit": settings.free_history_limit,
         "monitor_limit": settings.free_monitor_limit,
         "compare_limit": settings.free_monthly_compares,
@@ -77,6 +86,13 @@ ENTITLEMENTS = {
         "plan": PLAN_PRO, "monitoring": True, "downloads": True, "team": True,
         "alerts": True, "weekly_reports": True, "unlimited_scans": False,
         "bulk_trial": False,
+        "ai_visibility": True, "competitor_intelligence": True, "opportunity_finder": True,
+        # AEO Answer Simulator: Pro gets an unlimited batch size (still capped by the
+        # operational answer_tracking_max_prompts ceiling at the service layer), the
+        # optional LLM step ("Explain why" / request_llm_step), and the full
+        # retrieved evidence set per question (not just a 2-item preview).
+        "answer_simulator_batch_limit": None, "answer_simulator_llm_step": True,
+        "answer_simulator_full_evidence": True,
         "scan_limit": settings.pro_monthly_scan_jobs, "history_limit": None,
         "monitor_limit": settings.pro_monitor_limit, "compare_limit": None,
         "share_limit": None,                        # Pro: unlimited active share links
@@ -89,6 +105,9 @@ ENTITLEMENTS = {
 ALL_ACCESS = {
     "plan": PLAN_PRO, "monitoring": True, "downloads": True, "team": True,
     "alerts": True, "weekly_reports": True, "unlimited_scans": True, "bulk_trial": True,
+    "ai_visibility": True, "competitor_intelligence": True, "opportunity_finder": True,
+    "answer_simulator_batch_limit": None, "answer_simulator_llm_step": True,
+    "answer_simulator_full_evidence": True,
     "scan_limit": None, "history_limit": None, "monitor_limit": None, "compare_limit": None,
     "share_limit": None,
 }

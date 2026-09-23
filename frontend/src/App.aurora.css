@@ -6,13 +6,20 @@
    Scope: 13a = single-page scan. `BulkScanPanel`/`SkippedList` (the signed-in Bulk tab) and
    the Contact page body stay dark until #13b — a bounded, shippable mismatch. */
 
-/* atmospheric ground wrapper (dark-brown→burnt-orange gradient behind the cream cards) */
+/* atmospheric ground wrapper (dark-brown→burnt-orange gradient behind the cream cards).
+   Flex column, min-height:100vh: on a short page (e.g. Contact) the empty space is
+   distributed to `.au-site-content{flex:1}` below, pushing the footer to the bottom of
+   the viewport in normal document flow (never position:fixed/sticky); on a long page the
+   column simply grows past 100vh and the footer follows the content, never overlapping
+   it. Sibling of the same pattern already used by the authenticated shell
+   (`.au-dash`/`.au-dash-content`/`.au-dash-footer` in app/AppLayout.aurora.css). */
 .au-site{background:var(--au-atmos);background-attachment:fixed;color:var(--au-ink);font-family:var(--au-font-body);
-  font-size:15px;line-height:1.5;min-height:100vh}
+  font-size:15px;line-height:1.5;min-height:100vh;display:flex;flex-direction:column}
 .au-site *{box-sizing:border-box}
+.au-site-content{flex:1 0 auto}
 
 /* ---------- top bar ---------- */
-.au-topbar{position:sticky;top:0;z-index:40;display:flex;justify-content:space-between;align-items:center;
+.au-topbar{flex:none;position:sticky;top:0;z-index:40;display:flex;justify-content:space-between;align-items:center;
   padding:12px 22px;background:var(--au-glass);backdrop-filter:blur(18px);border-bottom:1px solid var(--au-line)}
 .au-topbar-brand{display:flex;align-items:center;gap:8px;font-family:var(--au-font-heading);font-weight:700;
   font-size:15px;letter-spacing:-.02em;color:var(--au-ink)}
@@ -29,7 +36,7 @@
 .au-tb-avatar{background:none;border:none;cursor:pointer;padding:0;display:flex}
 
 /* ---------- site footer ---------- */
-.au-site-footer{border-top:1px solid var(--au-line);background:var(--au-solid);margin-top:40px}
+.au-site-footer{flex:none;border-top:1px solid var(--au-line);background:var(--au-solid);margin-top:40px}
 .au-footer-inner{max-width:1080px;margin:0 auto;padding:34px 24px 26px;display:flex;justify-content:space-between;gap:32px;flex-wrap:wrap}
 .au-footer-brand{max-width:360px}
 .au-footer-logo{display:flex;align-items:center;gap:8px;font-family:var(--au-font-heading);font-weight:700;font-size:15px;color:var(--au-ink)}

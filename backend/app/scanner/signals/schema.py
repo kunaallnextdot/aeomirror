@@ -27,7 +27,8 @@ def analyze(ctx: SignalContext) -> SignalResult:
             recommendations=["Add JSON-LD: at minimum Organization and WebSite; "
                              "Article/FAQ/Breadcrumb where relevant."],
             evidence={"state": state, "blocks": 0, "detected_types": [],
-                      "entity_types": [], "has_entity": False},
+                      "entity_types": [], "has_entity": False,
+                      "entity_evidence": r["entity_evidence"], "faq_questions": []},
         )
 
     # State 2 — JSON-LD blocks present but NONE parsed (all malformed).
@@ -40,7 +41,8 @@ def analyze(ctx: SignalContext) -> SignalResult:
                              "validator.schema.org) so engines can read it."],
             evidence={"state": state, "blocks": r["blocks"],
                       "malformed": r["malformed"], "detected_types": [],
-                      "entity_types": [], "has_entity": False},
+                      "entity_types": [], "has_entity": False,
+                      "entity_evidence": r["entity_evidence"], "faq_questions": []},
         )
 
     # State 3 — JSON-LD present and parsed. Score from what was ACTUALLY detected.
@@ -85,5 +87,7 @@ def analyze(ctx: SignalContext) -> SignalResult:
             "entity_types": r["entity_types"],           # e.g. ["Organization"]
             "detected_types": detected[:30],             # actual data: "Found: …"
             "content": {k: v for k, v in content.items() if v},
+            "entity_evidence": r["entity_evidence"],      # Phase 4: real name/url/logo/sameAs
+            "faq_questions": r["faq_questions"],          # Phase 4: real FAQPage Q&A text
         },
     )

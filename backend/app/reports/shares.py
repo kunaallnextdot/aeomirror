@@ -115,6 +115,23 @@ def _public_recommendation(rec: dict) -> dict:
     return {k: v for k, v in rec.items() if k not in _REC_DROP}
 
 
+def _public_insights(ins: dict | None) -> dict | None:
+    """Public-safe insights: the negative-first score-loss breakdown + top problems, with
+    the scraped `evidence` block dropped from every row (same rule as recommendations —
+    evidence is the only place scraped page content lands). Derived scoring math (scores,
+    weights, points_lost, issues text) is safe to share."""
+    if not ins:
+        return None
+    def strip(row: dict) -> dict:
+        return {k: v for k, v in row.items() if k != "evidence"}
+    out = dict(ins)
+    if isinstance(out.get("score_breakdown"), list):
+        out["score_breakdown"] = [strip(r) for r in out["score_breakdown"]]
+    if isinstance(out.get("top_problems"), list):
+        out["top_problems"] = [strip(r) for r in out["top_problems"]]
+    return out
+
+
 def _stripped_ai(ai: dict | None) -> dict | None:
     """The persisted narrative WITHOUT internal provenance (_meta: model id, tier,
     timestamps). Never regenerated here — this is whatever is already stored."""
@@ -134,5 +151,6 @@ def build_public_payload(report: dict, *, include_ai: bool) -> dict:
         "scorecard": report.get("scorecard"),
         "recommendations": [_public_recommendation(r) for r in (report.get("recommendations") or [])],
         "recommendation_count": report.get("recommendation_count"),
+        "insights": _public_insights(report.get("insights")),
         "ai": _stripped_ai(report.get("ai")) if include_ai else None,
     }

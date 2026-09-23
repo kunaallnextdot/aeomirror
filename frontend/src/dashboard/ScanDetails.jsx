@@ -4,15 +4,22 @@
    Route-level loading + error states are exported here (ScanDetailLoading / ScanDetailNotFound)
    so the route can render them in Aurora too, without touching the shared ui.jsx primitives.
    Out of scope (still dark, flagged): <ContentInsightsCard> is a separate component. */
-import React, { useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
-import { ChevronLeft, ChevronDown, AlertTriangle, Wrench, Check, RefreshCw, FileText, Radar, ArrowUp, ArrowDown, Lock } from "lucide-react";
+import {
+  ChevronLeft, ChevronDown, AlertTriangle, Wrench, Check, RefreshCw, FileText, Radar,
+  ArrowUp, ArrowDown, Lock, History, CheckCircle2, XCircle, MinusCircle,
+} from "lucide-react";
 import { fmtDate, fmtDuration } from "./ui.jsx";
-import { getScanStatus } from "../api.js";
+import { getScanStatus, getReport, createVerification, getVerifications, ScanError } from "../api.js";
 import { useUpgrade } from "./UpgradeModal.jsx";
 import { ContentInsightsCard } from "./ContentInsights.jsx";
+import { RecommendationCard } from "./ReportView.jsx";
+import VerificationBadge from "./VerificationBadge.jsx";
 import { Shell, Cell, Button, Tag, Ring, ProgressBar, Skeleton } from "./aurora.jsx";
 import "./ScanDetails.aurora.css";
+import "./ReportView.aurora.css";   // reuses .au-rep-card-b/.au-rep-fx-*/.au-code etc. verbatim —
+                                     // see RecommendationCard, the ONE fix-template renderer.
 
 const STATUS_VARIANT = { pass: "ok", warn: "warning", fail: "critical" };
 const auStatusColor = (s) => s === "pass" ? "var(--au-mint-d)" : s === "warn" ? "var(--au-lemon-d)"
@@ -28,12 +35,91 @@ function fmtEvidence(v) {
 }
 
 export default function ScanDetails({ scan, onBack, onRerun, busy, canRun = true, onReport,
-                                      onRefresh, onRetryBulk }) {
+                                      onRefresh, onRetryBulk, scans = [] }) {
   const [open, setOpen] = useState({});
+  const { openUpgrade } = useUpgrade();
+
+  // Problem-first landing: a signal with a real issue or recommendation is expanded
+  // by default, so the diagnosis is visible immediately after a scan completes
+  // instead of requiring a click per signal. A clean/passing signal stays collapsed —
+  // "clean" uses the exact same definition as the render below (issues/recommendations
+  // present), never `s.status` alone. Recomputed whenever a different scan is viewed.
+  useEffect(() => {
+    const initial = {};
+    for (const s of scan.sections || []) {
+      if ((s.issues?.length > 0) || (s.recommendations?.length > 0)) initial[s.id] = true;
+    }
+    setOpen(initial);
+  }, [scan.scan_id]);
   // A bulk scan runs in the background: show live progress while it is
   // pending/running, and an error + retry if it failed. Single-page scans are
   // always "completed" and fall straight through to the report below.
   const status = scan.status || "completed";
+  const bulk = scan.bulk || null;
+
+  // Reuses the EXISTING report endpoint/cache (GET /reports/{scan_id} -> get_or_build_report)
+  // for the rich Problem/Why/Fix/Implementation detail per signal — the SAME
+  // build_recommendations()/fix_template data ReportView renders, never a second
+  // recommendation engine or a new endpoint. Fetched ONCE per scan (not per accordion
+  // click); only for single-page scans, since bulk scans don't render the signal-analysis
+  // panel this enriches. Non-fatal if it fails — Scan Details' own native issues/evidence/
+  // recommendations already render fully without it.
+  const [report, setReport] = useState(null);
+  const [reportLoaded, setReportLoaded] = useState(false);
+  useEffect(() => {
+    if (bulk || status !== "completed") return;
+    let alive = true;
+    setReport(null); setReportLoaded(false);
+    getReport(scan.scan_id)
+      .then((r) => { if (alive) { setReport(r); setReportLoaded(true); } })
+      .catch(() => { if (alive) setReportLoaded(true); });
+    return () => { alive = false; };
+  }, [scan.scan_id, bulk, status]);
+
+  const recsById = useMemo(() =>
+    Object.fromEntries((report?.recommendations || []).map((r) => [r.id, r])), [report]);
+  const aiById = useMemo(() =>
+    Object.fromEntries((report?.ai?.issue_insights || []).map((i) => [i.id, i])), [report]);
+  const lockedFixCount = report?.locked_recommendation_count || 0;
+
+  // Persisted Fix Verification history for THIS scan as baseline — fetched ONCE
+  // (not per signal, not per accordion click), so the latest verification survives a
+  // page reload instead of living only in local component state. Newest first (server
+  // order preserved) -> grouping by signal_id keeps each signal's full history while
+  // its FIRST entry is that signal's latest result.
+  const [verifications, setVerifications] = useState(null);
+  const loadVerifications = useCallback(() => {
+    if (bulk || status !== "completed") return;
+    getVerifications(scan.scan_id)
+      .then((r) => setVerifications(r.verifications || []))
+      .catch(() => setVerifications([]));
+  }, [scan.scan_id, bulk, status]);
+  useEffect(() => { setVerifications(null); loadVerifications(); }, [loadVerifications]);
+
+  const verificationsBySignal = useMemo(() => {
+    const map = {};
+    for (const v of verifications || []) (map[v.signal_id] || (map[v.signal_id] = [])).push(v);
+    return map;
+  }, [verifications]);
+
+  // Fix Verification candidates: completed scans of the SAME site, strictly AFTER
+  // this baseline scan — never assumed to be "the fix", just offered as options the
+  // user explicitly picks (see verification.js docstring). Reuses the already-loaded
+  // Recent Scans list (no new fetch); newest first. Compares `scan_time` (row.created_at)
+  // on BOTH sides via the baseline's OWN list entry — never mixed with the detail
+  // response's separate `scanned_at` field, which can differ slightly.
+  const baselineListEntry = useMemo(() =>
+    (scans || []).find((s) => s.id === scan.scan_id), [scans, scan.scan_id]);
+  const verifyCandidates = useMemo(() => {
+    if (!baselineListEntry) return [];
+    const baselineTime = new Date(baselineListEntry.scan_time).getTime();
+    return (scans || [])
+      .filter((s) => s.id !== scan.scan_id && s.domain === scan.domain
+        && (!s.status || s.status === "completed")
+        && new Date(s.scan_time).getTime() > baselineTime)
+      .sort((a, b) => new Date(b.scan_time) - new Date(a.scan_time));
+  }, [scans, baselineListEntry, scan.scan_id, scan.domain]);
+
   if (status === "pending" || status === "running") {
     return <BulkScanProgress scan={scan} onBack={onBack} onDone={() => onRefresh?.(scan.scan_id)} />;
   }
@@ -46,7 +132,6 @@ export default function ScanDetails({ scan, onBack, onRerun, busy, canRun = true
   const toggle = (id) => setOpen((o) => ({ ...o, [id]: !o[id] }));
   // A bulk scan reports the average as the headline and its own per-page table; a
   // single-page scan shows the full signal breakdown below.
-  const bulk = scan.bulk || null;
   const headScore = bulk ? bulk.avg_score : scan.overall_score;
   const headStatus = scoreStatus(headScore);
 
@@ -98,12 +183,26 @@ export default function ScanDetails({ scan, onBack, onRerun, busy, canRun = true
 
           {!bulk && (
             <Cell solid>
-              <div className="au-sd-panel-h">Signal analysis <span className="au-sd-sub">10 checks</span></div>
+              <div className="au-sd-panel-h">Diagnosis <span className="au-sd-sub">10 checks</span></div>
+              {/* Same existing Free/Pro report gate as ReportView's Recommendations section
+                  (server-trimmed via gate_recommendations — never bypassed, never a blurred
+                  fake). Only appears when the ALREADY-FETCHED report says some fixes were
+                  left out for this tier; the basic issue/evidence/recommendation each signal
+                  card shows below is never affected by this gate. */}
+              {lockedFixCount > 0 && (
+                <div className="au-sd-lockbanner">
+                  <Lock size={13} />
+                  <span>{lockedFixCount} more detailed fix{lockedFixCount === 1 ? "" : "es"} available in the full report.</span>
+                  <Button variant="accent" onClick={() => openUpgrade("report", { scanId: scan.scan_id })}>Unlock</Button>
+                </div>
+              )}
               <div className="au-sd-list">
                 {sections.map((s) => {
                   const isOpen = !!open[s.id];
                   const col = auStatusColor(s.status);
                   const clean = !(s.issues?.length) && !(s.recommendations?.length);
+                  const evEntries = Object.entries(s.evidence || {}).filter(([k]) => k !== "detected_types");
+                  const richRec = recsById[s.id];
                   return (
                     <div key={s.id} className="au-sd-sig">
                       <button className="au-sd-sig-head" onClick={() => toggle(s.id)} aria-expanded={isOpen}>
@@ -111,17 +210,21 @@ export default function ScanDetails({ scan, onBack, onRerun, busy, canRun = true
                         <span className="au-sd-sig-name">{s.label}</span>
                         <Tag variant={STATUS_VARIANT[s.status] || "info"}>{String(s.status).toUpperCase()}</Tag>
                         <span className="au-sd-score" style={{ color: col }}>{s.score}</span>
+                        <VerificationBadge verification={verificationsBySignal[s.id]?.[0]} />
                         <ChevronDown size={15} className="au-sd-chev" style={{ transform: isOpen ? "rotate(180deg)" : "none" }} />
                       </button>
                       {isOpen && (
                         <div className="au-sd-sig-body">
+                          {/* Problem -> Evidence -> Why -> Fix -> Implementation, in that
+                              order. Problem/Evidence stay native to Scan Details (the scanner's
+                              own issues/evidence — real, per-signal, never duplicated elsewhere);
+                              Why/Fix/Implementation/Expected-outcome, when available, render via
+                              <RecommendationCard>, the SAME component + SAME fix_template data
+                              ReportView's Recommendations section uses — one source of truth,
+                              never a second recommendation engine. */}
                           {s.issues?.length > 0 && (
-                            <div><div className="au-sd-bh">Issues</div>
+                            <div><div className="au-sd-bh">What&apos;s wrong</div>
                               <ul className="au-sd-ul">{s.issues.map((it, i) => <li key={i}><AlertTriangle size={11} style={{ color: "var(--au-lemon-d)" }} /> <span>{it}</span></li>)}</ul></div>
-                          )}
-                          {s.recommendations?.length > 0 && (
-                            <div><div className="au-sd-bh">Recommendations</div>
-                              <ul className="au-sd-ul">{s.recommendations.map((r, i) => <li key={i}><Wrench size={11} style={{ color: "var(--au-primary)" }} /> <span>{r}</span></li>)}</ul></div>
                           )}
                           {clean && <div className="au-sd-clean"><Check size={12} /> No issues found.</div>}
                           {s.evidence?.detected_types?.length > 0 && (
@@ -130,11 +233,36 @@ export default function ScanDetails({ scan, onBack, onRerun, busy, canRun = true
                                 <span key={t} className="au-sd-found-chip">{t}</span>
                               ))}</div></div>
                           )}
-                          {s.evidence && Object.keys(s.evidence).length > 0 && (
+                          {evEntries.length > 0 ? (
                             <div><div className="au-sd-bh">Evidence</div>
-                              <div className="au-sd-ev">{Object.entries(s.evidence).filter(([k]) => k !== "detected_types").map(([k, v]) => (
+                              <div className="au-sd-ev">{evEntries.map(([k, v]) => (
                                 <div key={k} className="au-sd-ev-row"><span className="au-sd-ev-k">{k}</span><span className="au-sd-ev-v">{fmtEvidence(v)}</span></div>
                               ))}</div></div>
+                          ) : !clean && (
+                            <div><div className="au-sd-bh">Evidence</div>
+                              <div className="au-sd-dim" style={{ fontSize: 12.5 }}>Evidence unavailable for this check.</div></div>
+                          )}
+                          {richRec ? (
+                            <div className="au-sd-fix">
+                              <div className="au-sd-bh">Why it matters &amp; how to fix it</div>
+                              <RecommendationCard r={richRec} ins={aiById[richRec.id]} showProblem={false} />
+                            </div>
+                          ) : s.recommendations?.length > 0 ? (
+                            <div><div className="au-sd-bh">How to fix it</div>
+                              <ul className="au-sd-ul">{s.recommendations.map((r, i) => <li key={i}><Wrench size={11} style={{ color: "var(--au-primary)" }} /> <span>{r}</span></li>)}</ul></div>
+                          ) : !clean && reportLoaded && (
+                            <div className="au-sd-dim" style={{ fontSize: 12.5 }}>No specific implementation fix is available for this check yet.</div>
+                          )}
+                          {/* Fix -> Implement -> Re-scan -> Verify. Only offered where there is
+                              an actual problem to verify (never on a clean/passing signal). Never
+                              claims anything until a real later scan is compared — see
+                              verification.js and FixVerificationPanel below. */}
+                          {!clean && (
+                            <FixVerificationPanel signalId={s.id} label={s.label}
+                              baselineScanId={scan.scan_id} candidates={verifyCandidates}
+                              recommendation={richRec} history={verificationsBySignal[s.id] || []}
+                              onRerun={canRun ? () => onRerun(scan.scan_id) : null} rerunBusy={busy}
+                              onVerified={loadVerifications} />
                           )}
                         </div>
                       )}
@@ -146,6 +274,176 @@ export default function ScanDetails({ scan, onBack, onRerun, busy, canRun = true
           )}
         </div>
       </Shell>
+    </div>
+  );
+}
+
+const VERIFY_COPY = {
+  verified: { title: "Verified after re-scan", icon: CheckCircle2, tone: "ok" },
+  partially_improved: { title: "Partially improved", icon: MinusCircle, tone: "warn" },
+  unchanged: { title: "No meaningful change detected", icon: MinusCircle, tone: "info" },
+  regressed: { title: "Regression detected", icon: XCircle, tone: "bad" },
+};
+
+/* Fix Verification — SCAN -> FIX -> RE-SCAN -> VERIFY -> PERSIST, scoped to one
+   signal. Never claims anything (no "verified"/"fixed" text anywhere) until the user
+   explicitly picks a later scan and POST /api/verifications computes + persists a
+   real result server-side (app/services/verification.py — a 1:1 port of this same
+   engine, never a second/divergent one). Same org-isolation, same metered quota as
+   Compare (no new pricing rule). The LATEST persisted record (`history[0]`, passed
+   from the parent's one-time GET /api/verifications) is shown by default, so the
+   result survives a page reload instead of living only in local state. */
+function FixVerificationPanel({ signalId, label, baselineScanId, candidates, recommendation, history, onRerun, rerunBusy, onVerified }) {
+  const [expanded, setExpanded] = useState(false);
+  const [selectedId, setSelectedId] = useState(candidates[0]?.id || "");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState(null);
+  const [notComparable, setNotComparable] = useState(false);
+  const { handleGated } = useUpgrade();
+
+  useEffect(() => { setSelectedId(candidates[0]?.id || ""); setNotComparable(false); }, [candidates]);
+
+  // The LATEST persisted record (if any) is the default display — this is what makes
+  // verification survive a reload instead of living only in local state. Running
+  // "Verify" again adds a NEW record (see Phase 8: history), it never edits this one.
+  const latest = history?.[0] || null;
+  const showHistory = (history?.length || 0) > 1;
+
+  const runVerify = async () => {
+    if (!selectedId) return;
+    setBusy(true); setError(null); setNotComparable(false);
+    try {
+      await createVerification({ baselineScanId, verificationScanId: selectedId, signalId });
+      // The parent owns `verifications` (fetched once for the whole scan, not per
+      // signal) as the single source of truth; ask it to reload rather than keeping
+      // a second, locally-duplicated copy of the same persisted record here.
+      onVerified?.();
+    } catch (e) {
+      if (e instanceof ScanError && e.code === 422) setNotComparable(true);
+      else if (!handleGated(e, "compares")) setError(e instanceof ScanError ? e.message : "Could not verify.");
+    } finally { setBusy(false); }
+  };
+
+  return (
+    <div className="au-sd-verify">
+      <button className="au-sd-verify-toggle" onClick={() => setExpanded((v) => !v)} aria-expanded={expanded}>
+        <History size={12} /> {expanded ? "Hide verification" : latest ? "Verification" : "Verify after re-scan"}
+      </button>
+      {expanded && (
+        <div className="au-sd-verify-body">
+          {latest && <VerificationResult result={latest} recommendation={recommendation} />}
+          {showHistory && <VerificationHistory records={history} />}
+          {candidates.length === 0 ? (
+            <div className="au-sd-verify-cta">
+              <div className="au-sd-dim" style={{ fontSize: 12.5 }}>
+                Re-scan your website after implementing this fix. AEOMirror will compare the
+                new scan with the previous evidence — implement the fix, then run a new scan
+                to verify the change.
+              </div>
+              {onRerun && (
+                <Button variant="ghost" loading={rerunBusy} onClick={onRerun}>
+                  {!rerunBusy && <RefreshCw size={12} />} Run re-scan
+                </Button>
+              )}
+            </div>
+          ) : (
+            <>
+              <div className="au-sd-verify-pick">
+                <select className="au-select" aria-label={`Pick a scan to verify ${label} against`}
+                        value={selectedId} onChange={(e) => { setSelectedId(e.target.value); setNotComparable(false); }}>
+                  {candidates.map((c) => (
+                    <option key={c.id} value={c.id}>{fmtDate(c.scan_time)} · score {c.overall_score ?? "—"}</option>
+                  ))}
+                </select>
+                <Button variant="accent" loading={busy} disabled={!selectedId} onClick={runVerify}>
+                  {!busy && <History size={13} />} {latest ? "Verify again" : "Verify"}
+                </Button>
+              </div>
+              {error && <div className="au-at-err">{error}</div>}
+              {notComparable && (
+                <div className="au-sd-verify-nc"><AlertTriangle size={12} /> These scans cannot be compared reliably.</div>
+              )}
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function VerificationHistory({ records }) {
+  return (
+    <div className="au-sd-verify-history">
+      <div className="au-sd-bh">Verification history</div>
+      {records.map((r) => {
+        const copy = VERIFY_COPY[r.verification_status];
+        return (
+          <div key={r.id} className="au-sd-verify-hrow">
+            <span className="au-sd-dim">{fmtDate(r.created_at)}</span>
+            <span>{r.score_before} → {r.score_after}</span>
+            <span style={{ color: copy?.tone ? `var(--au-${copy.tone === "ok" ? "mint" : copy.tone === "bad" ? "peach" : copy.tone === "warn" ? "lemon" : "muted"}-d)` : undefined }}>
+              {copy?.title || r.verification_status}
+            </span>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function VerificationResult({ result, recommendation }) {
+  const copy = VERIFY_COPY[result.verification_status];
+  const Icon = copy?.icon || MinusCircle;
+  return (
+    <div className={`au-sd-verify-result au-sd-verify-${copy?.tone || "info"}`}>
+      <div className="au-sd-verify-h"><Icon size={14} /> {copy?.title || result.verification_status}</div>
+      <div className="au-sd-verify-ba">
+        <span>Before <b>{String(result.status_before).toUpperCase()} · {result.score_before}</b></span>
+        <span className="au-sd-dim">→</span>
+        <span>After <b>{String(result.status_after).toUpperCase()} · {result.score_after}</b></span>
+        <span className="au-sd-dim">
+          Score change: {result.score_delta > 0 ? "+" : ""}{result.score_delta}
+        </span>
+      </div>
+
+      {result.resolved_issues.length > 0 && (
+        <div className="au-sd-verify-list">
+          <div className="au-sd-bh">Resolved</div>
+          <ul className="au-sd-ul">{result.resolved_issues.map((it, i) => (
+            <li key={i}><Check size={11} style={{ color: "var(--au-mint-d)" }} /> <span>{it}</span></li>
+          ))}</ul>
+        </div>
+      )}
+      {result.remaining_issues.length > 0 && (
+        <div className="au-sd-verify-list">
+          <div className="au-sd-bh">Still needs attention</div>
+          <ul className="au-sd-ul">{result.remaining_issues.map((it, i) => (
+            <li key={i}><AlertTriangle size={11} style={{ color: "var(--au-lemon-d)" }} /> <span>{it}</span></li>
+          ))}</ul>
+        </div>
+      )}
+      {result.new_issues.length > 0 && (
+        <div className="au-sd-verify-list">
+          <div className="au-sd-bh">New issue detected in the verification scan</div>
+          <ul className="au-sd-ul">{result.new_issues.map((it, i) => (
+            <li key={i}><AlertTriangle size={11} style={{ color: "var(--au-peach-d)" }} /> <span>{it}</span></li>
+          ))}</ul>
+        </div>
+      )}
+      {result.evidence_changes.length > 0 && (
+        <div className="au-sd-verify-list">
+          <div className="au-sd-bh">Evidence</div>
+          <div className="au-sd-ev">{result.evidence_changes.map((c) => (
+            <div key={c.key} className="au-sd-ev-row">
+              <span className="au-sd-ev-k">{c.key}</span>
+              <span className="au-sd-ev-v">{fmtEvidence(c.before)} → {fmtEvidence(c.after)}</span>
+            </div>
+          ))}</div>
+        </div>
+      )}
+      {result.verification_status === "regressed" && recommendation && (
+        <div className="au-sd-dim" style={{ fontSize: 12.5 }}>See the fix above for the recommended action.</div>
+      )}
     </div>
   );
 }

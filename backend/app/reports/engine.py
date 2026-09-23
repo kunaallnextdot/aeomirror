@@ -8,9 +8,20 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
+from app.reports.content_intelligence import build_content_intelligence_block
+from app.reports.crawl_graph import build_crawl_graph_block
+from app.reports.insights import build_insights_block
+from app.reports.phase4 import build_phase4_block
+from app.reports.technical_seo import build_technical_seo_block
 from app.reports.templates import CATEGORIES, CATEGORY, template_for
 
-REPORT_VERSION = "1.0.0"
+# Bumped 1.4.0 -> 1.5.0: Google Search Console integration (and its
+# report["gsc_intelligence"] block) was removed. A stored `reports` row from before
+# this change still has that key; get_or_build_report()'s cache-validity check
+# (`row.version == REPORT_VERSION`) uses exactly this constant, so bumping it makes a
+# pre-existing cached row rebuild once (dropping the stale key) instead of serving it
+# forever.
+REPORT_VERSION = "1.5.0"
 
 # Bands shared with the scanner (score -> status).
 _GOOD, _WARN = 75, 45
@@ -254,6 +265,34 @@ def build_report(scan: dict) -> dict:
     sections = scan.get("sections") or []
     recommendations = build_recommendations(sections, scan.get("domain") or scan.get("url") or "")
     scorecard = build_scorecard(scan, recommendations)
+    scan_ready = scan.get("scan_ready", True)
+    bulk_pages = scan.get("bulk_pages")
+
+    # Additive (Phase 4): deeper Schema / Internal Link / Entity intelligence + the
+    # scan-only slice of Question Mining, derived from the SAME sections. Never
+    # changes overall_score; safe to add to cached reports. `scan_ready` defaults True
+    # so callers that don't track scan status (most tests, and pre-Phase-4 code) keep
+    # today's behavior; `scan_to_input` sets it from the real Scan.status for every
+    # live request, so a pending/running/failed scan gets an honest "scan_incomplete"
+    # state instead of a fabricated "everything is missing" diagnosis.
+    phase4 = build_phase4_block(sections, scan.get("url"), bulk_pages=bulk_pages, scan_ready=scan_ready)
+    # Additive: Technical SEO & Indexability Intelligence — same sections + the raw
+    # per-page HTTP/redirect facts scan_to_input already carries.
+    technical_seo = build_technical_seo_block(
+        sections=sections, url=scan.get("url"),
+        status_code=scan.get("status_code"), redirect_chain=scan.get("redirect_chain"),
+        final_url=scan.get("final_url"), bulk_pages=bulk_pages, scan_ready=scan_ready)
+    # Additive: Real Crawl Graph + True Orphan Detection — built from the SAME
+    # bulk-scan per-page evidence Technical SEO uses, plus each page's own outgoing
+    # `link_targets`. Only ever available for a multi-page (bulk) scan.
+    crawl_graph = build_crawl_graph_block(
+        bulk_pages=bulk_pages, bulk_requested_urls=scan.get("bulk_requested_urls"),
+        scan_ready=scan_ready)
+    # Additive: Content Cannibalization & Duplicate Content Intelligence — built from
+    # the SAME bulk-scan per-page evidence, plus each page's own content fingerprint.
+    # Only ever available for a multi-page (bulk) scan.
+    content_intelligence = build_content_intelligence_block(bulk_pages=bulk_pages, scan_ready=scan_ready)
+
     return {
         "report_version": REPORT_VERSION,
         "generated_at": _now_iso(),
@@ -265,4 +304,13 @@ def build_report(scan: dict) -> dict:
         "scorecard": scorecard,
         "recommendations": recommendations,
         "recommendation_count": len(recommendations),
+        # Additive (Phase 1+2): read-side negative-first analysis derived from the same
+        # sections — score-loss breakdown, "why is my score low", an estimated recovery
+        # projection, the score-impact simulator, and the 30-day action plan. Never
+        # changes overall_score; safe to add to cached reports.
+        "insights": build_insights_block(scan, recommendations, scorecard.get("quick_wins")),
+        "phase4": phase4,
+        "technical_seo": technical_seo,
+        "crawl_graph": crawl_graph,
+        "content_intelligence": content_intelligence,
     }

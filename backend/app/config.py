@@ -233,6 +233,24 @@ class Settings(BaseSettings):
         "Grok,DeepSeek,Meta AI"
     )
 
+    # --- AEO Answer Simulator ---
+    # A deterministic evidence-retrieval + answerability engine built entirely from a
+    # site's own already-scanned content (see services/answer_simulator/). Makes ZERO
+    # external provider calls by default. The optional LLM step below is a SEPARATE,
+    # explicit opt-in — disabled by default so the core product costs $0 to run.
+    answer_simulator_enabled: bool = False           # master switch for the optional LLM step
+    answer_simulator_provider: str = "local"         # "local" (Ollama-compatible) | "anthropic" | "none"
+    answer_simulator_base_url: str = "http://localhost:11434"   # local provider only
+    answer_simulator_model: str = "llama3.2"                    # local provider only
+    answer_simulator_timeout_seconds: int = 30
+    answer_simulator_max_evidence_units: int = 8     # top-K evidence units surfaced per question
+    # How long the assembled knowledge index (evidence units + BM25 corpus stats) is
+    # cached across requests for one monitor (Redis-or-in-memory, see
+    # services/answer_simulator/batch.py::_get_or_build_index) — avoids rebuilding it
+    # per question. Keyed by the monitor's latest_scan_id, which naturally busts the
+    # cache on a rescan.
+    answer_simulator_index_cache_ttl_seconds: int = 600
+
     # --- Phase 9: billing + subscriptions ---
     # Master switch for plan enforcement. When False (e.g. tests), every org has
     # full access regardless of plan — subscriptions/payments still work, only the
@@ -290,6 +308,13 @@ class Settings(BaseSettings):
     alert_score_drop_critical: int = 15
     alert_category_regression: int = 15       # per-category drop that alerts
     alert_critical_score: int = 25            # a signal at/below this is "critical"
+    # Critical-alert email de-duplication (root-cause fix for repeated alert emails).
+    # Within this window we do NOT re-email the same monitor+alert-type+recipient — this
+    # absorbs alert flapping and worker-restart re-scans. A genuinely new alert type, or
+    # the same type after the window elapses, still emails.
+    critical_alert_cooldown_seconds: int = 86_400          # 24h
+    # Safety net (NOT the primary mechanism): cap critical-alert email sends per org / 24h.
+    critical_alert_max_per_org_per_day: int = 5
 
     # --- Phase 5: authentication ---
     # HS256 signing secret for JWT access tokens. A safe random dev default is

@@ -216,7 +216,7 @@ export default function MonitorDetail({ monitorId, onBack, onOpenReport }) {
                   <div className="au-mon-alert-msg">{a.message}</div>
                 </div>
                 <span className="au-mon-alert-time">{fmtDate(a.created_at)}</span>
-                {a.status === "open" && canRun && <button className="au-iconbtn" title="Acknowledge" onClick={() => ackAlert(a.id)}><CheckCircle2 size={13} /></button>}
+                {a.status === "open" && canRun && <button className="au-iconbtn" title="Acknowledge" aria-label={`Acknowledge alert: ${a.title}`} onClick={() => ackAlert(a.id)}><CheckCircle2 size={13} /></button>}
               </div>
             ))}
           </Cell>

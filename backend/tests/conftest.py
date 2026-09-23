@@ -29,11 +29,13 @@ os.environ["BILLING_ENFORCED"] = "false"
 # during the general suite. The crawler-access tests exercise the service directly with a
 # MockTransport, and the scan-integration test enables it + stubs the check explicitly.
 os.environ["CRAWLER_ACCESS_ENABLED"] = "false"
-# Force email OFF by default so the suite NEVER opens a real SMTP connection, even when
-# real GMAIL_USER/GMAIL_APP_PASSWORD are present in backend/.env (email_enabled ==
-# smtp_configured now). Email-sending tests patch app.services.email_transport.send_email.
+# Force email OFF by default so the suite NEVER opens a real SMTP connection or calls the
+# real Resend HTTPS API, even when real GMAIL_USER/GMAIL_APP_PASSWORD/RESEND_API_KEY are
+# present in backend/.env (email_enabled == resend_configured OR smtp_configured).
+# Email-sending tests patch app.services.email_transport.send_email.
 os.environ["GMAIL_USER"] = ""
 os.environ["GMAIL_APP_PASSWORD"] = ""
+os.environ["RESEND_API_KEY"] = ""
 
 import pytest
 

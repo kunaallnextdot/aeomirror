@@ -43,13 +43,13 @@ export default function DashboardHome({ data, onOpenLatest }) {
             </div>
           </Cell>
           <Cell solid>
-            <div className="au-statcard-l"><AlertTriangle size={13} /> Most common issue</div>
+            <div className="au-statcard-l"><AlertTriangle size={13} /> Most common problem</div>
             {mci ? (
               <>
                 <div style={{ fontSize: 14.5, fontWeight: 500, margin: "10px 0 6px", lineHeight: 1.4, color: "var(--au-ink)" }}>{mci.issue}</div>
                 <div className="au-dim" style={{ fontSize: 12 }}>seen in {mci.count} scan{mci.count === 1 ? "" : "s"}</div>
               </>
-            ) : <div className="au-dim" style={{ marginTop: 10 }}>No recurring issues 🎉</div>}
+            ) : <div className="au-dim" style={{ marginTop: 10 }}>No recurring problems 🎉</div>}
           </Cell>
         </div>
 
@@ -64,13 +64,13 @@ export default function DashboardHome({ data, onOpenLatest }) {
             <ScoreDistributionChart distribution={d.score_distribution} aurora />
           </Cell>
           <Cell solid>
-            <div className="au-panel-h">Top issue categories <span className="au-sub">most-failed signals</span></div>
+            <div className="au-panel-h">Top problem categories <span className="au-sub">most-failed checks</span></div>
             <TopIssuesChart categories={d.top_issue_categories} aurora />
           </Cell>
         </div>
 
         <Cell solid style={{ marginTop: 16 }}>
-          <div className="au-panel-h">Most common failures <span className="au-sub">recurring issues across your scans</span></div>
+          <div className="au-panel-h">Most common failures <span className="au-sub">recurring problems across your scans</span></div>
           <CommonFailuresChart failures={d.common_failures} aurora />
         </Cell>
       </Shell>

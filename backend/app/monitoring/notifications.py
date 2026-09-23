@@ -23,6 +23,8 @@ from app.services import email_transport
 
 logger = logging.getLogger("aeomirror.monitor_notify")
 
+CRITICAL_ALERT_KIND = "critical_alert"
+
 
 # ------------------------------- transport -------------------------------
 def _send_email(to: str, subject: str, text: str, html_body: str, *, kind: str) -> str:
@@ -41,18 +43,58 @@ def _log(db: Session, *, org_id, user_id, monitor_id, kind, subject, status, met
 
 
 def _recipients(db: Session, org_id: str, extra_user_id: str | None = None):
-    """(user_id, email) list — org owner + optional creator, de-duplicated."""
-    out: dict[str, str] = {}
+    """(user_id, email) list — org owner + optional creator. De-duplicated by BOTH user
+    id and email address, so a recipient never receives two copies of the same alert even
+    when the owner and the monitor creator resolve to the same email on different rows."""
+    out: dict[str, str] = {}          # user_id -> email
+    seen_emails: set[str] = set()
+
+    def _add(user):
+        if not user or not user.email:
+            return
+        key = user.email.strip().lower()
+        if user.id in out or key in seen_emails:
+            return
+        out[user.id] = user.email
+        seen_emails.add(key)
+
     org = db.get(Organization, org_id) if org_id else None
     if org:
-        owner = db.get(User, org.owner_id)
-        if owner and owner.email:
-            out[owner.id] = owner.email
-    if extra_user_id and extra_user_id not in out:
-        u = db.get(User, extra_user_id)
-        if u and u.email:
-            out[u.id] = u.email
+        _add(db.get(User, org.owner_id))
+    if extra_user_id:
+        _add(db.get(User, extra_user_id))
     return list(out.items())
+
+
+# ------------------------------- critical-alert idempotency -------------------------------
+def _recently_notified(db: Session, monitor_id: str, alert_type: str,
+                       user_id: str | None, since) -> bool:
+    """True when this monitor+alert-type+recipient already got a SENT critical-alert email
+    since `since` — the idempotency guard that stops flapping/restart re-sends. alert_type
+    lives in NotificationLog.meta, so we filter the small candidate set in Python (portable
+    across SQLite + Postgres; no JSON-operator dependency)."""
+    q = (db.query(NotificationLog)
+         .filter(NotificationLog.monitor_id == monitor_id,
+                 NotificationLog.kind == CRITICAL_ALERT_KIND,
+                 NotificationLog.status == "sent",
+                 NotificationLog.created_at >= since))
+    if user_id is not None:
+        q = q.filter(NotificationLog.user_id == user_id)
+    for row in q.all():
+        if (row.meta or {}).get("alert_type") == alert_type:
+            return True
+    return False
+
+
+def _org_critical_emails_since(db: Session, org_id: str, since) -> int:
+    """Count of SENT critical-alert notifications for the org since `since` — drives the
+    per-org 24h safety-net rate limit."""
+    return (db.query(NotificationLog)
+            .filter(NotificationLog.organization_id == org_id,
+                    NotificationLog.kind == CRITICAL_ALERT_KIND,
+                    NotificationLog.status == "sent",
+                    NotificationLog.created_at >= since)
+            .count())
 
 
 def _wrap(body: str) -> str:
@@ -61,12 +103,8 @@ def _wrap(body: str) -> str:
 
 
 # ------------------------------- critical alerts -------------------------------
-def notify_critical_alerts(db: Session, monitor: Monitor, alerts: list[Alert]) -> int:
-    """Immediate email for the critical alerts from one scan. Returns emails sent."""
-    from app.admin import flags
-    crit = [a for a in alerts if a.severity == "critical"]
-    if not crit or not flags.is_enabled(db, "email"):
-        return 0
+def _render_critical(monitor: Monitor, crit: list[Alert]) -> tuple[str, str, str]:
+    """(subject, text, html) for a set of critical alerts (unchanged copy/format)."""
     domain = monitor.normalized_url or monitor.url
     subject = f"⚠ AEOMirror alert: {len(crit)} critical issue{'s' if len(crit) != 1 else ''} on {domain}"
     lines = [f"AEOMirror detected {len(crit)} critical AI-visibility issue(s) on {domain}:", ""]
@@ -82,13 +120,64 @@ def notify_critical_alerts(db: Session, monitor: Monitor, alerts: list[Alert]) -
         f"issue(s) on <strong>{html.escape(str(domain))}</strong>:</p>"
         f"<ul>{''.join(items_html)}</ul>"
         f"<p><a href=\"{html.escape(settings.app_base_url)}\">Open your monitoring dashboard</a></p>")
+    return subject, text, html_body
+
+
+def notify_critical_alerts(db: Session, monitor: Monitor, alerts: list[Alert]) -> int:
+    """Immediate email for the critical alerts from one scan — now IDEMPOTENT.
+
+    For each recipient we email ONLY the critical alerts of a type not already emailed to
+    them within `critical_alert_cooldown_seconds` (default 24h). This is the root-cause fix:
+    a still-open / flapping alert, or a worker-restart re-scan, no longer re-emails; a
+    genuinely new alert type (or the same type after the window) still emails. A per-org
+    24h send cap is a final safety net. Every suppression is logged with a clear reason and
+    a NotificationLog row (status='skipped'); no alert is ever created/resolved/deleted here.
+    Returns emails sent."""
+    from app.admin import flags
+    crit = [a for a in alerts if a.severity == "critical"]
+    if not crit or not flags.is_enabled(db, "email"):
+        return 0
+
+    now = now_utc()
+    cooldown_since = now - timedelta(seconds=settings.critical_alert_cooldown_seconds)
+    rate_since = now - timedelta(hours=24)
+    org_id = monitor.organization_id
 
     sent = 0
-    for user_id, email in _recipients(db, monitor.organization_id, monitor.user_id):
-        status = _send_email(email, subject, text, html_body, kind="critical_alert")
-        _log(db, org_id=monitor.organization_id, user_id=user_id, monitor_id=monitor.id,
-             kind="critical_alert", subject=subject, status=status,
-             meta={"alert_count": len(crit)})
+    for user_id, email in _recipients(db, org_id, monitor.user_id):
+        # Keep only alert types this recipient hasn't already been emailed within the window.
+        fresh = []
+        for a in crit:
+            if _recently_notified(db, monitor.id, a.type, user_id, cooldown_since):
+                logger.info("suppressed critical_alert_duplicate monitor=%s type=%s user=%s",
+                            monitor.id, a.type, user_id)
+                _log(db, org_id=org_id, user_id=user_id, monitor_id=monitor.id,
+                     kind=CRITICAL_ALERT_KIND, subject=None, status="skipped",
+                     meta={"reason": "critical_alert_duplicate", "alert_type": a.type,
+                           "alert_id": a.id})
+            else:
+                fresh.append(a)
+        if not fresh:
+            continue
+
+        # Safety-net rate limit (per org / 24h) — never the primary dedup mechanism.
+        if _org_critical_emails_since(db, org_id, rate_since) >= settings.critical_alert_max_per_org_per_day:
+            logger.warning("suppressed critical_alert_rate_limited org=%s monitor=%s user=%s",
+                           org_id, monitor.id, user_id)
+            for a in fresh:
+                _log(db, org_id=org_id, user_id=user_id, monitor_id=monitor.id,
+                     kind=CRITICAL_ALERT_KIND, subject=None, status="skipped",
+                     meta={"reason": "critical_alert_rate_limited", "alert_type": a.type,
+                           "alert_id": a.id})
+            continue
+
+        subject, text, html_body = _render_critical(monitor, fresh)
+        status = _send_email(email, subject, text, html_body, kind=CRITICAL_ALERT_KIND)
+        # One NotificationLog row per alert TYPE so the idempotency key exists per type.
+        for a in fresh:
+            _log(db, org_id=org_id, user_id=user_id, monitor_id=monitor.id,
+                 kind=CRITICAL_ALERT_KIND, subject=subject, status=status,
+                 meta={"alert_type": a.type, "alert_id": a.id, "alert_count": len(fresh)})
         if status == "sent":
             sent += 1
     return sent

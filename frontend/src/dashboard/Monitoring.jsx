@@ -254,12 +254,12 @@ function MonitorCard({ m, busy, canRun, canDelete, onOpen, onRun, onToggle, onDe
         <span>next {m.next_scan_at ? fmtDate(m.next_scan_at) : (m.frequency === "manual" ? "manual" : "—")}</span>
       </div>
       <div className="au-mon-card-actions">
-        {canRun && <button className="au-iconbtn" disabled={busy} onClick={onRun} title="Run now"><RefreshCw size={13} className={busy ? "spin-slow" : ""} /></button>}
+        {canRun && <button className="au-iconbtn" disabled={busy} onClick={onRun} title="Run now" aria-label={`Run now for ${m.url || m.domain || "this monitor"}`}><RefreshCw size={13} className={busy ? "spin-slow" : ""} /></button>}
         {canRun && (m.status === "active"
-          ? <button className="au-iconbtn" disabled={busy} onClick={onToggle} title="Pause"><Pause size={13} /></button>
+          ? <button className="au-iconbtn" disabled={busy} onClick={onToggle} title="Pause" aria-label={`Pause monitoring for ${m.url || m.domain || "this monitor"}`}><Pause size={13} /></button>
           : <button className="au-iconbtn" disabled={busy} onClick={onToggle} title="Resume"><Play size={13} /> Resume</button>)}
         <button className="au-iconbtn" onClick={onOpen} title="Open">Details</button>
-        {canDelete && <button className="au-iconbtn au-danger" disabled={busy} onClick={onDelete} title="Delete"><Trash2 size={13} /></button>}
+        {canDelete && <button className="au-iconbtn au-danger" disabled={busy} onClick={onDelete} title="Delete" aria-label={`Delete monitor for ${m.url || m.domain || "this monitor"}`}><Trash2 size={13} /></button>}
       </div>
     </div>
   );

@@ -7,9 +7,10 @@ import { RequireAuth } from "./guards.jsx";
 import { clearChunkReloadFlag } from "./RouteErrorBoundary.jsx";
 import AppLayout from "./AppLayout.jsx";
 import {
-  AppIndexRedirect, DashboardHomeRoute, ScansRoute, ScanDetailRoute, MonitoringRoute,
-  MonitorDetailRoute, AnswerTrackingRoute, ReportRoute, CompareRoute, SummaryRoute,
-  BillingRoute, ProfileRoute, TeamRoute, OrganizationRoute, NotFoundRoute,
+  AppIndexRedirect, DashboardHomeRoute, ScansRoute, ScanDetailRoute, LatestScanRoute,
+  ActionCenterRoute, MonitoringRoute, MonitorDetailRoute, AnswerTrackingRoute, ReportRoute,
+  CompareRoute, SummaryRoute, BillingRoute, ProfileRoute, TeamRoute, OrganizationRoute,
+  NotFoundRoute,
 } from "./routes.jsx";
 
 export default function AppRoot() {
@@ -24,7 +25,9 @@ export default function AppRoot() {
           <Route index element={<AppIndexRedirect />} />
           <Route path="dashboard" element={<DashboardHomeRoute />} />
           <Route path="scans" element={<ScansRoute />} />
+          <Route path="scans/latest" element={<LatestScanRoute />} />
           <Route path="scans/:scanId" element={<ScanDetailRoute />} />
+          <Route path="action-center" element={<ActionCenterRoute />} />
           <Route path="monitoring" element={<MonitoringRoute />} />
           <Route path="monitoring/:monitorId" element={<MonitorDetailRoute />} />
           <Route path="answer-tracking" element={<AnswerTrackingRoute />} />

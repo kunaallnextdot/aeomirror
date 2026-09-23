@@ -291,3 +291,67 @@ def test_free_history_limit(monkeypatch):
     client.post("/v1/scan", json={"url": "http://h2.example/"})
     rows = client.get("/api/scans").json()
     assert len(rows) == 1   # capped to history_limit for Free
+
+
+# ------------------------------- scan usage == Recent Scans (bug fix regression) -------------------------------
+# Recent Scans (GET /api/scans) and the sidebar's "Scan jobs used" meter
+# (GET /billing/subscription -> usage.scans) both derive from the org's real scans —
+# but usage counts only BILLABLE scan-job events (entitlements.scans_this_month),
+# never monitor-triggered scans (by existing, deliberate design — see
+# entitlements.scans_this_month's own docstring). These tests confirm: (1) for
+# ordinary scans the two numbers agree exactly, (2) a rerun records exactly one job
+# (no double counting), (3) a monitor-triggered scan is real history but never
+# consumes quota, and is visibly marked non-billable rather than silently dropped or
+# silently counted.
+def test_scan_usage_matches_recent_scans_for_ordinary_scans(monkeypatch):
+    set_fetch(monkeypatch, good_bundle)
+    client, _ = auth_client()
+    for i in range(4):
+        assert client.post("/v1/scan", json={"url": f"http://u{i}.example/"}).status_code == 200
+    usage = client.get("/billing/subscription").json()["usage"]["scans"]
+    assert usage["used"] == 4
+    rows = client.get("/api/scans").json()
+    assert len(rows) == 4
+    assert all(r["billable"] for r in rows)   # every ordinary scan is billable
+
+
+def test_rerun_counts_as_exactly_one_scan_job_no_double_counting(monkeypatch):
+    set_fetch(monkeypatch, good_bundle)
+    client, _ = auth_client()
+    r = client.post("/v1/scan", json={"url": "http://rerun.example/"})
+    scan_id = r.json()["scan_id"]
+    rerun = client.post(f"/api/scans/{scan_id}/rerun")
+    assert rerun.status_code == 200
+    usage = client.get("/billing/subscription").json()["usage"]["scans"]
+    assert usage["used"] == 2   # original + rerun, exactly — never double-recorded
+
+
+def test_monitor_triggered_scan_does_not_consume_quota_but_is_visible_in_recent_scans(monkeypatch):
+    set_fetch(monkeypatch, good_bundle)
+    client, _ = auth_client()
+    mid = client.post("/monitors", json={"url": "http://mon.example/", "frequency": "manual"}).json()["id"]
+    assert client.post(f"/monitors/{mid}/run").status_code == 200
+
+    usage = client.get("/billing/subscription").json()["usage"]["scans"]
+    assert usage["used"] == 0   # the monitor scan never recorded a scan job
+
+    rows = client.get("/api/scans").json()
+    assert len(rows) == 1
+    assert rows[0]["billable"] is False   # visibly distinguished, not silently dropped or miscounted
+
+
+def test_scan_ownership_unaffected_by_usage_recording(monkeypatch):
+    """A separate org's scans/usage never leak into this org's counts."""
+    set_fetch(monkeypatch, good_bundle)
+    a, _ = auth_client()
+    b, _ = auth_client()
+    a.post("/v1/scan", json={"url": "http://a1.example/"})
+    a.post("/v1/scan", json={"url": "http://a2.example/"})
+    b.post("/v1/scan", json={"url": "http://b1.example/"})
+
+    a_usage = a.get("/billing/subscription").json()["usage"]["scans"]
+    b_usage = b.get("/billing/subscription").json()["usage"]["scans"]
+    assert a_usage["used"] == 2
+    assert b_usage["used"] == 1
+    assert len(a.get("/api/scans").json()) == 2
+    assert len(b.get("/api/scans").json()) == 1

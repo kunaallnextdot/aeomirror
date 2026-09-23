@@ -39,3 +39,15 @@ class CreatePromptRequest(BaseModel):
 class UpdatePromptRequest(BaseModel):
     text: str | None = Field(default=None, min_length=1, max_length=2000)
     is_active: bool | None = None
+
+
+class RunSimulationRequest(BaseModel):
+    """AEO Answer Simulator batch request. `question_ids` selects already-tracked
+    prompts; `custom_questions` creates new manual prompts; `question_bank_keys`
+    creates/reuses prompts sourced from the Question Bank. At least one of the three
+    must be non-empty. `request_llm_step` opts into the optional LLM step (Pro-only;
+    skipped by default for INSUFFICIENT_EVIDENCE questions regardless)."""
+    question_ids: list[str] | None = None
+    custom_questions: list[str] | None = Field(default=None, max_length=50)
+    question_bank_keys: list[str] | None = Field(default=None, max_length=50)
+    request_llm_step: bool = False

@@ -14,6 +14,11 @@ class PageBundle:
     sitemap_xml: str = ""          # captured sitemap.xml body (Phase 3 signals)
     status_code: int = 200
     headers: dict = field(default_factory=dict)
+    # Technical SEO: hops followed while resolving `url` (empty when no redirect),
+    # each {"url": from, "status_code": hop_status, "to": target}. `final_url` is the
+    # URL the response body actually came from (== `url` when there was no redirect).
+    redirect_chain: list = field(default_factory=list)
+    final_url: str = ""
 
 
 @dataclass

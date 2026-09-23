@@ -120,7 +120,7 @@ TEMPLATES: dict[str, dict] = {
         ),
         "ai_impact": (
             "JSON-LD gives AI engines machine-readable facts (Organization, Product, FAQ, "
-            "Article) they can lift directly, dramatically raising citation quality."
+            "Article) they can lift directly instead of inferring them from prose."
         ),
         "explanation": (
             "Without valid JSON-LD, engines must guess your entity, offerings and Q&A from "
@@ -233,8 +233,9 @@ TEMPLATES: dict[str, dict] = {
         "difficulty": "Easy",
         "fix_time": "30–60 minutes",
         "business_impact": (
-            "AI engines prefer recent, clearly dated sources. Stale-looking pages lose to "
-            "competitors that signal freshness."
+            "Content without a visible or structured date gives AI systems less signal about "
+            "how current it is, which can make freshness harder to establish in "
+            "freshness-sensitive contexts."
         ),
         "ai_impact": (
             "Visible and structured dates (dateModified) tell engines your content is current "
@@ -250,7 +251,7 @@ TEMPLATES: dict[str, dict] = {
             "  \"dateModified\": \"2026-07-20\"\n}\n</script>\n"
             "<p class=\"updated\">Last updated: 20 July 2026</p>"
         ),
-        "outcome": "Engines recognize your content as current, improving its standing in freshness-sensitive answers.",
+        "outcome": "Engines have a clearer, unambiguous signal of how current your content is.",
     },
     "ai_readiness": {
         "title": "AI extractability (llms.txt, answer-ready content)",

@@ -15,7 +15,11 @@
   border-radius:var(--au-r-s);padding:9px 13px;font-size:12.5px;margin-top:10px}
 
 /* sticky in-page nav */
-.au-rep-nav{position:sticky;top:0;z-index:5;display:flex;gap:6px;flex-wrap:wrap;padding:12px 0;margin-top:8px}
+/* top:76px, not 0 — the app shell's own sticky header (.au-dash-top, z-index:10) is
+   ~76px tall and ALSO sticks at top:0; without this offset the two stack at the same
+   spot and this in-page nav renders hidden behind the taller/higher z-index shell bar
+   once scrolled. See the matching 640px override below for the shorter mobile header. */
+.au-rep-nav{position:sticky;top:76px;z-index:5;display:flex;gap:6px;flex-wrap:wrap;padding:12px 0;margin-top:8px}
 .au-rep-nav-btn{background:var(--au-solid);border:1px solid var(--au-line);border-radius:var(--au-r-pill);
   color:var(--au-ink-2);font:inherit;font-size:12.5px;font-weight:600;padding:7px 14px;cursor:pointer;transition:.15s}
 .au-rep-nav-btn:hover{background:var(--au-mint);color:var(--au-mint-d);border-color:transparent}
@@ -28,7 +32,7 @@
 
 /* issue-count grid */
 .au-rep-counts{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-top:16px}
-@media(max-width:640px){.au-rep-counts{grid-template-columns:repeat(2,1fr)}}
+@media(max-width:640px){.au-rep-counts{grid-template-columns:repeat(2,1fr)}.au-rep-nav{top:68px}}
 .au-rep-count{background:var(--au-glass);border:1px solid var(--au-line-2);border-radius:var(--au-r-s);padding:12px;text-align:center}
 .au-rep-count-n{font-family:var(--au-font-numeric);font-size:26px;line-height:1;font-weight:500}
 .au-rep-count-l{font-size:11px;color:var(--au-muted);margin-top:5px}
@@ -68,6 +72,11 @@
 .au-rep-card-h{display:flex;align-items:center;gap:11px;width:100%;background:none;border:0;cursor:pointer;
   padding:14px 16px;text-align:left;font-family:inherit}
 .au-rep-card-h:hover{background:rgba(20,30,51,.02)}
+.au-rep-card-h:focus-visible{outline:2px solid var(--au-primary);outline-offset:-2px}
+.au-rep-verify-link{padding:0 16px 14px}
+.au-rep-verify-link a{display:inline-flex;align-items:center;gap:6px;font-size:12px;
+  font-weight:600;color:var(--au-primary);text-decoration:none}
+.au-rep-verify-link a:hover{text-decoration:underline}
 .au-rep-card-t{flex:1;min-width:0;font-size:14px;font-weight:600;color:var(--au-ink)}
 .au-rep-card-meta{font-size:11.5px;color:var(--au-muted);white-space:nowrap}
 .au-rep-chev{color:var(--au-muted);transition:transform .2s;flex:none}
@@ -81,6 +90,12 @@
 .au-rep-meta-row span{display:inline-flex;align-items:center;gap:5px}
 .au-rep-fx-h{font-family:var(--au-font-numeric);font-size:10px;letter-spacing:.06em;text-transform:uppercase;
   color:var(--au-muted);margin-top:4px}
+/* Fix-first hierarchy (DiagnosisCard): the actionable fix reads as the visually
+   dominant step — a quiet highlighted block, not a loud banner — with evidence/why
+   staying real and available but secondary. */
+.au-rep-fx-h-prominent{color:var(--au-primary);font-weight:700}
+.au-rep-fix-prominent{background:var(--au-sky);border-radius:var(--au-r-s);padding:9px 11px;
+  color:var(--au-ink);font-weight:500}
 .au-rep-fx-ul{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px}
 .au-rep-fx-ul li{display:flex;align-items:flex-start;gap:8px;font-size:13px;color:var(--au-ink-2);line-height:1.5}
 .au-rep-fx-ul li svg{margin-top:2px;flex:none;color:var(--au-primary)}
@@ -97,3 +112,122 @@
 /* content insights (read-only) */
 .au-rep-ci-page{border-top:1px solid var(--au-line-2);padding-top:12px;margin-top:12px}
 .au-rep-ci-url{font-family:var(--au-font-numeric);font-size:11.5px;color:var(--au-muted);margin-bottom:8px}
+
+/* ---- Phase 1: negative-first ---- */
+/* "We found X issues" lead line in the summary */
+.au-rep-found{display:flex;align-items:center;gap:7px;flex-wrap:wrap;margin:10px 0 0;
+  font-size:13.5px;line-height:1.5;color:var(--au-peach-d)}
+.au-rep-found b{color:var(--au-ink)}
+
+/* B. What's hurting your score? */
+.au-rep-probs{display:flex;flex-direction:column;gap:10px}
+.au-rep-prob{border:1px solid var(--au-line);border-radius:var(--au-r-m);padding:12px 14px;
+  background:var(--au-app)}
+.au-rep-prob-top{display:flex;align-items:baseline;gap:10px}
+.au-rep-prob-name{font-weight:650;font-size:14px;color:var(--au-ink);flex:1;min-width:120px}
+.au-rep-prob-score{font-family:var(--au-font-numeric);font-weight:700;font-size:18px}
+.au-rep-prob-max{font-size:11px;color:var(--au-muted);font-weight:600}
+.au-rep-prob-loss{font-family:var(--au-font-numeric);font-size:12px;font-weight:700;color:var(--au-peach-d);
+  background:rgba(186,80,29,.10);border-radius:999px;padding:2px 9px;white-space:nowrap}
+.au-rep-prob-issue{font-size:13px;line-height:1.5;color:var(--au-ink-2);margin-top:6px}
+.au-rep-prob-prev{display:flex;align-items:flex-start;gap:6px;font-size:12px;line-height:1.5;
+  color:var(--au-muted);margin-top:6px}
+.au-rep-prob-prev svg{margin-top:2px;flex-shrink:0;color:var(--au-primary)}
+.au-rep-prob-ev{display:flex;flex-wrap:wrap;gap:5px 14px;margin-top:7px}
+.au-rep-prob-ev-item{font-size:11.5px;color:var(--au-muted)}
+.au-rep-prob-ev-item b{color:var(--au-ink-2);font-weight:600}
+.au-rep-prob-jump{margin-top:8px;background:none;border:none;padding:0;cursor:pointer;
+  font-size:11.5px;font-weight:600;color:var(--au-primary);font-family:inherit}
+.au-rep-prob-jump:hover{text-decoration:underline}
+
+/* C. Score breakdown (points lost per signal) */
+.au-rep-bd{display:flex;flex-direction:column;gap:9px}
+.au-rep-bd-row{display:grid;grid-template-columns:minmax(120px,1.4fr) 3fr 30px 52px;align-items:center;gap:10px}
+.au-rep-bd-name{font-size:13px;color:var(--au-ink-2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.au-rep-bd-track{height:8px;border-radius:999px;background:var(--au-line-2);overflow:hidden}
+.au-rep-bd-fill{height:100%;border-radius:999px}
+.au-rep-bd-score{font-family:var(--au-font-numeric);font-size:13px;font-weight:700;text-align:right}
+.au-rep-bd-loss{font-family:var(--au-font-numeric);font-size:12px;font-weight:600;text-align:right;color:var(--au-muted)}
+.au-rep-bd-loss.neg{color:var(--au-peach-d)}
+@media (max-width:560px){
+  .au-rep-bd-row{grid-template-columns:1fr 34px 46px;grid-template-areas:"name score loss" "track track track"}
+  .au-rep-bd-name{grid-area:name}.au-rep-bd-score{grid-area:score}.au-rep-bd-loss{grid-area:loss}
+  .au-rep-bd-track{grid-area:track}
+}
+
+/* Paywall benefits list */
+.au-rep-lock-feats{list-style:none;margin:4px 0 0;padding:0;display:grid;gap:5px;text-align:left}
+.au-rep-lock-feats li{display:flex;align-items:center;gap:7px;font-size:12.5px;color:var(--au-ink-2)}
+.au-rep-lock-feats svg{color:var(--au-mint-d);flex-shrink:0}
+
+/* Score impact preview (estimate only) */
+.au-rep-ip{border:1px solid var(--au-line);border-radius:var(--au-r-m);padding:12px 14px;
+  background:var(--au-app);margin:2px 0 12px}
+.au-rep-ip-row{display:flex;align-items:center;justify-content:center;gap:16px;flex-wrap:wrap}
+.au-rep-ip-col{text-align:center;min-width:78px}
+.au-rep-ip-l{font-size:10.5px;letter-spacing:.04em;text-transform:uppercase;color:var(--au-muted)}
+.au-rep-ip-v{font-family:var(--au-font-numeric);font-weight:700;font-size:22px;color:var(--au-ink);margin-top:2px}
+.au-rep-ip-v.pos{color:var(--au-mint-d)}
+.au-rep-ip-v.goal{color:var(--au-primary)}
+.au-rep-ip-arrow{color:var(--au-mint-d);flex-shrink:0}
+.au-rep-ip-note{text-align:center;font-size:11px;color:var(--au-muted);margin-top:8px;font-style:italic}
+
+/* ---- Phase 2: score impact simulator ---- */
+.au-sim-scores{display:flex;align-items:center;justify-content:center;gap:14px;flex-wrap:wrap;
+  padding:14px 12px;border:1px solid var(--au-line);border-radius:var(--au-r-m);background:var(--au-app)}
+.au-sim-sc{text-align:center;min-width:82px}
+.au-sim-sc-l{font-size:10.5px;letter-spacing:.04em;text-transform:uppercase;color:var(--au-muted)}
+.au-sim-sc-v{font-family:var(--au-font-numeric);font-weight:700;font-size:24px;color:var(--au-ink);margin-top:2px}
+.au-sim-sc-v.pos{color:var(--au-mint-d)}
+.au-sim-sc-v.goal{color:var(--au-primary)}
+.au-sim-plus{font-size:20px;color:var(--au-muted);font-weight:600}
+.au-sim-arrow{color:var(--au-mint-d);flex-shrink:0}
+.au-sim-note{text-align:center;font-size:11px;color:var(--au-muted);font-style:italic;margin:8px 0 12px}
+.au-sim-items{display:flex;flex-direction:column;gap:8px}
+.au-sim-item{display:flex;align-items:center;gap:11px;width:100%;text-align:left;cursor:pointer;
+  border:1px solid var(--au-line);border-radius:var(--au-r-m);background:var(--au-solid);
+  padding:10px 13px;transition:border-color .15s,background .15s}
+.au-sim-item:hover{border-color:var(--au-primary)}
+.au-sim-item.on{border-color:var(--au-mint-d);background:rgba(21,122,78,.06)}
+.au-sim-check{color:var(--au-muted);flex-shrink:0;display:flex}
+.au-sim-item.on .au-sim-check{color:var(--au-mint-d)}
+.au-sim-item-main{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
+.au-sim-item-t{font-size:13.5px;font-weight:600;color:var(--au-ink)}
+.au-sim-item-meta{font-size:11.5px;color:var(--au-muted)}
+.au-sim-item-rec{font-family:var(--au-font-numeric);font-weight:700;font-size:15px;color:var(--au-mint-d);
+  white-space:nowrap}
+.au-sim-lock{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:12px;padding:10px 13px;
+  border:1px dashed var(--au-line);border-radius:var(--au-r-m);font-size:12.5px;color:var(--au-ink-2)}
+.au-sim-lock>span{flex:1;min-width:140px}
+
+/* ---- Technical SEO & Indexability ---- */
+.au-tseo-badge{flex-shrink:0;font-size:9.5px;font-weight:700;text-transform:uppercase;
+  letter-spacing:.04em;color:#fff;padding:2px 8px;border-radius:999px}
+.au-tseo-url{font-weight:600;font-size:13px;word-break:break-all;color:var(--au-ink)}
+.au-tseo-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+/* Scan-coverage information (e.g. sitemap URLs this scan didn't crawl) — deliberately
+   NOT styled like an issue card (no severity badge, no red/orange accent): this is
+   informational parity, never urgency. */
+.au-tseo-coverage{background:var(--au-app);border-radius:var(--au-r-s);padding:10px 12px}
+.au-tseo-coverage-h{font-family:var(--au-font-numeric);font-size:10px;letter-spacing:.06em;
+  text-transform:uppercase;color:var(--au-muted);font-weight:700}
+
+/* ---- Content Intelligence: expandable cluster page details ---- */
+.au-ci-toggle{background:none;border:none;padding:0;margin-top:6px;font-size:11.5px;
+  font-weight:600;color:var(--au-primary);cursor:pointer;text-decoration:underline}
+.au-ci-evidence{margin:6px 0 0;padding-left:16px;font-size:12px;color:var(--au-ink-2);line-height:1.6}
+
+/* ---- Phase 2: 30-day action plan ---- */
+.au-plan-week{margin-top:14px}
+.au-plan-week:first-of-type{margin-top:4px}
+.au-plan-week-h{font-family:var(--au-font-heading);font-weight:700;font-size:13px;color:var(--au-primary);
+  margin-bottom:8px;padding-bottom:5px;border-bottom:1px solid var(--au-line-2)}
+.au-plan-week-h.au-plan-backlog{color:var(--au-muted)}
+.au-plan-tasks{display:flex;flex-direction:column;gap:8px}
+.au-plan-task{display:flex;align-items:flex-start;gap:10px;border:1px solid var(--au-line);
+  border-radius:var(--au-r-m);padding:11px 13px;background:var(--au-app)}
+.au-plan-task-main{flex:1;min-width:0}
+.au-plan-task-t{font-size:13.5px;font-weight:600;color:var(--au-ink)}
+.au-plan-task-why{font-size:12px;line-height:1.5;color:var(--au-ink-2);margin-top:3px}
+.au-plan-task-meta{display:flex;flex-wrap:wrap;gap:12px;margin-top:6px;font-size:11px;color:var(--au-muted)}
+.au-plan-task-meta span{display:inline-flex;align-items:center;gap:4px}

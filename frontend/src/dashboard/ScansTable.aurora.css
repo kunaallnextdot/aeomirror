@@ -36,6 +36,7 @@
   cursor:pointer;transition:border-color .15s,color .15s}
 .au-sc-iconbtn:hover:not(:disabled){border-color:var(--au-primary);color:var(--au-primary)}
 .au-sc-iconbtn:disabled{opacity:.5;cursor:not-allowed}
+.au-sc-iconbtn:focus-visible{outline:2px solid var(--au-primary);outline-offset:2px}
 .au-sc-iconbtn.au-sc-danger:hover:not(:disabled){border-color:var(--au-peach-d);color:var(--au-peach-d)}
 .au-sc-check{width:16px;height:16px;accent-color:var(--au-primary);cursor:pointer}
 

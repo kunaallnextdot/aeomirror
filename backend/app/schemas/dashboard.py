@@ -15,6 +15,11 @@ class ScanSummary(BaseModel):
     status: str
     scanner_version: str | None = None
     signal_scores: dict = {}
+    # False only for a scan a monitor triggered (scheduled check / "Run Now") — those
+    # don't consume the org's scan-job quota (see entitlements.scans_this_month), which
+    # is why this org's scan HISTORY count can legitimately exceed the sidebar's "Scan
+    # jobs used" count. True for every ordinary (single-page, bulk, rerun) scan.
+    billable: bool = True
 
 
 class LatestScan(BaseModel):
@@ -49,6 +54,12 @@ class CommonFailure(BaseModel):
 class CompareRequest(BaseModel):
     a_id: str   # the "previous" scan
     b_id: str   # the "current" scan
+
+
+class VerifyRequest(BaseModel):
+    baseline_scan_id: str
+    verification_scan_id: str
+    signal_id: str
 
 
 class DashboardSummary(BaseModel):

@@ -6,13 +6,19 @@ are strong proxies for crawlable internal structure.
 """
 from __future__ import annotations
 
-from urllib.parse import urlparse
+from urllib.parse import urljoin, urlparse
 
 from app.scanner.signals.base import SignalContext, SignalResult
 
 ID, LABEL, WEIGHT = "links", "Internal Linking", 8
 
-_GENERIC = {"click here", "read more", "here", "learn more", "more", "link", "this"}
+GENERIC_ANCHOR_TEXTS = {"click here", "read more", "here", "learn more", "more", "link", "this"}
+_GENERIC = GENERIC_ANCHOR_TEXTS   # short internal alias used below
+
+# Real Crawl Graph: cap on how many internal link targets one page's evidence carries.
+# A page with more real internal anchors than this is vanishingly rare (mega nav/footer
+# sitemaps aside) — capped so one degenerate page can't bloat every stored report.
+_MAX_LINK_TARGETS = 500
 
 
 def analyze(ctx: SignalContext) -> SignalResult:
@@ -24,22 +30,31 @@ def analyze(ctx: SignalContext) -> SignalResult:
     anchors = soup.find_all("a", href=True)
     internal, external, generic, empty = 0, 0, 0, 0
     anchor_texts: set = set()
+    # Real Crawl Graph (additive, no score impact): the actual internal targets +
+    # anchor text, resolved to absolute URLs with the SAME internal/external test used
+    # for the `internal`/`external` counts below — reusing this one pass over the
+    # anchors rather than a second HTML parse.
+    link_targets: list = []
     for a in anchors:
         href = a["href"].strip()
         if href.startswith("#") or href.startswith("mailto:") or href.startswith("tel:"):
             continue
         h = urlparse(href).hostname
-        if href.startswith("/") or (h and h.lower() == host) or not h:
+        is_internal = href.startswith("/") or (h and h.lower() == host) or not h
+        if is_internal:
             internal += 1
         else:
             external += 1
-        text = a.get_text(" ", strip=True).lower()
+        raw_text = a.get_text(" ", strip=True)
+        text = raw_text.lower()
         if not text:
             empty += 1
         else:
             anchor_texts.add(text)
             if text in _GENERIC:
                 generic += 1
+        if is_internal and len(link_targets) < _MAX_LINK_TARGETS:
+            link_targets.append({"target": urljoin(ctx.url, href), "anchor_text": raw_text or None})
 
     has_nav = bool(soup.find("nav")) or bool(soup.select_one("header a, [role=navigation]"))
     diversity = len(anchor_texts) / max(internal + external, 1)
@@ -81,5 +96,6 @@ def analyze(ctx: SignalContext) -> SignalResult:
             "internal_links": internal, "external_links": external,
             "has_nav": has_nav, "anchor_diversity": round(diversity, 2),
             "generic_anchors": generic, "empty_anchors": empty,
+            "link_targets": link_targets,
         },
     )

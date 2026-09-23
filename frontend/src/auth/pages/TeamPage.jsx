@@ -105,7 +105,7 @@ export default function TeamPage() {
                   <AuRoleBadge role={m.role} />
                 )}
                 {canManage && !m.is_owner && (
-                  <button className="au-btn au-ghost au-sm" onClick={() => kick(m)} title="Remove member"><Trash2 size={13} /></button>
+                  <button className="au-btn au-ghost au-sm" onClick={() => kick(m)} title="Remove member" aria-label={`Remove ${m.name || m.email || "member"}`}><Trash2 size={13} /></button>
                 )}
               </div>
             );
@@ -123,7 +123,7 @@ export default function TeamPage() {
                   <div className="au-mem-email">invited as {inv.role} · expires {inv.expires_at ? new Date(inv.expires_at).toLocaleDateString() : "—"}</div>
                 </div>
                 <AuRoleBadge role={inv.role} />
-                <button className="au-btn au-ghost au-sm" onClick={() => cancel(inv)} title="Cancel invitation"><X size={13} /></button>
+                <button className="au-btn au-ghost au-sm" onClick={() => cancel(inv)} title="Cancel invitation" aria-label={`Cancel invitation for ${inv.email}`}><X size={13} /></button>
               </div>
             ))}
           </div>

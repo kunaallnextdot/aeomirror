@@ -71,9 +71,9 @@ describe("empty-recommendation replacement (CHANGE 3)", () => {
     sample({ brand_mentioned: false, recommended_entities: [] }),
   ])[0];
 
-  it("points to the gap-to-action when a gap exists (priority a)", () => {
+  it("points to AI Visibility's content gaps when a gap exists (priority a)", () => {
     render(<ProviderGroup g={emptyGroup()} ctx={{ hasGap: true }} />);
-    expect(screen.getByText(/Why not you/)).toBeTruthy();
+    expect(screen.getByText(/Content gaps/)).toBeTruthy();
     expect(screen.queryByText(/No specific brands were recommended/)).toBeNull();
   });
 

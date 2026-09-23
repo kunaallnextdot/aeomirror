@@ -59,9 +59,13 @@ def registered_domain(host: str | None) -> str:
     return ".".join(labels[-2:]) if len(labels) >= 2 else host
 
 
-def _dedup_key(url: str) -> str:
+def normalize_dedup_key(url: str) -> str:
     """Path-aware normalized key so a trailing slash / 'www.' host / scheme collapse to
-    one entry, but distinct paths and queries stay distinct."""
+    one entry, but distinct paths and queries stay distinct. Public (not `_`-prefixed
+    only for its own historical reasons) so other read-side modules that need to match
+    the SAME URL across different representations (e.g. Technical SEO comparing a
+    canonical target or a sitemap entry against the crawled URL set) reuse this exact
+    normalization instead of duplicating it — see reports/technical_seo.py."""
     p = urlparse(url)
     host = (p.hostname or "").lower()
     if host.startswith("www."):
@@ -331,7 +335,7 @@ def build_url_list(raw_urls, max_urls: int) -> tuple[list[str], list[dict]]:
         except UnsafeUrlError:
             skipped.append({"url": norm, "reason": SKIP_SSRF})
             continue
-        key = _dedup_key(safe)
+        key = normalize_dedup_key(safe)
         if key in seen:
             skipped.append({"url": norm, "reason": SKIP_DUPLICATE})
             continue

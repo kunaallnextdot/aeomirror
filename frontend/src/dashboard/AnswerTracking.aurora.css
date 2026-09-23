@@ -8,6 +8,11 @@
 .au-at-siteselect{display:flex;align-items:center;gap:12px;margin-top:14px;position:relative;z-index:1}
 .au-at-siteselect-h{font-family:var(--au-font-numeric);font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--au-muted)}
 
+/* Compact "which site am I looking at" indicator — deliberately small/quiet, not a
+   second heading; its only job is to make a cross-site mismatch impossible to miss. */
+.au-at-context{display:flex;align-items:center;gap:6px;margin-top:10px;font-size:12px;color:var(--au-muted)}
+.au-at-context-domain{font-family:var(--au-font-numeric);color:var(--au-ink-2);font-weight:600}
+
 .au-at-detail{margin-top:14px}
 .au-at-detail-h{display:flex;align-items:center;justify-content:space-between;gap:10px}
 .au-at-detail-h span:first-child{font-family:var(--au-font-heading);font-size:16px;font-weight:700;color:var(--au-ink)}
@@ -81,8 +86,14 @@
 .au-at-bar-v{flex:none;width:44px;text-align:right;font-family:var(--au-font-numeric);font-size:11px;color:var(--au-muted)}
 
 /* leaderboard */
-.au-at-lb{display:flex;flex-direction:column;gap:3px}
-.au-at-lb-head,.au-at-lb-row{display:grid;grid-template-columns:34px minmax(80px,1.4fr) 40px minmax(56px,1fr) 46px 56px 50px;align-items:center;gap:8px}
+/* Unlike every other table in the app (.au-sc-tablewrap/.au-sd-tablewrap/.au-tablewrap
+   all wrap in overflow-x:auto), this 7-column grid had no narrow-viewport fallback — at
+   ~375-480px its columns compress below legibility with no way to scroll to see them.
+   Same fix as the others: scroll horizontally as a block, never squeeze into illegibility
+   or force the page itself to scroll sideways. */
+.au-at-lb{display:flex;flex-direction:column;gap:3px;overflow-x:auto;padding-bottom:2px}
+.au-at-lb-head,.au-at-lb-row{display:grid;grid-template-columns:34px minmax(80px,1.4fr) 40px minmax(56px,1fr) 46px 56px 50px;
+  align-items:center;gap:8px;min-width:410px}
 .au-at-lb-head{font-family:var(--au-font-numeric);font-size:10px;color:var(--au-muted);text-transform:uppercase;letter-spacing:.04em;padding:0 8px 4px}
 .au-at-lb-head .au-at-lb-bar{background:transparent}
 .au-at-lb-row{background:var(--au-solid);border:1px solid var(--au-line);border-radius:var(--au-r-s);padding:7px 8px;cursor:pointer;text-align:left;color:var(--au-ink);font:inherit;font-size:12px}
@@ -146,3 +157,174 @@
   background:var(--au-glass);border-radius:var(--au-r-s);padding:10px 12px;line-height:1.5;max-height:280px;overflow:auto}
 .au-at-mark{background:var(--au-lemon);color:var(--au-lemon-d);padding:0 2px;border-radius:3px}
 .au-at-chart{height:180px}
+
+/* ================= Phase 3 — AI Visibility dashboard ================= */
+.au-av{margin-bottom:14px}
+.au-av-lede{font-size:15px;line-height:1.6;color:var(--au-ink-2);margin:2px 0 4px}
+.au-av-lede b{color:var(--au-ink)}
+.au-av-miss{color:var(--au-peach-d)!important}
+.au-av-note{display:flex;align-items:center;gap:6px;font-size:11.5px;color:var(--au-muted);margin:6px 0}
+.au-av-trend{display:inline-flex;align-items:center;gap:4px;margin-left:8px;font-size:11.5px;
+  font-weight:600;padding:2px 8px;border-radius:999px;vertical-align:middle}
+.au-av-trend.up{color:var(--au-mint-d);background:rgba(21,122,78,.10)}
+.au-av-trend.down{color:var(--au-peach-d);background:rgba(186,80,29,.10)}
+.au-av-trend.flat{color:var(--au-muted);background:var(--au-line-2)}
+
+.au-av-metrics{display:flex;flex-wrap:wrap;gap:22px;margin:12px 0;padding:14px 16px;
+  border:1px solid var(--au-line);border-radius:var(--au-r-m);background:var(--au-app)}
+.au-av-metric-v{font-family:var(--au-font-numeric);font-weight:700;font-size:26px;color:var(--au-ink)}
+.au-av-metric-l{font-size:11.5px;color:var(--au-ink-2);margin-top:2px}
+.au-av-metric-s{font-size:10.5px;color:var(--au-muted)}
+
+.au-av-block{margin-top:16px}
+.au-av-h{display:flex;align-items:center;gap:7px;font-family:var(--au-font-heading);font-weight:700;
+  font-size:13px;color:var(--au-ink);margin-bottom:9px}
+.au-av-h .au-sub{font-weight:400}
+
+.au-av-bar{display:grid;grid-template-columns:110px 1fr 96px;align-items:center;gap:10px;margin-bottom:7px}
+.au-av-bar-l{font-size:12.5px;color:var(--au-ink-2);text-transform:capitalize}
+.au-av-bar-track{height:8px;border-radius:999px;background:var(--au-line-2);overflow:hidden}
+.au-av-bar-fill{display:block;height:100%;border-radius:999px;background:var(--au-primary)}
+.au-av-bar-v{font-family:var(--au-font-numeric);font-size:12px;color:var(--au-ink);text-align:right}
+
+.au-av-gap{border-left:2px solid var(--au-peach-d);padding:4px 0 4px 11px;margin-bottom:9px}
+.au-av-gap-q{font-size:13px;font-weight:600;color:var(--au-ink)}
+.au-av-gap-meta{font-size:11.5px;color:var(--au-muted);margin-top:2px}
+
+.au-av-tablewrap{overflow-x:auto}
+.au-av-table{width:100%;border-collapse:collapse;font-size:12.5px}
+.au-av-table th{text-align:left;font-size:10.5px;letter-spacing:.03em;text-transform:uppercase;
+  color:var(--au-muted);font-weight:600;padding:4px 8px;border-bottom:1px solid var(--au-line-2)}
+.au-av-table td{padding:7px 8px;border-bottom:1px solid var(--au-line-2);color:var(--au-ink-2)}
+.au-av-you{background:rgba(163,74,21,.05)}
+.au-av-you td{color:var(--au-ink);font-weight:600}
+.au-av-youtag,.au-av-tracked{font-size:9.5px;text-transform:uppercase;letter-spacing:.04em;
+  padding:1px 6px;border-radius:999px;margin-left:6px;vertical-align:middle}
+.au-av-youtag{background:var(--au-primary);color:#fff}
+.au-av-tracked{background:var(--au-line-2);color:var(--au-muted)}
+.au-av-delta{display:inline-flex;align-items:center;gap:3px;font-weight:600}
+.au-av-delta.up{color:var(--au-mint-d)}
+.au-av-delta.down{color:var(--au-peach-d)}
+
+.au-av-h2h{margin-top:10px}
+.au-av-h2h-h{font-size:11.5px;font-weight:600;color:var(--au-muted);text-transform:uppercase;letter-spacing:.03em;margin-bottom:6px}
+.au-av-h2h-row{font-size:12.5px;color:var(--au-ink-2);padding:6px 10px;border:1px solid var(--au-line-2);
+  border-radius:var(--au-r-s,8px);margin-bottom:6px;background:var(--au-app)}
+
+.au-av-cg{border:1px solid var(--au-line);border-radius:var(--au-r-m);padding:11px 13px;margin-bottom:9px;background:var(--au-app)}
+.au-av-cg-q{font-size:13px;font-weight:600;color:var(--au-ink)}
+.au-av-cg-why{font-size:12.5px;line-height:1.5;color:var(--au-ink-2);margin-top:5px}
+.au-av-cg-none{font-size:12px;color:var(--au-muted);font-style:italic;margin-top:5px}
+.au-av-cg-actions{margin:6px 0 0;padding-left:18px;font-size:12.5px;color:var(--au-ink-2);line-height:1.6}
+
+.au-av-opp{display:flex;align-items:flex-start;gap:10px;border:1px solid var(--au-line);
+  border-radius:var(--au-r-m);padding:11px 13px;margin-bottom:8px;background:var(--au-app)}
+.au-av-opp-pri{flex-shrink:0;font-size:9.5px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;
+  color:#fff;padding:2px 8px;border-radius:999px;margin-top:2px}
+.au-av-opp-main{flex:1;min-width:0}
+.au-av-opp-t{font-size:13.5px;font-weight:600;color:var(--au-ink)}
+.au-av-opp-d{font-size:12px;line-height:1.5;color:var(--au-ink-2);margin-top:3px}
+.au-av-opp-a{font-size:12px;color:var(--au-ink-2);margin-top:4px}
+.au-av-opp-refs{display:flex;align-items:center;gap:4px;font-size:11px;color:var(--au-muted);margin-top:4px}
+.au-av-opp-impact{flex-shrink:0;font-family:var(--au-font-numeric);font-weight:700;font-size:18px;color:var(--au-primary)}
+.au-av-opp-root{font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;
+  color:var(--au-primary);margin-bottom:3px}
+.au-av-opp-toggle{background:none;border:none;padding:0;margin-top:6px;font-size:11.5px;
+  font-weight:600;color:var(--au-primary);cursor:pointer;text-decoration:underline}
+.au-av-opp-evidence{margin:6px 0 0;padding-left:16px;font-size:12px;color:var(--au-ink-2);line-height:1.6}
+
+.au-av-lockrow{display:flex;align-items:center;gap:8px;width:100%;text-align:left;cursor:pointer;
+  border:1px dashed var(--au-line);border-radius:var(--au-r-m);background:transparent;
+  padding:9px 12px;margin-top:8px;font-size:12px;color:var(--au-muted)}
+.au-av-lockrow:hover{border-color:var(--au-primary);color:var(--au-ink-2)}
+.au-av-lockrow>span:first-of-type{flex:1}
+.au-av-lockrow-cta{color:var(--au-primary);font-weight:600}
+
+.au-av-unlock{margin-top:16px;text-align:center;padding:18px;border:1px solid var(--au-line);
+  border-radius:var(--au-r-m);background:linear-gradient(180deg,var(--au-app),var(--au-solid))}
+.au-av-unlock-t{display:flex;align-items:center;justify-content:center;gap:7px;font-family:var(--au-font-heading);
+  font-weight:700;font-size:15px;color:var(--au-ink)}
+.au-av-unlock-s{font-size:12.5px;color:var(--au-muted);max-width:440px;margin:6px auto 12px}
+@media (max-width:560px){.au-av-bar{grid-template-columns:80px 1fr 70px}}
+
+/* Phase 3 — answerability verdict + empty state */
+.au-av-verdict{display:flex;flex-wrap:wrap;align-items:baseline;gap:10px;margin:8px 0 12px;
+  padding:11px 14px;border:1px solid var(--au-line);border-left-width:3px;border-radius:var(--au-r-m);
+  background:var(--au-app)}
+.au-av-verdict-label{font-family:var(--au-font-heading);font-weight:700;font-size:15px}
+.au-av-verdict-ev{font-size:13px;color:var(--au-ink-2)}
+.au-av-verdict.v-visible{border-left-color:var(--au-mint-d)}
+.au-av-verdict.v-visible .au-av-verdict-label{color:var(--au-mint-d)}
+.au-av-verdict.v-partially_visible{border-left-color:var(--au-lemon-d)}
+.au-av-verdict.v-partially_visible .au-av-verdict-label{color:var(--au-lemon-d)}
+.au-av-verdict.v-not_visible{border-left-color:var(--au-peach-d)}
+.au-av-verdict.v-not_visible .au-av-verdict-label{color:var(--au-peach-d)}
+.au-av-verdict.v-insufficient_data{border-left-color:var(--au-muted)}
+.au-av-verdict.v-insufficient_data .au-av-verdict-label{color:var(--au-muted)}
+.au-av-empty{display:flex;flex-direction:column;align-items:center;text-align:center;gap:6px;
+  padding:26px 18px;color:var(--au-muted)}
+.au-av-empty-t{font-family:var(--au-font-heading);font-weight:700;font-size:15px;color:var(--au-ink)}
+.au-av-empty-s{font-size:12.5px;max-width:420px}
+
+/* AEO Answer Simulator (primary panel) + the demoted "Provider Tracking (Premium)"
+   collapse in AnswerTracking.jsx. Reuses the au-at-* color tokens/spacing already
+   defined above — new au-as-* classes are only the genuinely new card/list shapes. */
+.au-as-panel{margin-top:14px}
+.au-as-explainer{display:flex;gap:8px;align-items:flex-start;font-size:12.5px;
+  color:var(--au-ink-2);background:var(--au-app);border:1px solid var(--au-line);
+  border-radius:var(--au-r-s);padding:10px 12px;margin:6px 0 12px}
+.au-as-questions{list-style:none;margin:0 0 8px;padding:0;display:flex;flex-direction:column;gap:4px;
+  max-height:280px;overflow-y:auto}
+.au-as-question label{display:flex;align-items:center;gap:8px;font-size:13px;padding:5px 4px;
+  border-radius:var(--au-r-s);cursor:pointer}
+.au-as-question label:hover{background:var(--au-app)}
+.au-as-question-text{flex:1}
+.au-as-question-badge{font-size:10.5px;color:var(--au-muted);border:1px solid var(--au-line);
+  border-radius:20px;padding:1px 7px;text-transform:capitalize}
+.au-as-presets{display:flex;gap:6px;margin-bottom:10px}
+.au-as-llm-toggle{display:flex;align-items:center;gap:7px;font-size:12.5px;color:var(--au-ink-2);
+  margin:8px 0}
+.au-as-results{display:flex;flex-direction:column;gap:8px;margin-top:14px}
+.au-as-card{border:1px solid var(--au-line);border-radius:var(--au-r-m);background:var(--au-app);overflow:hidden}
+.au-as-card-head{display:flex;align-items:center;gap:8px;width:100%;text-align:left;
+  background:none;border:none;cursor:pointer;padding:10px 12px;font:inherit;color:var(--au-ink)}
+.au-as-card-head:focus-visible{outline:2px solid var(--au-primary);outline-offset:-2px}
+.au-as-card-question{flex:1;font-size:13px}
+.au-as-card-body{padding:0 14px 14px 34px;display:flex;flex-direction:column;gap:8px}
+.au-as-brand{font-size:12.5px;color:var(--au-ink-2)}
+.au-as-metrics{display:flex;flex-wrap:wrap;gap:16px;padding:8px 0}
+.au-as-metric{display:flex;flex-direction:column;gap:2px;font-size:11px;
+  color:var(--au-muted);text-transform:uppercase;letter-spacing:.02em}
+.au-as-metric b{font-size:15px;color:var(--au-ink);text-transform:none;letter-spacing:normal;
+  font-family:var(--au-font-heading)}
+.au-as-summary{font-size:13px;color:var(--au-ink-2);line-height:1.5}
+.au-as-evidence-locked{font-size:11.5px;color:var(--au-muted);margin-top:6px}
+.au-as-missing ul{margin:4px 0 0;padding-left:18px;font-size:12.5px;color:var(--au-peach-d)}
+.au-as-fix{margin-top:10px;font-size:12.5px;color:var(--au-ink-2);line-height:1.5;
+  background:var(--au-app);border:1px solid var(--au-line);border-radius:var(--au-r-s);padding:9px 11px}
+.au-as-fix .au-at-block-h{display:block;font-size:10px}
+
+/* structured evidence cards — replaces the raw "✓ url — field: snippet" text dump.
+   Each card shows the same three facts the old line did (source type, URL, snippet),
+   just legibly separated instead of one run-on line. */
+.au-as-evidence-grid{display:flex;flex-direction:column;gap:8px}
+.au-as-ev-card{border:1px solid var(--au-line);border-radius:var(--au-r-s);
+  background:var(--au-solid);padding:9px 11px}
+.au-as-ev-head{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.au-as-ev-src{font-family:var(--au-font-numeric);font-size:10.5px;letter-spacing:.03em;
+  text-transform:uppercase;color:var(--au-primary);background:var(--au-mint);
+  padding:2px 8px;border-radius:999px}
+.au-as-ev-link{display:inline-flex;align-items:center;gap:4px;font-size:11px;
+  color:var(--au-muted);text-decoration:none;flex:none}
+.au-as-ev-link:hover{color:var(--au-primary)}
+.au-as-ev-url{font-family:var(--au-font-numeric);font-size:11px;color:var(--au-muted);
+  margin-top:5px;word-break:break-all}
+.au-as-ev-snip{font-size:12.5px;color:var(--au-ink-2);line-height:1.5;margin-top:5px;font-style:italic}
+
+.au-at-premium{margin-top:18px;border:1px solid var(--au-line);border-radius:var(--au-r-m);
+  overflow:hidden}
+.au-at-premium-summary{cursor:pointer;list-style:none;display:flex;align-items:center;gap:8px;
+  padding:12px 14px;font-family:var(--au-font-heading);font-weight:700;font-size:13px;
+  color:var(--au-ink-2);background:var(--au-app)}
+.au-at-premium-summary::-webkit-details-marker{display:none}
+.au-at-premium-body{padding:0}

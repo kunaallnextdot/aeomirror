@@ -49,9 +49,22 @@ export default function ScansTable({ scans = [], busyId, onView, onRerun, onDele
     return r;
   }, [scans, q, score, when, sort]);
 
+  // A monitor-triggered scan (scheduled check / "Run Now") shows up here — it's a
+  // real scan — but never counts against the sidebar's "Billable scans" quota (see
+  // entitlements.scans_this_month). Only surfaced when it's actually true for this
+  // list, so the common case (every scan is billable) shows nothing extra.
+  const billableCount = scans.filter((s) => s.billable !== false).length;
+  const hasNonBillable = billableCount < scans.length;
+
   return (
     <div className="aurora-screen">
       <Shell>
+        {hasNonBillable && (
+          <div className="au-dim" style={{ fontSize: 12.5, margin: "0 2px 10px" }}>
+            {scans.length} scan{scans.length === 1 ? "" : "s"} · {billableCount} counted toward your monthly scan quota
+            {" "}(scans tagged <b>Monitor</b> below were triggered automatically and don&apos;t use your quota)
+          </div>
+        )}
         <div className="au-sc-toolbar">
           <div className="au-sc-search">
             <Search size={15} />
@@ -102,21 +115,33 @@ export default function ScansTable({ scans = [], busyId, onView, onRerun, onDele
                                  onChange={() => toggleSel(s.id)} aria-label={`Select ${s.domain || s.url} for comparison`} />
                         </td>
                       )}
-                      <td><span className="au-sc-url">{s.domain || s.url}</span></td>
+                      <td>
+                        <span className="au-sc-url">{s.domain || s.url}</span>
+                        {s.billable === false && (
+                          <Tag variant="info" style={{ marginLeft: 6 }} title="Triggered by a monitor — doesn't use your scan quota">Monitor</Tag>
+                        )}
+                      </td>
                       <td><span role="img" aria-label={`Score ${s.overall_score ?? "not available"}`}><Ring value={s.overall_score} size={34} /></span></td>
                       <td><Tag variant={STATUS_VARIANT[st] || "info"}>{String(st).toUpperCase()}</Tag></td>
                       <td className="au-sc-meta">{fmtDate(s.scan_time)}</td>
                       <td className="au-sc-meta">{fmtDuration(s.duration_ms)}</td>
                       <td className="au-sc-td-right">
                         <div className="au-sc-actions">
-                          <button className="au-sc-iconbtn" onClick={() => onView(s.id)} title="View report"><Eye size={13} /></button>
+                          <button className="au-sc-iconbtn" onClick={() => onView(s.id)}
+                                  title="View scan details" aria-label={`View scan details for ${s.domain || s.url}`}>
+                            <Eye size={13} />
+                          </button>
                           {canRun && (
-                            <button className="au-sc-iconbtn" disabled={busy} onClick={() => onRerun(s.id)} title="Re-run scan">
+                            <button className="au-sc-iconbtn" disabled={busy} onClick={() => onRerun(s.id)}
+                                    title="Re-run scan" aria-label={`Re-run scan for ${s.domain || s.url}`}>
                               <RefreshCw size={13} className={busy ? "spin-slow" : ""} />
                             </button>
                           )}
                           {canDelete && (
-                            <button className="au-sc-iconbtn au-sc-danger" disabled={busy} onClick={() => onDelete(s.id)} title="Delete"><Trash2 size={13} /></button>
+                            <button className="au-sc-iconbtn au-sc-danger" disabled={busy} onClick={() => onDelete(s.id)}
+                                    title="Delete" aria-label={`Delete scan for ${s.domain || s.url}`}>
+                              <Trash2 size={13} />
+                            </button>
                           )}
                         </div>
                       </td>
@@ -172,9 +197,10 @@ export function ScansEmpty({ onRun }) {
             <div className="au-sc-ill"><Radar size={26} /></div>
             <div className="au-sc-ct">No scans yet</div>
             <div className="au-sc-cs">
-              AEOMirror checks whether AI systems like ChatGPT, Claude, Gemini and Perplexity
-              can reach, read and understand any website — then scores it across 10 signals.
-              Run your first scan to populate this dashboard.
+              Run your first scan to see:
+              <ul className="au-empty-bullets">
+                <li>visibility score</li><li>biggest problems</li><li>evidence</li><li>recommended fixes</li>
+              </ul>
             </div>
             <button className="au-btn au-accent" onClick={onRun}><Radar size={16} /> Run first scan</button>
           </div>
