@@ -289,7 +289,7 @@
 .au-as-card-head{display:flex;align-items:center;gap:8px;width:100%;text-align:left;
   background:none;border:none;cursor:pointer;padding:10px 12px;font:inherit;color:var(--au-ink)}
 .au-as-card-head:focus-visible{outline:2px solid var(--au-primary);outline-offset:-2px}
-.au-as-card-question{flex:1;font-size:13px}
+.au-as-card-question{flex:1;font-size:13px;min-width:0}
 .au-as-card-body{padding:0 14px 14px 34px;display:flex;flex-direction:column;gap:8px}
 .au-as-brand{font-size:12.5px;color:var(--au-ink-2)}
 .au-as-metrics{display:flex;flex-wrap:wrap;gap:16px;padding:8px 0}
@@ -298,6 +298,15 @@
 .au-as-metric b{font-size:15px;color:var(--au-ink);text-transform:none;letter-spacing:normal;
   font-family:var(--au-font-heading)}
 .au-as-summary{font-size:13px;color:var(--au-ink-2);line-height:1.5}
+.au-as-support{font-weight:500;color:var(--au-ink)}
+.au-as-nofix{font-size:12.5px;color:var(--au-mint-d);background:var(--au-mint);
+  border-radius:var(--au-r-s);padding:7px 10px}
+.au-as-nofix span{font-family:var(--au-font-numeric);font-size:10px;letter-spacing:.06em;
+  text-transform:uppercase;margin-right:6px;font-weight:700}
+/* De-emphasized detail row — real data, kept available, never competing with the
+   Support/Fix/Evidence steps above it for visual attention. */
+.au-as-secondary{margin-top:2px;padding-top:8px;border-top:1px solid var(--au-line);opacity:.85}
+.au-as-secondary .au-as-metrics{padding:0 0 6px}
 .au-as-evidence-locked{font-size:11.5px;color:var(--au-muted);margin-top:6px}
 .au-as-missing ul{margin:4px 0 0;padding-left:18px;font-size:12.5px;color:var(--au-peach-d)}
 .au-as-fix{margin-top:10px;font-size:12.5px;color:var(--au-ink-2);line-height:1.5;

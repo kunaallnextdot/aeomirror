@@ -287,6 +287,50 @@ def test_content_insights_generated_and_cached_per_page(monkeypatch):
     assert len(listed) == 1 and listed[0]["data"]["tone"]["score_0_100"] == 72
 
 
+def test_content_insights_structure_fixes_are_real_model_output_never_fabricated(monkeypatch):
+    """Phase F: Structure gets its own actionable fix list + implementation skeleton
+    from the SAME single model call (no second LLM call) — present when the model
+    supplies them, and honestly empty (never invented) when it doesn't."""
+    content_with_fixes = json.dumps({
+        "tone": {"assessment": "Professional.", "score_0_100": 72},
+        "clarity": {"assessment": "Mostly clear.", "score_0_100": 65},
+        "structure": {
+            "assessment": "Long service list with no introduction.", "score_0_100": 40,
+            "fixes": ["Add a 2-3 sentence introduction before the service list",
+                      "Group related services under H2 headings"],
+            "implementation": "H1: Digital Marketing Services\nIntro: ...\nH2: Our Services\nH3: SEO",
+        },
+        "suggestions": ["Shorten the intro paragraph"],
+        "rewrite_example": {"before": "x", "after": "y"},
+    })
+    calls = _install_ai(monkeypatch, content_with_fixes)
+    monkeypatch.setattr(rd, "fetch", _fake_fetch)
+    client, _ = auth_client()
+    sid = _make_scan(client, monkeypatch, "https://ci-fixes.example/")
+
+    r = client.post(f"/api/scans/{sid}/content-insights", json={})
+    assert r.status_code == 200
+    structure = r.json()["insights"]["structure"]
+    assert structure["fixes"] == ["Add a 2-3 sentence introduction before the service list",
+                                  "Group related services under H2 headings"]
+    assert structure["implementation"].startswith("H1: Digital Marketing Services")
+    assert calls["n"] == 1   # one model call total, no second call for structure
+
+
+def test_content_insights_structure_fixes_default_empty_when_model_omits_them(monkeypatch):
+    """A model response with no structure fixes (e.g. the page's structure is already
+    fine) must render honestly empty — never a placeholder/fabricated fix."""
+    _install_ai(monkeypatch, _CONTENT)   # the original fixture has no fixes/implementation
+    monkeypatch.setattr(rd, "fetch", _fake_fetch)
+    client, _ = auth_client()
+    sid = _make_scan(client, monkeypatch, "https://ci-nofix.example/")
+
+    r = client.post(f"/api/scans/{sid}/content-insights", json={})
+    structure = r.json()["insights"]["structure"]
+    assert structure["fixes"] == []
+    assert structure["implementation"] == ""
+
+
 def test_content_insights_malformed_json_returns_503(monkeypatch):
     """A malformed model response yields a clean 503, never a 500."""
     _install_ai(monkeypatch, "this is not json at all, sorry")

@@ -28,6 +28,8 @@ function Meter({ label, meter }) {
 export function InsightsBody({ data }) {
   if (!data) return null;
   const rw = data.rewrite_example || {};
+  const structureFixes = data.structure?.fixes || [];
+  const structureImpl = data.structure?.implementation || "";
   return (
     <div className="ci-body">
       <div className="ci-meters">
@@ -35,6 +37,24 @@ export function InsightsBody({ data }) {
         <Meter label="Clarity" meter={data.clarity} />
         <Meter label="Structure" meter={data.structure} />
       </div>
+
+      {/* Fix-first: Structure's own concrete action list + a short implementation
+          skeleton come immediately after the meters — real model output (see
+          backend/app/scanner/ai_content.py), never fabricated, and honestly omitted
+          when the model found nothing to fix. */}
+      {structureFixes.length > 0 && (
+        <div className="ci-block ci-structure-fix">
+          <div className="ci-h">Structure — what to fix</div>
+          <ol className="ci-ol">{structureFixes.map((f, i) => <li key={i}>{f}</li>)}</ol>
+          {structureImpl && (
+            <>
+              <div className="ci-h" style={{ marginTop: 8 }}>Implementation</div>
+              <pre className="au-code">{structureImpl}</pre>
+            </>
+          )}
+        </div>
+      )}
+
       {(data.suggestions || []).length > 0 && (
         <div className="ci-block">
           <div className="ci-h">Suggestions</div>

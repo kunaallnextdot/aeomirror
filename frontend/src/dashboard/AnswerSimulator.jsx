@@ -13,8 +13,12 @@ import { Cell, Button, Skeleton } from "./aurora.jsx";
 import { useUpgrade } from "./UpgradeModal.jsx";
 import "./AnswerTracking.aurora.css";
 
+// Human-readable status — answers "is this question supported?" directly, rather
+// than the abstract High/Medium/Low the underlying `answerability` enum reads as.
+// Same real backend value, friendlier words — nothing invented.
 const ANSWERABILITY_LABEL = {
-  HIGH: "High", MEDIUM: "Medium", LOW: "Low", INSUFFICIENT_EVIDENCE: "Insufficient evidence",
+  HIGH: "Supported", MEDIUM: "Partially supported", LOW: "Not supported",
+  INSUFFICIENT_EVIDENCE: "Not enough evidence",
 };
 const ANSWERABILITY_COLOR = {
   HIGH: "var(--au-mint-d)", MEDIUM: "var(--au-lemon-d)", LOW: "var(--au-peach-d)",
@@ -218,14 +222,31 @@ export default function AnswerSimulator({ monitorId, canRun }) {
   );
 }
 
+/* Fix-first order: Question/Status (header) -> Support -> What to fix/Fix ->
+   Evidence (collapsed sub-section) -> secondary metrics. Support is built from the
+   site's OWN real evidence snippet(s) — never a synthesized/invented sentence — and
+   falls back to the backend's own deterministic explanation for LOW/INSUFFICIENT_
+   EVIDENCE, where that text is already a complete, honest sentence on its own. */
+function supportText(result, level, summaryLine) {
+  const first = result.evidence?.[0]?.snippet;
+  if (level === "LOW" || level === "INSUFFICIENT_EVIDENCE" || !first) return summaryLine;
+  const n = result.evidence.length;
+  return `Your scanned content addresses this${n > 1 ? ` with ${n} supporting facts` : ""}: "${first}"`;
+}
+
 function SimulationResultCard({ result, onExplain, busy }) {
   const [expanded, setExpanded] = useState(false);
+  const [showEvidence, setShowEvidence] = useState(false);
   const level = result.answerability;
   // The deterministic answer_text is "<summary line>\n- <evidence line>..." — the
   // bullet lines duplicate exactly what the evidence cards below already show, so
   // only the summary line is surfaced here (see Answer Tracking redesign: no raw
   // evidence-text dump, structured evidence instead).
   const summaryLine = (result.answer_text || "").split("\n")[0];
+  const support = supportText(result, level, summaryLine);
+  const hasGap = result.missing_information.length > 0;
+  const evidenceCount = result.evidence.length;
+
   return (
     <div className="au-as-card">
       <button className="au-as-card-head" onClick={() => setExpanded((e) => !e)} aria-expanded={expanded}>
@@ -237,49 +258,46 @@ function SimulationResultCard({ result, onExplain, busy }) {
       </button>
       {expanded && (
         <div className="au-as-card-body">
-          <div className="au-as-metrics">
-            <div className="au-as-metric">
-              Evidence relevance
-              <b>{result.evidence_relevance_pct != null ? `${result.evidence_relevance_pct}%` : "—"}</b>
-            </div>
-            <div className="au-as-metric">
-              Topic alignment
-              <b>{result.topic_alignment_score != null ? `${result.topic_alignment_score}%` : "—"}</b>
-            </div>
-            <div className="au-as-metric">
-              Evidence coverage
-              <b>{result.evidence_coverage_pct != null ? `${result.evidence_coverage_pct}%` : "—"}</b>
-            </div>
-            <div className="au-as-metric">
-              Supported by
-              <b>{result.supported_url_count || 0} page{result.supported_url_count === 1 ? "" : "s"}</b>
-            </div>
-          </div>
+          {support && <div className="au-as-summary au-as-support">{support}</div>}
 
-          <div className="au-as-summary">{summaryLine}</div>
-
-          <div className="au-as-brand">
-            Brand Mention: <b>{result.brand_mentioned === true ? "YES" : result.brand_mentioned === false ? "NO" : "—"}</b>
-            {result.llm_step_used && <span className="au-at-tag"><Sparkles size={11} /> AI-explained</span>}
-          </div>
-
-          {result.evidence.length > 0 && (
-            <div className="au-as-evidence">
-              <div className="au-at-block-h">What the website supports</div>
-              <div className="au-as-evidence-grid">
-                {result.evidence.map((e, i) => (
-                  <div key={i} className="au-as-ev-card">
-                    <div className="au-as-ev-head">
-                      <span className="au-as-ev-src">{fieldLabel(e.field)}</span>
-                      <a className="au-as-ev-link" href={e.url} target="_blank" rel="noopener noreferrer">
-                        View source <ExternalLink size={10} />
-                      </a>
-                    </div>
-                    <div className="au-as-ev-url">{e.url}</div>
-                    <div className="au-as-ev-snip">“{e.snippet}”</div>
-                  </div>
-                ))}
+          {hasGap ? (
+            <div className="au-as-missing">
+              <div className="au-at-block-h">What to fix</div>
+              <ul>{result.missing_information.map((m, i) => <li key={i}>{m}</li>)}</ul>
+              {/* Generic, non-topic-specific guidance only — never a fabricated,
+                  topic-specific "opportunity" (e.g. never invents a page recommendation
+                  the site's own content doesn't support). */}
+              <div className="au-as-fix">
+                <span className="au-at-block-h" style={{ marginBottom: 4 }}>Fix</span>
+                Add a section that directly addresses this question, with a clear
+                heading and a concise answer near the top of the page.
               </div>
+            </div>
+          ) : level === "HIGH" && (
+            <div className="au-as-nofix"><span>Fix</span> No fix needed — this question is well supported.</div>
+          )}
+
+          {evidenceCount > 0 && (
+            <div className="au-as-evidence">
+              <button type="button" className="au-ci-toggle" onClick={() => setShowEvidence((v) => !v)}>
+                {showEvidence ? "Hide" : "View"} evidence ({evidenceCount} source{evidenceCount === 1 ? "" : "s"})
+              </button>
+              {showEvidence && (
+                <div className="au-as-evidence-grid" style={{ marginTop: 8 }}>
+                  {result.evidence.map((e, i) => (
+                    <div key={i} className="au-as-ev-card">
+                      <div className="au-as-ev-head">
+                        <span className="au-as-ev-src">{fieldLabel(e.field)}</span>
+                        <a className="au-as-ev-link" href={e.url} target="_blank" rel="noopener noreferrer">
+                          View source <ExternalLink size={10} />
+                        </a>
+                      </div>
+                      <div className="au-as-ev-url">{e.url}</div>
+                      <div className="au-as-ev-snip">“{e.snippet}”</div>
+                    </div>
+                  ))}
+                </div>
+              )}
               {result.locked_evidence_count > 0 && (
                 <div className="au-as-evidence-locked">
                   {result.locked_evidence_count} more source{result.locked_evidence_count === 1 ? "" : "s"} — Pro
@@ -288,26 +306,37 @@ function SimulationResultCard({ result, onExplain, busy }) {
             </div>
           )}
 
-          {result.missing_information.length > 0 && (
-            <div className="au-as-missing">
-              <div className="au-at-block-h">What is missing</div>
-              <ul>{result.missing_information.map((m, i) => <li key={i}>{m}</li>)}</ul>
-              {/* Generic, non-topic-specific guidance only — never a fabricated,
-                  topic-specific "opportunity" (e.g. never invents a page recommendation
-                  the site's own content doesn't support). */}
-              <div className="au-as-fix">
-                <span className="au-at-block-h" style={{ marginBottom: 4 }}>Recommended action</span>
-                Add a section that directly addresses this question, with a clear
-                heading and a concise answer near the top of the page.
-              </div>
-            </div>
-          )}
-
           {level === "INSUFFICIENT_EVIDENCE" && !result.llm_step_used && (
             <Button variant="accent" disabled={busy} onClick={onExplain}>
               <Sparkles size={13} /> Explain why
             </Button>
           )}
+
+          {/* Secondary detail — real, still available, never dominant. */}
+          <div className="au-as-secondary">
+            <div className="au-as-metrics">
+              <div className="au-as-metric">
+                Evidence relevance
+                <b>{result.evidence_relevance_pct != null ? `${result.evidence_relevance_pct}%` : "—"}</b>
+              </div>
+              <div className="au-as-metric">
+                Topic alignment
+                <b>{result.topic_alignment_score != null ? `${result.topic_alignment_score}%` : "—"}</b>
+              </div>
+              <div className="au-as-metric">
+                Evidence coverage
+                <b>{result.evidence_coverage_pct != null ? `${result.evidence_coverage_pct}%` : "—"}</b>
+              </div>
+              <div className="au-as-metric">
+                Supported by
+                <b>{result.supported_url_count || 0} page{result.supported_url_count === 1 ? "" : "s"}</b>
+              </div>
+            </div>
+            <div className="au-as-brand">
+              Brand Mention: <b>{result.brand_mentioned === true ? "YES" : result.brand_mentioned === false ? "NO" : "—"}</b>
+              {result.llm_step_used && <span className="au-at-tag"><Sparkles size={11} /> AI-explained</span>}
+            </div>
+          </div>
         </div>
       )}
     </div>

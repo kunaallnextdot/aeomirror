@@ -1369,9 +1369,36 @@ export function RecommendationCard({ r, ins, showProblem = true }) {
   // own raw evidence dict (same source ScanDetails' evidence block reads from).
   const evIssues = r.evidence?.issues || [];
   const evFindings = Object.entries(r.evidence?.findings || {}).filter(([k]) => k !== "detected_types");
+  // Fix-first order: Problem -> Fix -> Implementation -> Outcome -> Why it matters/
+  // Explanation -> Evidence -> Business/AI impact metadata (see PART 4/8 of the
+  // Phase F ticket — same reordering already applied to DiagnosisCard). No field was
+  // removed, renamed, or merged — only repositioned, so every existing consumer of
+  // this data (Full Report, Action Center, Scan Details) keeps the exact same real
+  // content, just fix-first.
   return (
     <div className="au-rep-card-b">
       {showProblem && <p className="au-rep-desc">{r.description}</p>}
+      {showProblem && fx.problem && <><div className="au-rep-fx-h">Problem</div><p className="au-rep-desc">{fx.problem}</p></>}
+
+      {(fx.recommended_fix || []).length > 0 && (
+        <><div className="au-rep-fx-h au-rep-fx-h-prominent">Recommended fix</div>
+          <ul className="au-rep-fx-ul au-rep-fix-prominent">{fx.recommended_fix.map((s, i) => <li key={i}><Wrench size={11} /> <span>{s}</span></li>)}</ul></>
+      )}
+      {fx.implementation_example && (
+        <><div className="au-rep-fx-h">Implementation example</div>
+          <pre className="au-code">{fx.implementation_example}</pre></>
+      )}
+      {fx.expected_outcome && <><div className="au-rep-fx-h">Expected outcome</div><p className="au-rep-outcome"><CheckCircle2 size={12} /> {fx.expected_outcome}</p></>}
+
+      {ins?.why_it_matters && (
+        <div className="au-rep-ai-why">
+          <div className="au-rep-ai-why-h"><Sparkles size={12} /> Why it matters</div>
+          <p>{ins.why_it_matters}</p>
+          {ins.priority_rationale && <p className="au-rep-ai-why-r">{ins.priority_rationale}</p>}
+        </div>
+      )}
+      {fx.explanation && <><div className="au-rep-fx-h">Explanation</div><p className="au-rep-desc">{fx.explanation}</p></>}
+
       {showProblem && (evIssues.length > 0 || evFindings.length > 0) && (
         <>
           <div className="au-rep-fx-h">Evidence</div>
@@ -1387,13 +1414,7 @@ export function RecommendationCard({ r, ins, showProblem = true }) {
           )}
         </>
       )}
-      {ins?.why_it_matters && (
-        <div className="au-rep-ai-why">
-          <div className="au-rep-ai-why-h"><Sparkles size={12} /> Why it matters</div>
-          <p>{ins.why_it_matters}</p>
-          {ins.priority_rationale && <p className="au-rep-ai-why-r">{ins.priority_rationale}</p>}
-        </div>
-      )}
+
       <div className="au-rep-impact">
         <div><div className="au-rep-impact-l"><Gauge size={12} /> Business impact</div><div>{r.business_impact}</div></div>
         <div><div className="au-rep-impact-l"><Gauge size={12} /> AI visibility impact</div><div>{r.ai_visibility_impact}</div></div>
@@ -1403,17 +1424,6 @@ export function RecommendationCard({ r, ins, showProblem = true }) {
         <span><Wrench size={12} /> {r.difficulty}</span>
         <span>Severity: <b>{r.severity}</b></span>
       </div>
-      {showProblem && fx.problem && <><div className="au-rep-fx-h">Problem</div><p className="au-rep-desc">{fx.problem}</p></>}
-      {fx.explanation && <><div className="au-rep-fx-h">Explanation</div><p className="au-rep-desc">{fx.explanation}</p></>}
-      {(fx.recommended_fix || []).length > 0 && (
-        <><div className="au-rep-fx-h">Recommended fix</div>
-          <ul className="au-rep-fx-ul">{fx.recommended_fix.map((s, i) => <li key={i}><Wrench size={11} /> <span>{s}</span></li>)}</ul></>
-      )}
-      {fx.implementation_example && (
-        <><div className="au-rep-fx-h">Implementation example</div>
-          <pre className="au-code">{fx.implementation_example}</pre></>
-      )}
-      {fx.expected_outcome && <><div className="au-rep-fx-h">Expected outcome</div><p className="au-rep-outcome"><CheckCircle2 size={12} /> {fx.expected_outcome}</p></>}
     </div>
   );
 }

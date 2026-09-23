@@ -68,6 +68,11 @@
 .ci-ul{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px}
 .ci-ul li{display:flex;gap:7px;align-items:flex-start;font-size:12.5px;line-height:1.5;color:var(--au-ink)}
 .ci-ul li svg{flex:none;margin-top:2px;color:var(--au-mint-d)}
+/* Structure's own fix-first block — visually dominant vs. the generic Suggestions
+   list below it, matching the same fix-first hierarchy used elsewhere in the report. */
+.ci-structure-fix{background:var(--au-sky);border-radius:var(--au-r-m);padding:11px 13px}
+.ci-ol{margin:0;padding-left:18px;display:flex;flex-direction:column;gap:5px}
+.ci-ol li{font-size:12.5px;line-height:1.5;color:var(--au-ink)}
 .ci-ba{display:grid;grid-template-columns:1fr 1fr;gap:10px}
 .ci-ba-col{border:1px solid var(--au-line);border-radius:9px;padding:9px 11px;background:var(--au-app)}
 .ci-ba-after{border-color:var(--au-primary);background:var(--au-mint)}

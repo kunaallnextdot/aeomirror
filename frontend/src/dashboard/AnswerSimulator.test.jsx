@@ -126,9 +126,10 @@ describe("AnswerSimulator", () => {
     fireEvent.click(screen.getByText("Run Simulation"));
 
     await waitFor(() => expect(runAnswerSimulation).toHaveBeenCalled());
-    await waitFor(() => expect(screen.getByText("High")).toBeTruthy());
+    await waitFor(() => expect(screen.getByText("Supported")).toBeTruthy());
 
-    fireEvent.click(screen.getByText("High").closest(".au-as-card-head"));
+    fireEvent.click(screen.getByText("Supported").closest(".au-as-card-head"));
+    fireEvent.click(screen.getByText(/View evidence/));
     expect(screen.getByText(/87.5%/)).toBeTruthy();
     expect(screen.getAllByText(/We offer Basic and Pro plans/).length).toBeGreaterThan(0);
     expect(screen.getByText("YES")).toBeTruthy();
@@ -160,9 +161,9 @@ describe("AnswerSimulator", () => {
     fireEvent.change(screen.getByPlaceholderText("Add a custom question…"), { target: { value: "spacecraft propulsion question" } });
     fireEvent.click(screen.getByText("Add"));
     fireEvent.click(screen.getByText("Run Simulation"));
-    await waitFor(() => expect(screen.getByText("Insufficient evidence")).toBeTruthy());
+    await waitFor(() => expect(screen.getByText("Not enough evidence")).toBeTruthy());
 
-    fireEvent.click(screen.getByText("Insufficient evidence").closest(".au-as-card-head"));
+    fireEvent.click(screen.getByText("Not enough evidence").closest(".au-as-card-head"));
     expect(screen.getByText(/This topic is not currently supported/)).toBeTruthy();
     const explainBtn = screen.getByText("Explain why");
     expect(explainBtn).toBeTruthy();
@@ -179,8 +180,8 @@ describe("AnswerSimulator", () => {
     await waitFor(() => expect(screen.getByText("What pricing plans are available?")).toBeTruthy());
     fireEvent.click(screen.getAllByRole("checkbox")[0]);
     fireEvent.click(screen.getByText("Run Simulation"));
-    await waitFor(() => expect(screen.getByText("High")).toBeTruthy());
-    fireEvent.click(screen.getByText("High").closest(".au-as-card-head"));
+    await waitFor(() => expect(screen.getByText("Supported")).toBeTruthy());
+    fireEvent.click(screen.getByText("Supported").closest(".au-as-card-head"));
     expect(screen.queryByText("AI-explained")).toBeNull();
   });
 
@@ -217,8 +218,8 @@ describe("AnswerSimulator", () => {
     await waitFor(() => expect(screen.getByText("What pricing plans are available?")).toBeTruthy());
     fireEvent.click(screen.getAllByRole("checkbox")[0]);
     fireEvent.click(screen.getByText("Run Simulation"));
-    await waitFor(() => expect(screen.getByText("High")).toBeTruthy());
-    fireEvent.click(screen.getByText("High").closest(".au-as-card-head"));
+    await waitFor(() => expect(screen.getByText("Supported")).toBeTruthy());
+    fireEvent.click(screen.getByText("Supported").closest(".au-as-card-head"));
 
     expect(screen.getByText("Evidence relevance")).toBeTruthy();
     expect(screen.getByText("91.2%")).toBeTruthy();
@@ -228,15 +229,19 @@ describe("AnswerSimulator", () => {
     expect(screen.getByText("2 pages")).toBeTruthy();
   });
 
-  it("expands to show the actual retrieved passage text and its source URL (not hidden behind a summary)", async () => {
+  it("evidence is collapsed by default but the real retrieved passage text and source URL are one click away, never hidden entirely", async () => {
     getSimulatorQuestions.mockResolvedValue(QUESTIONS);
     runAnswerSimulation.mockResolvedValue({ run_id: "r1", status: "completed", results: [RESULT_HIGH], locked_count: 0 });
     render(<AnswerSimulator monitorId="m1" canRun={true} />);
     await waitFor(() => expect(screen.getByText("What pricing plans are available?")).toBeTruthy());
     fireEvent.click(screen.getAllByRole("checkbox")[0]);
     fireEvent.click(screen.getByText("Run Simulation"));
-    await waitFor(() => expect(screen.getByText("High")).toBeTruthy());
-    fireEvent.click(screen.getByText("High").closest(".au-as-card-head"));
+    await waitFor(() => expect(screen.getByText("Supported")).toBeTruthy());
+    fireEvent.click(screen.getByText("Supported").closest(".au-as-card-head"));
+
+    // collapsed by default: the URL isn't on screen until the evidence toggle is opened
+    expect(screen.queryByText(/https:\/\/acme.example\/faq/)).toBeNull();
+    fireEvent.click(screen.getByText(/View evidence/));
 
     expect(screen.getAllByText(/https:\/\/acme.example\/pricing/).length).toBeGreaterThan(0);
     expect(screen.getByText(/https:\/\/acme.example\/faq/)).toBeTruthy();
@@ -250,8 +255,8 @@ describe("AnswerSimulator", () => {
     await waitFor(() => expect(screen.getByText("What is AI attendance?")).toBeTruthy());
     fireEvent.click(screen.getAllByRole("checkbox")[1]);
     fireEvent.click(screen.getByText("Run Simulation"));
-    await waitFor(() => expect(screen.getByText("Medium")).toBeTruthy());
-    fireEvent.click(screen.getByText("Medium").closest(".au-as-card-head"));
+    await waitFor(() => expect(screen.getByText("Partially supported")).toBeTruthy());
+    fireEvent.click(screen.getByText("Partially supported").closest(".au-as-card-head"));
 
     // the 2 real preview items ARE rendered (never a client-only blur)
     expect(screen.getByText(/AI attendance tracks presence\./)).toBeTruthy();
@@ -265,8 +270,8 @@ describe("AnswerSimulator", () => {
     await waitFor(() => expect(screen.getByText("What pricing plans are available?")).toBeTruthy());
     fireEvent.click(screen.getAllByRole("checkbox")[0]);
     fireEvent.click(screen.getByText("Run Simulation"));
-    await waitFor(() => expect(screen.getByText("High")).toBeTruthy());
-    fireEvent.click(screen.getByText("High").closest(".au-as-card-head"));
+    await waitFor(() => expect(screen.getByText("Supported")).toBeTruthy());
+    fireEvent.click(screen.getByText("Supported").closest(".au-as-card-head"));
     expect(screen.queryByText(/more sources — Pro/)).toBeNull();
   });
 
@@ -282,9 +287,9 @@ describe("AnswerSimulator", () => {
       { target: { value: "What is the best chocolate lava cake recipe?" } });
     fireEvent.click(screen.getByText("Add"));
     fireEvent.click(screen.getByText("Run Simulation"));
-    await waitFor(() => expect(screen.getByText("Insufficient evidence")).toBeTruthy());
+    await waitFor(() => expect(screen.getByText("Not enough evidence")).toBeTruthy());
 
-    fireEvent.click(screen.getByText("Insufficient evidence").closest(".au-as-card-head"));
+    fireEvent.click(screen.getByText("Not enough evidence").closest(".au-as-card-head"));
     expect(screen.getByText("4.2%")).toBeTruthy();   // Topic alignment metric
     expect(screen.getByText("0 pages")).toBeTruthy();
     const gapText = screen.getByText(/This topic is not currently supported/).textContent.toLowerCase();
@@ -303,10 +308,11 @@ describe("AnswerSimulator", () => {
       { target: { value: "How much does attendance software cost per month?" } });
     fireEvent.click(screen.getByText("Add"));
     fireEvent.click(screen.getByText("Run Simulation"));
-    await waitFor(() => expect(screen.getByText("Low")).toBeTruthy());
+    await waitFor(() => expect(screen.getByText("Not supported")).toBeTruthy());
 
-    fireEvent.click(screen.getByText("Low").closest(".au-as-card-head"));
+    fireEvent.click(screen.getByText("Not supported").closest(".au-as-card-head"));
     expect(screen.getByText(/We found some relevant information, but the website does not/)).toBeTruthy();
+    fireEvent.click(screen.getByText(/View evidence/));
     expect(screen.getAllByText(/Attendance software/).length).toBeGreaterThan(0);
     // never the insufficient-evidence copy
     expect(screen.queryByText(/We couldn't find meaningful evidence/)).toBeNull();
@@ -319,8 +325,8 @@ describe("AnswerSimulator", () => {
     await waitFor(() => expect(screen.getByText("What pricing plans are available?")).toBeTruthy());
     fireEvent.click(screen.getAllByRole("checkbox")[0]);
     fireEvent.click(screen.getByText("Run Simulation"));
-    await waitFor(() => expect(screen.getByText("High")).toBeTruthy());
-    fireEvent.click(screen.getByText("High").closest(".au-as-card-head"));
+    await waitFor(() => expect(screen.getByText("Supported")).toBeTruthy());
+    fireEvent.click(screen.getByText("Supported").closest(".au-as-card-head"));
 
     expect(screen.getByText("Topic alignment")).toBeTruthy();
     expect(screen.getByText("82.4%")).toBeTruthy();
@@ -338,8 +344,8 @@ describe("AnswerSimulator", () => {
     fireEvent.change(screen.getByPlaceholderText("Add a custom question…"), { target: { value: "spacecraft propulsion question" } });
     fireEvent.click(screen.getByText("Add"));
     fireEvent.click(screen.getByText("Run Simulation"));
-    await waitFor(() => expect(screen.getByText("Insufficient evidence")).toBeTruthy());
-    fireEvent.click(screen.getByText("Insufficient evidence").closest(".au-as-card-head"));
+    await waitFor(() => expect(screen.getByText("Not enough evidence")).toBeTruthy());
+    fireEvent.click(screen.getByText("Not enough evidence").closest(".au-as-card-head"));
     expect(screen.getByText("0 pages")).toBeTruthy();
   });
 
@@ -354,11 +360,62 @@ describe("AnswerSimulator", () => {
       { target: { value: "What is the best chocolate lava cake recipe?" } });
     fireEvent.click(screen.getByText("Add"));
     fireEvent.click(screen.getByText("Run Simulation"));
-    await waitFor(() => expect(screen.getByText("Insufficient evidence")).toBeTruthy());
+    await waitFor(() => expect(screen.getByText("Not enough evidence")).toBeTruthy());
     // runAnswerSimulation itself never requests the LLM step unless the checkbox was ticked
     const lastCall = runAnswerSimulation.mock.calls[runAnswerSimulation.mock.calls.length - 1];
     const [, payload] = lastCall;
     expect(payload.requestLlmStep).toBe(false);
+  });
+
+  it("Phase F: Support text is a real, complete sentence built from the site's own evidence — never the incomplete lead-in fragment alone", async () => {
+    getSimulatorQuestions.mockResolvedValue(QUESTIONS);
+    runAnswerSimulation.mockResolvedValue({ run_id: "r1", status: "completed", results: [RESULT_HIGH], locked_count: 0 });
+    render(<AnswerSimulator monitorId="m1" canRun={true} />);
+    await waitFor(() => expect(screen.getByText("What pricing plans are available?")).toBeTruthy());
+    fireEvent.click(screen.getAllByRole("checkbox")[0]);
+    fireEvent.click(screen.getByText("Run Simulation"));
+    await waitFor(() => expect(screen.getByText("Supported")).toBeTruthy());
+    fireEvent.click(screen.getByText("Supported").closest(".au-as-card-head"));
+
+    // never just the bare backend lead-in ("Based on the website's currently scanned
+    // content:") with no actual content after it
+    expect(screen.queryByText("Based on the website's currently scanned content:")).toBeNull();
+    const support = document.querySelector(".au-as-support");
+    expect(support.textContent).toContain("We offer Basic and Pro plans.");
+    expect(support.textContent).toMatch(/scanned content/i);
+  });
+
+  it("Phase F: a fully-supported question with no content gap shows an explicit 'No fix needed', never an empty gap", async () => {
+    getSimulatorQuestions.mockResolvedValue(QUESTIONS);
+    runAnswerSimulation.mockResolvedValue({ run_id: "r1", status: "completed", results: [RESULT_HIGH], locked_count: 0 });
+    render(<AnswerSimulator monitorId="m1" canRun={true} />);
+    await waitFor(() => expect(screen.getByText("What pricing plans are available?")).toBeTruthy());
+    fireEvent.click(screen.getAllByRole("checkbox")[0]);
+    fireEvent.click(screen.getByText("Run Simulation"));
+    await waitFor(() => expect(screen.getByText("Supported")).toBeTruthy());
+    fireEvent.click(screen.getByText("Supported").closest(".au-as-card-head"));
+
+    expect(screen.getByText(/No fix needed/)).toBeTruthy();
+    expect(screen.queryByText("What to fix")).toBeNull();
+  });
+
+  it("Phase F: a content gap shows both What to fix and a concrete Fix, not just a raw missing-info list", async () => {
+    getSimulatorQuestions.mockResolvedValue({ ...QUESTIONS, bank_questions: [] });
+    runAnswerSimulation.mockResolvedValue({
+      run_id: "r1", status: "completed", results: [RESULT_INSUFFICIENT], locked_count: 0,
+    });
+    render(<AnswerSimulator monitorId="m1" canRun={true} />);
+    await waitFor(() => expect(getSimulatorQuestions).toHaveBeenCalled());
+    fireEvent.change(screen.getByPlaceholderText("Add a custom question…"), { target: { value: "spacecraft propulsion question" } });
+    fireEvent.click(screen.getByText("Add"));
+    fireEvent.click(screen.getByText("Run Simulation"));
+    await waitFor(() => expect(screen.getByText("Not enough evidence")).toBeTruthy());
+    fireEvent.click(screen.getByText("Not enough evidence").closest(".au-as-card-head"));
+
+    expect(screen.getByText("What to fix")).toBeTruthy();
+    expect(screen.getByText(/This topic is not currently supported/)).toBeTruthy();
+    expect(screen.getByText("Fix")).toBeTruthy();
+    expect(screen.getByText(/Add a section that directly addresses this question/)).toBeTruthy();
   });
 
   it("existing relevant-question UI (evidence, brand mention, answer text) is unchanged by the off-topic feature", async () => {
@@ -368,8 +425,8 @@ describe("AnswerSimulator", () => {
     await waitFor(() => expect(screen.getByText("What pricing plans are available?")).toBeTruthy());
     fireEvent.click(screen.getAllByRole("checkbox")[0]);
     fireEvent.click(screen.getByText("Run Simulation"));
-    await waitFor(() => expect(screen.getByText("High")).toBeTruthy());
-    fireEvent.click(screen.getByText("High").closest(".au-as-card-head"));
+    await waitFor(() => expect(screen.getByText("Supported")).toBeTruthy());
+    fireEvent.click(screen.getByText("Supported").closest(".au-as-card-head"));
     expect(screen.getByText("YES")).toBeTruthy();
     expect(screen.getAllByText(/We offer Basic and Pro plans/).length).toBeGreaterThan(0);
   });

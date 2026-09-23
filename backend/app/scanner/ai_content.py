@@ -27,7 +27,13 @@ _INSTRUCTIONS = (
     "Return ONLY a JSON object with exactly these keys:\n"
     '{"tone": {"assessment": string, "score_0_100": integer},\n'
     ' "clarity": {"assessment": string, "score_0_100": integer},\n'
-    ' "structure": {"assessment": string, "score_0_100": integer},\n'
+    ' "structure": {"assessment": string, "score_0_100": integer,\n'
+    '   "fixes": [2 to 6 short, numbered, concrete actions to restructure THIS page '
+    "(e.g. \"Add a 2-3 sentence introduction before the service list\"), each grounded "
+    "in the actual content — never generic SEO advice],\n"
+    '   "implementation": string (a short skeleton, 3 to 8 lines, showing the improved '
+    "heading structure for THIS page, e.g. \"H1: ...\\nIntro: ...\\nH2: ...\\nH3: ...\" — "
+    "not a full rewrite of the page)},\n"
     ' "suggestions": [4 to 8 specific, actionable items referencing the actual '
     "content, each quoting at most a short phrase],\n"
     ' "rewrite_example": {"before": string (a short excerpt from the page), '
@@ -53,6 +59,23 @@ def _meter(block) -> dict:
             "score_0_100": _score(block.get("score_0_100"))}
 
 
+def _structure_meter(block) -> dict:
+    """Same shape as _meter(), plus `fixes` (a short numbered action list) and
+    `implementation` (a short heading-structure skeleton) — real model output, never
+    fabricated client-side. Both are optional: a page whose structure is already fine
+    may have no fixes at all, and the frontend must render that honestly (no fix
+    needed), not force placeholder content."""
+    block = block if isinstance(block, dict) else {}
+    fixes = [
+        _clip(f, 200) for f in (block.get("fixes") or [])
+        if isinstance(f, str) and f.strip()
+    ][:6]
+    out = _meter(block)
+    out["fixes"] = fixes
+    out["implementation"] = _clip(block.get("implementation"), 600)
+    return out
+
+
 def _shape(data: dict) -> dict | None:
     suggestions = [
         _clip(s, 300) for s in (data.get("suggestions") or [])
@@ -62,7 +85,7 @@ def _shape(data: dict) -> dict | None:
     out = {
         "tone": _meter(data.get("tone")),
         "clarity": _meter(data.get("clarity")),
-        "structure": _meter(data.get("structure")),
+        "structure": _structure_meter(data.get("structure")),
         "suggestions": suggestions,
         "rewrite_example": {
             "before": _clip(rewrite.get("before"), 800),
