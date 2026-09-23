@@ -104,6 +104,20 @@ const CONTENT_ACTION_FIX = {
   REVIEW_CANONICAL: "Review canonical targeting.",
 };
 
+// Phase I: near_duplicate and potential_cannibalization are computed from genuinely
+// different evidence strength (see backend `reports/content_intelligence.py::_pair_type`
+// — near_duplicate is a single strong content-similarity measurement; potential_
+// cannibalization requires 2+ weaker supporting signals, none of them proof on its own).
+// Both can carry the same "High" severity, so without this text a user has no way to
+// tell them apart. Cautious wording only — never claims confirmed cannibalization,
+// since the engine itself never establishes that, only an inference worth reviewing.
+export const CONTENT_CLUSTER_TYPE_CAVEAT = {
+  near_duplicate: "Strong signal: these pages share a high degree of near-identical text.",
+  potential_cannibalization: "An inference, not proof — multiple weaker signals (similar "
+    + "titles/headings, canonical setup) suggest these pages may compete for the same search "
+    + "intent, not a confirmed conflict.",
+};
+
 // `phase4.entity.missing_signals[]` is an array of check keys (real field names from
 // `reports/phase4.py`'s `_ENTITY_CHECKS`), not per-item objects — unlike schema's
 // `missing_types`/links' `issues`, which already carry their own why/fix text. This is
@@ -194,12 +208,20 @@ export function normalizeRecommendation(r, scanId) {
 export function normalizeContentCluster(c, scanId) {
   if (c.recommended_action === "KEEP_SEPARATE") return null;
   const pageUrls = (c.pages || []).map((p) => p.url);
+  // `problem` must be the actual diagnosed finding (real evidence — e.g. "Content
+  // similarity: 45% (word-trigram overlap)"), never `c.recommendation` (that's
+  // fix-flavored text, already used for `fixText` below via CONTENT_ACTION_FIX —
+  // using it for BOTH problem and fix meant the card never showed real evidence as
+  // its "what's wrong" line at all). Uses the cluster's own first real evidence
+  // line — never a synthesized/invented sentence.
+  const problem = (c.evidence || [])[0] || null;
   return {
     id: c.id, kind: "content_cluster", source: "Content Intelligence", type: c.type,
-    title: c.label, problem: c.recommendation, priority: c.severity,
+    title: c.label, problem, priority: c.severity,
     evidencePreview: [...(c.evidence || []), ...pageUrls].slice(0, 3),
     fullEvidence: [...(c.evidence || []), ...pageUrls],
     fixText: CONTENT_ACTION_FIX[c.recommended_action] || null,
+    why: CONTENT_CLUSTER_TYPE_CAVEAT[c.type] || null,
     destination: { ...reportDest(scanId, "rep-content-intelligence"), label: "Review content" },
     raw: c,
   };

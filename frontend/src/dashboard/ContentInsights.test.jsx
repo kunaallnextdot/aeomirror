@@ -56,3 +56,45 @@ describe("InsightsBody — Structure fix-first block", () => {
     expect(fixBlock.compareDocumentPosition(suggestionsHeading) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 });
+
+describe("InsightsBody — Phase H: Tone and Clarity get the same fix mechanism as Structure", () => {
+  it("renders Tone's real fixes and implementation, same pattern as Structure", () => {
+    render(<InsightsBody data={{
+      ...BASE,
+      tone: { ...BASE.tone, fixes: ["Replace the opening paragraph's abstract wording with a direct definition"],
+             implementation: "Instead of 'synergistic solutions', say 'help small clinics get found online.'" },
+    }} />);
+    expect(screen.getByText("Tone — what to fix")).toBeTruthy();
+    expect(screen.getByText("Replace the opening paragraph's abstract wording with a direct definition")).toBeTruthy();
+    expect(screen.getByText(/Instead of 'synergistic solutions'/)).toBeTruthy();
+  });
+
+  it("renders Clarity's real fixes independently of Tone/Structure", () => {
+    render(<InsightsBody data={{
+      ...BASE,
+      clarity: { ...BASE.clarity, fixes: ["Break the second paragraph into two shorter sentences"], implementation: "" },
+    }} />);
+    expect(screen.getByText("Clarity — what to fix")).toBeTruthy();
+    expect(screen.getByText("Break the second paragraph into two shorter sentences")).toBeTruthy();
+    expect(screen.queryByText("Tone — what to fix")).toBeNull();
+    expect(screen.queryByText("Structure — what to fix")).toBeNull();
+  });
+
+  it("never fabricates Tone/Clarity fixes when the model didn't return any", () => {
+    render(<InsightsBody data={BASE} />);
+    expect(screen.queryByText("Tone — what to fix")).toBeNull();
+    expect(screen.queryByText("Clarity — what to fix")).toBeNull();
+  });
+
+  it("all three meters can show fixes simultaneously, each independently", () => {
+    render(<InsightsBody data={{
+      tone: { ...BASE.tone, fixes: ["Tone fix"], implementation: "" },
+      clarity: { ...BASE.clarity, fixes: ["Clarity fix"], implementation: "" },
+      structure: { ...BASE.structure, fixes: ["Structure fix"], implementation: "" },
+      suggestions: BASE.suggestions, rewrite_example: BASE.rewrite_example,
+    }} />);
+    expect(screen.getByText("Tone fix")).toBeTruthy();
+    expect(screen.getByText("Clarity fix")).toBeTruthy();
+    expect(screen.getByText("Structure fix")).toBeTruthy();
+  });
+});

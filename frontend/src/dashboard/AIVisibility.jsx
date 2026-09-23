@@ -105,6 +105,9 @@ export function AIVisibilityView({ data: v, openUpgrade = () => {} }) {
           <TrendBadge trend={trend} />
         )}
       </div>
+      {/* Scoping note (Phase H): this measures the org's own tracked prompt set —
+          never a general claim about how AI treats the brand broadly. */}
+      <div className="au-av-scope">Based on your tracked questions and provider results.</div>
       {trend?.config_changed && (
         <div className="au-av-note"><AlertTriangle size={12} /> Trend affected by a model/search configuration change — recent runs may not be directly comparable.</div>
       )}

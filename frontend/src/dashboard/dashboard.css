@@ -70,7 +70,7 @@
 .ci-ul li svg{flex:none;margin-top:2px;color:var(--au-mint-d)}
 /* Structure's own fix-first block — visually dominant vs. the generic Suggestions
    list below it, matching the same fix-first hierarchy used elsewhere in the report. */
-.ci-structure-fix{background:var(--au-sky);border-radius:var(--au-r-m);padding:11px 13px}
+.ci-structure-fix,.ci-tone-fix,.ci-clarity-fix{background:var(--au-sky);border-radius:var(--au-r-m);padding:11px 13px}
 .ci-ol{margin:0;padding-left:18px;display:flex;flex-direction:column;gap:5px}
 .ci-ol li{font-size:12.5px;line-height:1.5;color:var(--au-ink)}
 .ci-ba{display:grid;grid-template-columns:1fr 1fr;gap:10px}

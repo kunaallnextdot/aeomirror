@@ -21,6 +21,7 @@ import DiagnosisCard, { SupportingEvidenceNote } from "./DiagnosisCard.jsx";
 import {
   TECH_SEO_COVERED_BY_RECOMMENDATION, TECH_ISSUE_PROBLEM, TECH_ISSUE_FIX,
   ENTITY_SIGNAL_LABEL, CRAWL_ISSUE_TITLE, CRAWL_ISSUE_FIX, CRAWL_ISSUE_WHY,
+  CONTENT_CLUSTER_TYPE_CAVEAT,
 } from "./actionSources.js";
 import { Shell, Cell, Button, Ring } from "./aurora.jsx";
 import "./ReportView.aurora.css";
@@ -232,7 +233,8 @@ export default function ReportView({ scanId, readOnly = false, report: reportPro
               <div>
                 <div className="au-rep-domain">{report.domain || report.url}</div>
                 <div className="au-rep-grade">
-                  Grade <b style={{ color: auScoreColor(sc.overall_score) }}>{sc.grade}</b>
+                  <b style={{ color: auScoreColor(sc.overall_score) }}>{sc.overall_score} / 100</b>
+                  <span className="au-dim" style={{ marginLeft: 8 }}>· Grade {sc.grade}</span>
                   <span className="au-dim" style={{ marginLeft: 8 }}>· {recs.length} recommendation{recs.length === 1 ? "" : "s"}</span>
                 </div>
               </div>
@@ -589,7 +591,7 @@ function SchemaIntelligence({ data, unlocked, onUnlock, recommendations }) {
   const coveringRec = (recommendations || []).find((r) => r.id === data.related_recommendation_id);
   return (
     <Cell solid id="rep-schema" style={{ scrollMarginTop: 120 }}>
-      <div className="au-panel-h">Schema Intelligence <span className="au-sub">what structured data exists, and what's missing</span></div>
+      <div className="au-panel-h">Schema Intelligence <span className="au-sub">what structured data exists, and what's missing — some types only apply when your content supports them</span></div>
       {present.length > 0 && (
         <div className="au-dim" style={{ fontSize: 12, marginBottom: 8 }}>
           Detected: {present.join(", ")}
@@ -684,7 +686,7 @@ function EntityIntelligence({ data, unlocked, onUnlock, recommendations }) {
   const missingLabels = missing.map((k) => ENTITY_SIGNAL_LABEL[k] || k);
   return (
     <Cell solid id="rep-entity" style={{ scrollMarginTop: 120 }}>
-      <div className="au-panel-h">Entity Intelligence <span className="au-sub">what entity your site's own structured data represents</span></div>
+      <div className="au-panel-h">Entity Intelligence <span className="au-sub">what entity your site's own structured data represents — checked the same way for every site</span></div>
       <div className="au-sim-scores" style={{ marginBottom: 10 }}>
         <div className="au-sim-sc"><div className="au-sim-sc-l">Primary entity</div>
           <div className="au-sim-sc-v" style={{ fontSize: 15 }}>{data.primary_entity_name || "Not detected"}</div></div>
@@ -732,7 +734,7 @@ function QuestionMining({ data, unlocked, onUnlock }) {
   if (questions.length === 0) return null;
   return (
     <Cell solid id="rep-questions" style={{ scrollMarginTop: 120 }}>
-      <div className="au-panel-h">Question Opportunities <span className="au-sub">real questions already in your content and schema</span></div>
+      <div className="au-panel-h">Question Opportunities <span className="au-sub">questions your site should answer — also included in the Question Bank below</span></div>
       <div className="au-rep-list">
         {questions.map((q, i) => (
           <div key={i} className="au-rep-card">
@@ -1063,17 +1065,24 @@ function CrawlGraphIntelligence({ data, unlocked, onUnlock }) {
    real page URLs become the DiagnosisCard's Evidence step; `recommendation` (already a
    full human sentence, richer than the generic CONSOLIDATE/DIFFERENTIATE/
    REVIEW_CANONICAL action-code copy Action Center's compact preview uses) is the Fix
-   step — no separate "why" step, since the evidence array already IS the explanation
-   for why these pages were grouped, and repeating it under a second heading would
-   just be the same text twice. A KEEP_SEPARATE cluster (the scanner reviewed it and
-   found no actionable overlap) is filtered out entirely in `ContentIntelligence`
-   below — never rendered as if it were a problem. */
+   step. A KEEP_SEPARATE cluster (the scanner reviewed it and found no actionable
+   overlap) is filtered out entirely in `ContentIntelligence` below — never rendered as
+   if it were a problem.
+
+   Phase I: near_duplicate and potential_cannibalization can both carry "High"
+   severity despite representing different evidence strength (see backend `_pair_type`
+   — near_duplicate is one strong similarity measurement, potential_cannibalization
+   requires 2+ weaker supporting signals). `CONTENT_CLUSTER_TYPE_CAVEAT` (shared with
+   Action Center's identical cluster cards via actionSources.js, never a second copy)
+   supplies the Why-it-matters step so that distinction reads honestly — cautious
+   wording, never a claim of confirmed cannibalization. */
 function ContentCluster({ cluster }) {
   const [expanded, setExpanded] = useState(false);
   return (
     <DiagnosisCard
       title={cluster.label} severity={cluster.severity}
       evidence={[`${cluster.confidence} confidence`, ...(cluster.evidence || [])]}
+      whyItMatters={CONTENT_CLUSTER_TYPE_CAVEAT[cluster.type]}
       fix={cluster.recommendation}
       affectedPages={
         <div style={{ marginTop: 6, display: "flex", flexDirection: "column", gap: 2 }}>

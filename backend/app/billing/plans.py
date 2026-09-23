@@ -50,7 +50,7 @@ PLAN_DEFS = [
             "Full per-page detail on bulk scans",
             "PDF / CSV / JSON exports",
             "AI-written reports",
-            "AI Content Insights",
+            "Content Insights",
             "Weekly report emails",
             "Team members & roles",
         ],

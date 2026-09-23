@@ -20,14 +20,21 @@ import "./AppLayout.aurora.css";
 
 const SUPPORT_EMAIL = "aeomirror.support@gmail.com";
 
+// Phase K: "View Report" now means what a new user actually expects after a scan —
+// the negative-first diagnosis (score/100, top problems, Recommendations — ReportView,
+// via /app/report). It previously pointed to /app/scans/latest (Scan Details' per-signal
+// breakdown), which is a real, still-useful view, just not what "View Report" implies —
+// that destination stays reachable under its own honest label, "Scan Details", rather
+// than being removed. No route was added, removed, or renamed; only these two entries'
+// `to`/`label` pairing changed.
 export const NAV = [
   { to: "/app/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { to: "/app/scans", label: "Recent Scans", icon: ScanLine },
-  { to: "/app/scans/latest", label: "View Report", icon: FileSearch },
+  { to: "/app/report", label: "View Report", icon: FileSearch },
   { to: "/app/action-center", label: "Action Center", icon: ListChecks },
   { to: "/app/monitoring", label: "Monitoring", icon: Activity },
   { to: "/app/answer-tracking", label: "Answer Tracking", icon: MessageSquare },
-  { to: "/app/report", label: "Full Report", icon: FileText },
+  { to: "/app/scans/latest", label: "Scan Details", icon: FileText },
   { to: "/app/compare", label: "Compare", icon: GitCompare },
   { to: "/app/website-summary", label: "Websites", icon: Globe },
 ];
@@ -42,7 +49,7 @@ const FOOTER_PRODUCT = [
   { to: "/app/dashboard", label: "Dashboard" },
   { to: "/app/scans", label: "Recent Scans" },
   { to: "/app/action-center", label: "Action Center" },
-  { to: "/app/report", label: "Full Report" },
+  { to: "/app/report", label: "View Report" },
   { to: "/app/answer-tracking", label: "Answer Tracking" },
   { to: "/app/monitoring", label: "Monitoring" },
 ];
@@ -64,13 +71,13 @@ function routeMeta(pathname) {
   const isDetail = p.split("/").length > 3 && !isLatest;
   const M = {
     dashboard: ["Dashboard", "Your AI-visibility overview"],
-    scans: isLatest ? ["View Report", "Your latest completed scan"]
+    scans: isLatest ? ["Scan Details", "Your latest completed scan"]
                     : isDetail ? ["Scan Details", "Full diagnosis"] : ["Recent Scans", "Every scan you have run"],
     "action-center": ["Action Center", "What to fix next, in priority order"],
     monitoring: isDetail ? ["Monitor", "Historical timeline, trends, changes and alerts"]
                          : ["Monitoring", "Track AI visibility over time and get alerted on changes"],
     "answer-tracking": ["Answer Tracking", "Track whether AI assistants mention and cite your brand"],
-    report: ["Full Report", "What's wrong, why it matters, and how to fix it"],
+    report: ["View Report", "What's wrong, why it matters, and how to fix it"],
     compare: ["Compare Scans", "Diff two scans signal by signal"],
     "website-summary": ["Websites", "Every domain you've scanned, with its latest and best/worst scores"],
     billing: ["Billing", "Your plan, usage, invoices and payments"],

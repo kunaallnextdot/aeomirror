@@ -176,4 +176,17 @@ describe("AppLayout — global shell/footer structure", () => {
     const recentScans = nav.getByRole("link", { name: /Recent Scans/ });
     expect(recentScans.className).toMatch(/\bon\b/);
   });
+
+  it("Phase K: 'View Report' opens the negative-first diagnosis (ReportView, /app/report), not the per-signal Scan Details breakdown", async () => {
+    renderShell();
+    await waitFor(() => expect(screen.getByTestId("page-content")).toBeTruthy());
+    const nav = within(document.querySelector("nav.au-dash-nav"));
+    const viewReport = nav.getByRole("link", { name: /View Report/ });
+    expect(viewReport.getAttribute("href")).toBe("/app/report");
+    // The old destination is still reachable — just honestly relabeled, never removed.
+    const scanDetails = nav.getByRole("link", { name: /Scan Details/ });
+    expect(scanDetails.getAttribute("href")).toBe("/app/scans/latest");
+    // No "Full Report" label survives — the confusing pair is gone, not duplicated.
+    expect(nav.queryByRole("link", { name: /Full Report/ })).toBeNull();
+  });
 });

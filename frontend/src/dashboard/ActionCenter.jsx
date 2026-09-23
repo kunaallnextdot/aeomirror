@@ -41,6 +41,7 @@ export default function ActionCenter({ scanId }) {
   const [loading, setLoading] = useState(true);
   const [expandedId, setExpandedId] = useState(null);
   const [showAll, setShowAll] = useState(false);
+  const [showVerified, setShowVerified] = useState(false);
 
   useEffect(() => {
     if (!scanId) { setLoading(false); return; }
@@ -81,13 +82,29 @@ export default function ActionCenter({ scanId }) {
     scanId,
   }), [report, answerSim, scanId]);
 
+  // Phase K: a finding whose backing signal has a real, persisted "verified" record
+  // (the actual verification state machine's own status — never inferred from a score
+  // change) no longer behaves like an active unresolved action. It's demoted out of the
+  // primary priority-ordered list into a separate, collapsed "Verified fixed" section —
+  // nothing is deleted, the finding/evidence stays fully visible on demand, it's just no
+  // longer counted/sorted as if it still needed action. An item with no verifySignalId
+  // (nothing real to verify against) is always active — verified status is never guessed.
+  const activeItems = useMemo(
+    () => items.filter((it) => !(it.verifySignalId && verificationBySignal[it.verifySignalId]?.verification_status === "verified")),
+    [items, verificationBySignal],
+  );
+  const verifiedItems = useMemo(
+    () => items.filter((it) => it.verifySignalId && verificationBySignal[it.verifySignalId]?.verification_status === "verified"),
+    [items, verificationBySignal],
+  );
+
   const counts = useMemo(() => {
     const c = { Critical: 0, High: 0, Medium: 0, Low: 0 };
-    for (const it of items) if (c[it.priority] != null) c[it.priority] += 1;
+    for (const it of activeItems) if (c[it.priority] != null) c[it.priority] += 1;
     return c;
-  }, [items]);
-  const total = items.length;   // unique action items, after normalize/dedup — never raw findings
-  const visibleItems = showAll ? items : items.slice(0, PREVIEW_LIMIT);
+  }, [activeItems]);
+  const total = activeItems.length;   // unique ACTIVE action items — verified-fixed ones don't count as still-open
+  const visibleItems = showAll ? activeItems : activeItems.slice(0, PREVIEW_LIMIT);
   // Sums locked counts across EVERY source Action Center itself renders (recommendations,
   // technical_seo, content_intelligence, phase4 schema/entity/links, crawl_graph) — not
   // just locked recommendations — so this banner never understates what's actually hidden.
@@ -149,10 +166,34 @@ export default function ActionCenter({ scanId }) {
                             verification={item.verifySignalId ? verificationBySignal[item.verifySignalId] : null} />
               ))}
             </div>
-            {!showAll && items.length > PREVIEW_LIMIT && (
+            {!showAll && activeItems.length > PREVIEW_LIMIT && (
               <button className="au-ac-viewall" onClick={() => setShowAll(true)}>
-                View all {items.length} actions
+                View all {activeItems.length} actions
               </button>
+            )}
+          </Cell>
+        )}
+
+        {verifiedItems.length > 0 && (
+          <Cell solid style={{ marginTop: 14 }}>
+            <button type="button" className="au-ac-verified-toggle"
+                    onClick={() => setShowVerified((s) => !s)} aria-expanded={showVerified}>
+              <CheckCircle2 size={14} style={{ color: "var(--au-mint-d)" }} />
+              <span>{verifiedItems.length} verified fixed</span>
+              <span className="au-ac-verified-sub">— confirmed by a later scan, kept here for reference</span>
+              <ChevronDown size={14} className="au-ac-chev" style={{ transform: showVerified ? "rotate(180deg)" : "none", marginLeft: "auto" }} />
+            </button>
+            {showVerified && (
+              <div className="au-ac-list" style={{ marginTop: 10 }}>
+                {verifiedItems.map((item) => (
+                  <ActionCard key={item.id} item={item} scanId={scanId}
+                              expanded={expandedId === item.id}
+                              onToggle={() => setExpandedId((id) => (id === item.id ? null : item.id))}
+                              ins={aiById[item.id]}
+                              verification={verificationBySignal[item.verifySignalId]}
+                              verified />
+                ))}
+              </div>
             )}
           </Cell>
         )}
@@ -161,9 +202,9 @@ export default function ActionCenter({ scanId }) {
   );
 }
 
-function ActionCard({ item, scanId, expanded, onToggle, ins, verification }) {
+function ActionCard({ item, scanId, expanded, onToggle, ins, verification, verified }) {
   return (
-    <div className="au-ac-card">
+    <div className={verified ? "au-ac-card au-ac-card-verified" : "au-ac-card"}>
       <button className="au-ac-card-h" onClick={onToggle} aria-expanded={expanded}>
         <span className="au-rep-pri" style={{ background: AU_PRIORITY[item.priority] }}>{item.priority}</span>
         <span className="au-ac-card-t">{item.title}</span>
@@ -173,7 +214,7 @@ function ActionCard({ item, scanId, expanded, onToggle, ins, verification }) {
       </button>
       {!expanded ? (
         <div className="au-ac-preview">
-          <p className="au-ac-problem">{item.problem}</p>
+          {item.problem && <p className="au-ac-problem">{item.problem}</p>}
           {item.evidencePreview?.length > 0 && (
             <div className="au-ac-ev-preview">Evidence: {item.evidencePreview.join(" · ")}</div>
           )}
@@ -196,7 +237,7 @@ function ActionCard({ item, scanId, expanded, onToggle, ins, verification }) {
         </>
       ) : (
         <div className="au-ac-preview">
-          <p className="au-ac-problem">{item.problem}</p>
+          {item.problem && <p className="au-ac-problem">{item.problem}</p>}
           {item.why && (
             <div className="au-rep-ai-why" style={{ marginTop: 8 }}>
               <div className="au-rep-ai-why-h"><Sparkles size={12} /> Why it matters</div>

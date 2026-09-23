@@ -187,7 +187,7 @@ async def create_content_insight(scan_id: str, body: ContentInsightsRequest,
     scan = _owned_scan_or_404(db, ctx, scan_id)
     from app.billing import entitlements
     if not entitlements.is_pro(db, ctx.org_id):
-        raise HTTPException(status_code=402, detail="AI Content Insights is a Pro feature.")
+        raise HTTPException(status_code=402, detail="Content Insights is a Pro feature.")
 
     target = body.page_url or scan.url
     if body.page_url and body.page_url not in _known_page_urls(scan):
@@ -220,7 +220,8 @@ async def create_content_insight(scan_id: str, body: ContentInsightsRequest,
         # any orphaned call self-terminates quickly rather than burning tokens unbounded.
         return await run_in_threadpool(
             ai_content.analyze_content, text, url=target,
-            timeout=settings.content_insight_ai_timeout_seconds)
+            timeout=settings.content_insight_ai_timeout_seconds,
+            max_tokens=settings.content_insight_ai_max_tokens)
 
     # Hard overall deadline: return 504 rather than run long enough for an upstream
     # proxy to sever the connection (which the browser reports as "backend unreachable").

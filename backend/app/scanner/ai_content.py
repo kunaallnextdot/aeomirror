@@ -25,8 +25,19 @@ _SYSTEM = (
 
 _INSTRUCTIONS = (
     "Return ONLY a JSON object with exactly these keys:\n"
-    '{"tone": {"assessment": string, "score_0_100": integer},\n'
-    ' "clarity": {"assessment": string, "score_0_100": integer},\n'
+    '{"tone": {"assessment": string, "score_0_100": integer,\n'
+    '   "fixes": [0 to 4 short, concrete tone fixes for THIS page (e.g. "Replace the '
+    "opening paragraph's abstract wording with a direct definition of the service and "
+    "its intended audience\") — never generic advice like \"improve clarity\"; omit "
+    "entirely (empty list) if the tone is already fine],\n"
+    '   "implementation": string (optional, at most 2-3 sentences: a short reworded '
+    "example showing the improved tone for a specific real passage on THIS page — "
+    "empty string if no fixes apply)},\n"
+    ' "clarity": {"assessment": string, "score_0_100": integer,\n'
+    '   "fixes": [0 to 4 short, concrete clarity fixes for THIS page, same rules as '
+    "tone.fixes above],\n"
+    '   "implementation": string (optional, same rules as tone.implementation above, '
+    "for clarity)},\n"
     ' "structure": {"assessment": string, "score_0_100": integer,\n'
     '   "fixes": [2 to 6 short, numbered, concrete actions to restructure THIS page '
     "(e.g. \"Add a 2-3 sentence introduction before the service list\"), each grounded "
@@ -59,20 +70,21 @@ def _meter(block) -> dict:
             "score_0_100": _score(block.get("score_0_100"))}
 
 
-def _structure_meter(block) -> dict:
-    """Same shape as _meter(), plus `fixes` (a short numbered action list) and
-    `implementation` (a short heading-structure skeleton) — real model output, never
-    fabricated client-side. Both are optional: a page whose structure is already fine
-    may have no fixes at all, and the frontend must render that honestly (no fix
-    needed), not force placeholder content."""
+def _meter_with_fixes(block, *, max_fixes: int = 6, impl_cap: int = 600) -> dict:
+    """Same shape as _meter(), plus `fixes` (a short concrete action list) and
+    `implementation` (a short worked example) — real model output, never fabricated
+    client-side. Both are optional: a page whose tone/clarity/structure is already
+    fine may have no fixes at all, and the frontend must render that honestly (no
+    fix needed), not force placeholder content. Used for tone, clarity, AND
+    structure — one shared shape, never three divergent ones."""
     block = block if isinstance(block, dict) else {}
     fixes = [
         _clip(f, 200) for f in (block.get("fixes") or [])
         if isinstance(f, str) and f.strip()
-    ][:6]
+    ][:max_fixes]
     out = _meter(block)
     out["fixes"] = fixes
-    out["implementation"] = _clip(block.get("implementation"), 600)
+    out["implementation"] = _clip(block.get("implementation"), impl_cap)
     return out
 
 
@@ -83,9 +95,9 @@ def _shape(data: dict) -> dict | None:
     ][:8]
     rewrite = data.get("rewrite_example") if isinstance(data.get("rewrite_example"), dict) else {}
     out = {
-        "tone": _meter(data.get("tone")),
-        "clarity": _meter(data.get("clarity")),
-        "structure": _structure_meter(data.get("structure")),
+        "tone": _meter_with_fixes(data.get("tone"), max_fixes=4, impl_cap=400),
+        "clarity": _meter_with_fixes(data.get("clarity"), max_fixes=4, impl_cap=400),
+        "structure": _meter_with_fixes(data.get("structure")),
         "suggestions": suggestions,
         "rewrite_example": {
             "before": _clip(rewrite.get("before"), 800),
@@ -99,9 +111,13 @@ def _shape(data: dict) -> dict | None:
 
 
 def analyze_content(text: str, *, url: str, page_title: str | None = None,
-                    timeout: int | None = None) -> dict | None:
+                    timeout: int | None = None, max_tokens: int | None = None) -> dict | None:
     """Analyze one page's text, or None on any failure. `timeout` overrides the AI
-    per-request timeout (the interactive path passes a shorter one)."""
+    per-request timeout (the interactive path passes a shorter one). `max_tokens`
+    overrides the AI per-request output cap (the interactive path passes a larger one —
+    this prompt's tone/clarity/structure + suggestions + rewrite shape is genuinely
+    bigger than the default `ai_max_tokens` budget; a truncated response fails to
+    parse as JSON and would otherwise look like a random/transient failure)."""
     if not settings.ai_enabled:
         return None
     snippet = (text or "").strip()[:_TEXT_CAP]
@@ -109,7 +125,7 @@ def analyze_content(text: str, *, url: str, page_title: str | None = None,
         return None
     context = {"url": url, "title": (page_title or "")[:200], "text": snippet}
     user = "Page (JSON):\n" + json.dumps(context) + "\n\n" + _INSTRUCTIONS
-    raw = ai.complete(_SYSTEM, user, max_tokens=settings.ai_max_tokens, timeout=timeout)
+    raw = ai.complete(_SYSTEM, user, max_tokens=max_tokens or settings.ai_max_tokens, timeout=timeout)
     if not raw:
         return None
     data = _parse_json(raw)

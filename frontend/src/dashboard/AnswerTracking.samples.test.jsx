@@ -65,6 +65,48 @@ describe("ProviderGroup rendering (CHANGE 2)", () => {
   });
 });
 
+describe("citation provenance (Phase H) — never label an LLM-extracted URL as provider-reported", () => {
+  it("a native provider citation renders labeled 'Provider citation'", () => {
+    const [g] = groupByProvider([
+      sample({ brand_mentioned: true, citation_source: "provider", brand_urls_cited: ["https://acme.example/pricing"] }),
+    ]);
+    render(<ProviderGroup g={g} ctx={{}} />);
+    expect(screen.getByText("https://acme.example/pricing")).toBeTruthy();
+    expect(screen.getByText("Provider citation")).toBeTruthy();
+    expect(screen.queryByText("Detected from answer")).toBeNull();
+  });
+
+  it("an LLM-extracted URL renders labeled 'Detected from answer', never as a provider citation", () => {
+    const [g] = groupByProvider([
+      sample({ brand_mentioned: true, citation_source: "llm_extracted", brand_urls_cited: ["https://acme.example/about"] }),
+    ]);
+    render(<ProviderGroup g={g} ctx={{}} />);
+    expect(screen.getByText("https://acme.example/about")).toBeTruthy();
+    expect(screen.getByText("Detected from answer")).toBeTruthy();
+    expect(screen.queryByText("Provider citation")).toBeNull();
+  });
+
+  it("both provenances can coexist on the same page across different results", () => {
+    const groups = groupByProvider([
+      sample({ provider: "perplexity", brand_mentioned: true, citation_source: "provider", brand_urls_cited: ["https://acme.example/a"] }),
+    ]).concat(groupByProvider([
+      sample({ provider: "anthropic", brand_mentioned: true, citation_source: "llm_extracted", brand_urls_cited: ["https://acme.example/b"] }),
+    ]));
+    render(<>{groups.map((g) => <ProviderGroup key={g.provider} g={g} ctx={{}} />)}</>);
+    expect(screen.getByText("Provider citation")).toBeTruthy();
+    expect(screen.getByText("Detected from answer")).toBeTruthy();
+  });
+
+  it("an unlabeled/unknown citation_source defaults to the honest 'Detected from answer', never claims provider provenance", () => {
+    const [g] = groupByProvider([
+      sample({ brand_mentioned: true, brand_urls_cited: ["https://acme.example/x"] }),   // no citation_source at all
+    ]);
+    render(<ProviderGroup g={g} ctx={{}} />);
+    expect(screen.getByText("Detected from answer")).toBeTruthy();
+    expect(screen.queryByText("Provider citation")).toBeNull();
+  });
+});
+
 describe("empty-recommendation replacement (CHANGE 3)", () => {
   const emptyGroup = () => groupByProvider([
     sample({ brand_mentioned: false, recommended_entities: [] }),

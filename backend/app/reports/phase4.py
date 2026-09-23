@@ -13,12 +13,88 @@ a value — see the `*_note` / `insufficient_evidence` fields below.
 """
 from __future__ import annotations
 
+import re
+from urllib.parse import urlparse
+
 # ------------------------------- shared lookups -------------------------------
 def _section(sections: list[dict] | None, signal_id: str) -> dict:
     for s in sections or []:
         if s.get("id") == signal_id:
             return s
     return {}
+
+
+# ------------------------------- schema relevance gating -------------------------------
+# Organization/WebSite/BreadcrumbList apply to virtually every website and stay
+# unconditional. These 5 types are genuinely content-type-dependent — recommending
+# them regardless of the page's actual content is a real false-positive risk (e.g.
+# "Missing Product schema" on a page that sells nothing). Gated conservatively using
+# ONLY already-computed, real scan evidence (never a new LLM call, never a guessed
+# page type): a URL-path hint or a real pattern found in the page's own scanned body
+# text. When no such evidence exists, the type is simply not surfaced as missing —
+# never a fabricated relevance claim, but also never silently dropped when real
+# evidence DOES support it (see `_schema_relevance`).
+_GATED_SCHEMA_TYPES = {"Article", "FAQPage", "Product", "Service", "Review"}
+_ARTICLE_MIN_WORDS = 400
+_PRODUCT_PATH_HINTS = ("/product", "/shop", "/store", "/pricing", "/buy", "/item")
+_SERVICE_PATH_HINTS = ("/service", "/services", "/solutions")
+_REVIEW_PATH_HINTS = ("/review", "/reviews", "/testimonial", "/testimonials")
+_PRICE_PATTERN = re.compile(
+    r"(\$|USD|₹|INR|€|EUR|£|GBP)\s?\d|\d+(\.\d+)?\s?(USD|INR|EUR|GBP)\b", re.IGNORECASE)
+_RATING_PATTERN = re.compile(
+    r"\b\d(\.\d)?\s*(out of|/)\s*5\b|\bstar rating\b|\bcustomer review(s)?\b|"
+    r"\btestimonial(s)?\b|\b\d\s*stars?\b", re.IGNORECASE)
+_SERVICE_TEXT_PATTERN = re.compile(
+    r"\bwe (offer|provide)\b|\bour services\b|\bbook (a|an)\b|\bschedule (a|an)\b|"
+    r"\bget a quote\b|\brequest a (quote|consultation)\b", re.IGNORECASE)
+
+
+def _body_text(content_ev: dict) -> str:
+    chunks = (content_ev.get("body_evidence") or {}).get("chunks") or []
+    return " ".join(c.get("text", "") for c in chunks if isinstance(c, dict))
+
+
+def _path_has_any(url: str | None, hints: tuple[str, ...]) -> bool:
+    if not url:
+        return False
+    path = (urlparse(url).path or "").lower()
+    return any(h in path for h in hints)
+
+
+def _schema_relevance(name: str, url: str | None, content_ev: dict) -> tuple[bool, str | None]:
+    """Conservative, non-LLM relevance check for a gated schema type. Returns
+    (relevant, evidence) — `evidence` is real, quotable text explaining WHY (never
+    invented) used to extend the recommendation's why_it_matters. Returns
+    (False, None) when no real signal supports relevance — the safe default."""
+    if name == "Article":
+        wc = content_ev.get("word_count") or 0
+        if wc >= _ARTICLE_MIN_WORDS:
+            return True, f"this page has {wc} words of substantial body content"
+        return False, None
+    if name == "FAQPage":
+        qs = content_ev.get("heading_questions") or []
+        if qs:
+            return True, f'this page has a question-shaped heading ("{qs[0]}")'
+        return False, None
+    if name == "Product":
+        if _path_has_any(url, _PRODUCT_PATH_HINTS):
+            return True, "this page's URL path suggests a product/shop page"
+        if _PRICE_PATTERN.search(_body_text(content_ev)):
+            return True, "this page's content includes price/currency text"
+        return False, None
+    if name == "Service":
+        if _path_has_any(url, _SERVICE_PATH_HINTS):
+            return True, "this page's URL path suggests a service page"
+        if _SERVICE_TEXT_PATTERN.search(_body_text(content_ev)):
+            return True, "this page's content describes a service being offered"
+        return False, None
+    if name == "Review":
+        if _path_has_any(url, _REVIEW_PATH_HINTS):
+            return True, "this page's URL path suggests review/testimonial content"
+        if _RATING_PATTERN.search(_body_text(content_ev)):
+            return True, "this page's content includes rating or review language"
+        return False, None
+    return True, None   # Organization / WebSite / BreadcrumbList — always relevant
 
 
 # ============================== 1. Schema Intelligence ==============================
@@ -84,7 +160,14 @@ def build_schema_intelligence(sections: list[dict] | None, url: str | None,
                               bulk_pages: list[dict] | None = None) -> dict:
     """What schema exists, what's missing, why it matters, what to do — for the
     scanned page (+ a cross-page summary when this is a bulk scan). Uses ONLY the
-    `schema` signal's own evidence; never invents a type or a URL."""
+    `schema` signal's own evidence; never invents a type or a URL.
+
+    Content-type-dependent types (Article/FAQPage/Product/Service/Review — see
+    `_GATED_SCHEMA_TYPES`) are only surfaced as missing when real scan evidence
+    (`content` signal's word_count/heading_questions/body text, or the URL path)
+    supports their relevance to THIS page — never a fixed checklist applied blindly
+    to every page. Organization/WebSite/BreadcrumbList remain unconditional; they
+    apply to every website regardless of content type."""
     row = _section(sections, "schema")
     ev = row.get("evidence") or {}
     state = ev.get("state", "absent")
@@ -95,10 +178,18 @@ def build_schema_intelligence(sections: list[dict] | None, url: str | None,
     if has_entity:
         present.add("Organization")
 
+    content_ev = (_section(sections, "content") or {}).get("evidence") or {}
+
     missing = []
     for name, why, action in _SCHEMA_CHECKLIST:
         if name in present:
             continue
+        if name in _GATED_SCHEMA_TYPES:
+            relevant, evidence = _schema_relevance(name, url, content_ev)
+            if not relevant:
+                continue
+            if evidence:
+                why = f"{why} ({evidence[0].upper()}{evidence[1:]}.)"
         missing.append({
             "type": name, "why_it_matters": why, "recommended_action": action,
             "affected_urls": [url] if url else [],

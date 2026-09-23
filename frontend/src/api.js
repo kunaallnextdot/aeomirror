@@ -347,6 +347,12 @@ export function getContentInsights(scanId) {
 export function analyzeContent(scanId, pageUrl) {
   return request(`/api/scans/${encodeURIComponent(scanId)}/content-insights`, {
     method: "POST", body: JSON.stringify(pageUrl ? { page_url: pageUrl } : {}),
+    // The backend returns a curated 503 detail ("AI analysis is temporarily
+    // unavailable.") and 504 detail for this endpoint's own real failure modes —
+    // errorContext makes messageForStatus prefer that real detail over its generic
+    // ">=500" fallback, so the user sees why it actually failed instead of an opaque
+    // "unexpected error" message.
+    errorContext: true,
   });
 }
 

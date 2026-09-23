@@ -42,7 +42,8 @@ export function DashboardHomeRoute() {
   return <AuroraGated><DashboardHome data={dashboard} onOpenLatest={openDetail} /></AuroraGated>;
 }
 
-/* Sidebar "View Report" entry point: resolves the org's latest scan (same
+/* Sidebar "Scan Details" entry point (Phase K: previously labeled "View Report" —
+   see AppLayout.jsx's NAV comment): resolves the org's latest scan (same
    `dashboard.latest_scan` the Dashboard/Report routes already use — no new
    backend endpoint, no duplicated selection logic) and redirects straight to its
    Scan Details page — the same destination the Recent Scans "eye" action opens,

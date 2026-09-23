@@ -215,18 +215,36 @@ export default function ScanDetails({ scan, onBack, onRerun, busy, canRun = true
                       </button>
                       {isOpen && (
                         <div className="au-sd-sig-body">
-                          {/* Problem -> Evidence -> Why -> Fix -> Implementation, in that
-                              order. Problem/Evidence stay native to Scan Details (the scanner's
-                              own issues/evidence — real, per-signal, never duplicated elsewhere);
-                              Why/Fix/Implementation/Expected-outcome, when available, render via
+                          {/* Problem -> Fix -> Implementation -> Why it matters -> Evidence —
+                              the SAME product-wide fix-first hierarchy DiagnosisCard/
+                              RecommendationCard use everywhere else (ReportView.jsx). Problem
+                              stays native to Scan Details (the scanner's own issue strings —
+                              real, per-signal, never duplicated elsewhere) and is never
+                              repeated by RecommendationCard (showProblem=false). Fix/
+                              Implementation/Outcome/Why, when available, render via
                               <RecommendationCard>, the SAME component + SAME fix_template data
                               ReportView's Recommendations section uses — one source of truth,
-                              never a second recommendation engine. */}
+                              never a second recommendation engine. "Found" (detected schema/
+                              content types) is real evidence, not a problem statement, so it's
+                              grouped with the native Evidence block at the end, not ahead of
+                              the fix. */}
                           {s.issues?.length > 0 && (
                             <div><div className="au-sd-bh">What&apos;s wrong</div>
                               <ul className="au-sd-ul">{s.issues.map((it, i) => <li key={i}><AlertTriangle size={11} style={{ color: "var(--au-lemon-d)" }} /> <span>{it}</span></li>)}</ul></div>
                           )}
                           {clean && <div className="au-sd-clean"><Check size={12} /> No issues found.</div>}
+
+                          {richRec ? (
+                            <div className="au-sd-fix">
+                              <RecommendationCard r={richRec} ins={aiById[richRec.id]} showProblem={false} />
+                            </div>
+                          ) : s.recommendations?.length > 0 ? (
+                            <div><div className="au-sd-bh">How to fix it</div>
+                              <ul className="au-sd-ul">{s.recommendations.map((r, i) => <li key={i}><Wrench size={11} style={{ color: "var(--au-primary)" }} /> <span>{r}</span></li>)}</ul></div>
+                          ) : !clean && reportLoaded && (
+                            <div className="au-sd-dim" style={{ fontSize: 12.5 }}>This check has no implementation example — see the issue above for what to address.</div>
+                          )}
+
                           {s.evidence?.detected_types?.length > 0 && (
                             <div><div className="au-sd-bh">Found</div>
                               <div className="au-sd-found">{s.evidence.detected_types.map((t) => (
@@ -242,17 +260,7 @@ export default function ScanDetails({ scan, onBack, onRerun, busy, canRun = true
                             <div><div className="au-sd-bh">Evidence</div>
                               <div className="au-sd-dim" style={{ fontSize: 12.5 }}>Evidence unavailable for this check.</div></div>
                           )}
-                          {richRec ? (
-                            <div className="au-sd-fix">
-                              <div className="au-sd-bh">Why it matters &amp; how to fix it</div>
-                              <RecommendationCard r={richRec} ins={aiById[richRec.id]} showProblem={false} />
-                            </div>
-                          ) : s.recommendations?.length > 0 ? (
-                            <div><div className="au-sd-bh">How to fix it</div>
-                              <ul className="au-sd-ul">{s.recommendations.map((r, i) => <li key={i}><Wrench size={11} style={{ color: "var(--au-primary)" }} /> <span>{r}</span></li>)}</ul></div>
-                          ) : !clean && reportLoaded && (
-                            <div className="au-sd-dim" style={{ fontSize: 12.5 }}>No specific implementation fix is available for this check yet.</div>
-                          )}
+
                           {/* Fix -> Implement -> Re-scan -> Verify. Only offered where there is
                               an actual problem to verify (never on a clean/passing signal). Never
                               claims anything until a real later scan is compared — see

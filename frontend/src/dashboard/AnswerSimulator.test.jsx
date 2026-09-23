@@ -103,6 +103,18 @@ describe("AnswerSimulator", () => {
     expect(screen.getByText(/not a live measurement of ChatGPT, Claude, Gemini, or Perplexity/)).toBeTruthy();
   });
 
+  it("Phase H: every result card carries a visible 'Simulated' tag, always on, not just on hover/expand", async () => {
+    getSimulatorQuestions.mockResolvedValue(QUESTIONS);
+    runAnswerSimulation.mockResolvedValue({ run_id: "r1", status: "completed", results: [RESULT_HIGH], locked_count: 0 });
+    render(<AnswerSimulator monitorId="m1" canRun={true} />);
+    await waitFor(() => expect(screen.getByText("What pricing plans are available?")).toBeTruthy());
+    fireEvent.click(screen.getAllByRole("checkbox")[0]);
+    fireEvent.click(screen.getByText("Run Simulation"));
+    await waitFor(() => expect(screen.getByText("Supported")).toBeTruthy());
+    // visible before expanding the card — not gated behind the expand/collapse toggle
+    expect(screen.getByText("Simulated")).toBeTruthy();
+  });
+
   it("adds a custom question and selects it", async () => {
     getSimulatorQuestions.mockResolvedValue({ ...QUESTIONS, bank_questions: [] });
     render(<AnswerSimulator monitorId="m1" canRun={true} />);

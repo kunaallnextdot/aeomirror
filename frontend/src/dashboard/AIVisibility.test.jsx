@@ -57,6 +57,11 @@ describe("AIVisibilityView", () => {
     expect(screen.queryByText(/competitor.*won/i)).toBeNull();
   });
 
+  it("Phase H: scopes the mention-rate claim to the org's own tracked prompts, never a general 'how AI treats you' claim", () => {
+    render(<AIVisibilityView data={DATA} />);
+    expect(screen.getByText("Based on your tracked questions and provider results.")).toBeTruthy();
+  });
+
   it("shows free-tier locked previews and can open upgrade", () => {
     const openUpgrade = vi.fn();
     const free = {

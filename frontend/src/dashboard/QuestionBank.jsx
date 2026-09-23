@@ -59,7 +59,7 @@ export function ReportQuestionBank({ scanId }) {
     <Cell solid id="rep-question-bank" style={{ scrollMarginTop: 120 }}>
       <div className="au-panel-h">
         <HelpCircle size={14} style={{ color: "var(--au-primary)" }} /> Question Bank
-        <span className="au-sub">real questions found on your site and in AI answers</span>
+        <span className="au-sub">your complete question set — every opportunity above, plus prompts you're tracking in Answer Tracking</span>
       </div>
       <div className="au-rep-list">
         {questions.map((q, i) => <QuestionRow key={i} q={q} />)}

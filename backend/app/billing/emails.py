@@ -82,12 +82,12 @@ def send_subscription_activated(db, org, subscription) -> str:
     subject = "Your AEOMirror Pro subscription is active"
     text = ("Welcome to Pro! You now get 15 scan jobs a month (each a single page or a "
             "bulk of up to 50 URLs), 10 monitors, unlimited comparisons, full per-page "
-            "detail on bulk scans, AI-written reports, AI Content Insights, weekly report "
+            "detail on bulk scans, AI-written reports, Content Insights, weekly report "
             f"emails and team members & roles.\n\n{settings.app_base_url}")
     html_body = _wrap("<p>Welcome to <strong>Pro</strong> 🎉 — you now get <strong>15 scan "
                       "jobs a month</strong> (each a single page or a bulk of up to 50 URLs), "
                       "10 monitors, unlimited comparisons, full per-page detail on bulk scans, "
-                      "AI-written reports, AI Content Insights, weekly report emails and team "
+                      "AI-written reports, Content Insights, weekly report emails and team "
                       "members &amp; roles.</p>"
                       f"<p><a href=\"{settings.app_base_url}\">Open your dashboard</a></p>")
     return _emit(db, org, "subscription_activated", subject, text, html_body,

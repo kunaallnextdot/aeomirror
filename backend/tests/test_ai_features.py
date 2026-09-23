@@ -331,6 +331,54 @@ def test_content_insights_structure_fixes_default_empty_when_model_omits_them(mo
     assert structure["implementation"] == ""
 
 
+def test_content_insights_tone_and_clarity_fixes_from_the_same_single_model_call(monkeypatch):
+    """Phase H: Tone and Clarity get the SAME fixes/implementation mechanism as
+    Structure, extending the one existing LLM call — never a second call, never
+    fabricated when the model has nothing to fix."""
+    content_with_all_fixes = json.dumps({
+        "tone": {"assessment": "Too formal for the audience.", "score_0_100": 55,
+                 "fixes": ["Replace the opening paragraph's abstract wording with a "
+                           "direct definition of the service and its intended audience"],
+                 "implementation": "Instead of 'We leverage synergistic solutions', say "
+                                   "'We help small clinics get found by patients online.'"},
+        "clarity": {"assessment": "Sentences are long and jargon-heavy.", "score_0_100": 48,
+                   "fixes": ["Break the second paragraph into two shorter sentences"],
+                   "implementation": ""},
+        "structure": {"assessment": "Fine.", "score_0_100": 90},
+        "suggestions": ["Shorten the intro paragraph"],
+        "rewrite_example": {"before": "x", "after": "y"},
+    })
+    calls = _install_ai(monkeypatch, content_with_all_fixes)
+    monkeypatch.setattr(rd, "fetch", _fake_fetch)
+    client, _ = auth_client()
+    sid = _make_scan(client, monkeypatch, "https://ci-tone-clarity.example/")
+
+    r = client.post(f"/api/scans/{sid}/content-insights", json={})
+    assert r.status_code == 200
+    insights = r.json()["insights"]
+    assert insights["tone"]["fixes"] == [
+        "Replace the opening paragraph's abstract wording with a direct definition "
+        "of the service and its intended audience"]
+    assert insights["tone"]["implementation"].startswith("Instead of")
+    assert insights["clarity"]["fixes"] == ["Break the second paragraph into two shorter sentences"]
+    assert insights["clarity"]["implementation"] == ""
+    assert calls["n"] == 1   # one model call total — no second call for tone/clarity
+
+
+def test_content_insights_tone_and_clarity_fixes_default_empty_when_model_omits_them(monkeypatch):
+    """The original fixture has no fixes/implementation for tone/clarity either —
+    must render honestly empty, never a placeholder."""
+    _install_ai(monkeypatch, _CONTENT)
+    monkeypatch.setattr(rd, "fetch", _fake_fetch)
+    client, _ = auth_client()
+    sid = _make_scan(client, monkeypatch, "https://ci-tc-nofix.example/")
+
+    r = client.post(f"/api/scans/{sid}/content-insights", json={})
+    insights = r.json()["insights"]
+    assert insights["tone"]["fixes"] == [] and insights["tone"]["implementation"] == ""
+    assert insights["clarity"]["fixes"] == [] and insights["clarity"]["implementation"] == ""
+
+
 def test_content_insights_malformed_json_returns_503(monkeypatch):
     """A malformed model response yields a clean 503, never a 500."""
     _install_ai(monkeypatch, "this is not json at all, sorry")

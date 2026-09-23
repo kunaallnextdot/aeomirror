@@ -43,6 +43,8 @@ describe("ReportQuestionBank", () => {
     render(<ReportQuestionBank scanId="s1" />);
 
     await waitFor(() => expect(screen.getByText("Question Bank")).toBeTruthy());
+    // Phase I: the subtitle states the "why both sections exist" mental model concisely
+    expect(screen.getByText(/your complete question set — every opportunity above/)).toBeTruthy();
     expect(screen.getByText("What is the best CRM?")).toBeTruthy();
     expect(screen.getByText("How much does treatment cost?")).toBeTruthy();
     expect(screen.getByText(/Mentioned in 60/)).toBeTruthy();

@@ -235,7 +235,9 @@ describe("ActionCenter V2 — AI Visibility / Content Intelligence / Technical S
     expect(screen.getByText("Content Intelligence")).toBeTruthy();
     fireEvent.click(screen.getByText("See fix"));
     const card = screen.getByText("Potential cannibalization").closest(".au-ac-card");
-    expect(within(card).getByText(/78% \(word-trigram overlap\)/)).toBeTruthy();
+    // the real evidence line appears both as the problem statement (Phase H fix —
+    // never the fix-flavored recommendation text) and in the full evidence list
+    expect(within(card).getAllByText(/78% \(word-trigram overlap\)/).length).toBeGreaterThanOrEqual(2);
   });
 
   it("a KEEP_SEPARATE cluster never renders as an action card", async () => {
@@ -251,6 +253,26 @@ describe("ActionCenter V2 — AI Visibility / Content Intelligence / Technical S
     }));
     renderAC();
     await waitFor(() => expect(screen.getByText("You're in good shape.")).toBeTruthy());
+  });
+
+  it("Phase I: a cluster with no real evidence shows no empty problem line, and cautious why-it-matters wording distinguishes near_duplicate from potential_cannibalization", async () => {
+    getReport.mockResolvedValue(REPORT([], {
+      content_intelligence: {
+        available: true, thin_pages: [],
+        clusters: [{
+          id: "cluster:a-b", type: "near_duplicate", label: "Near-duplicate content",
+          severity: "High", recommended_action: "CONSOLIDATE",
+          recommendation: "Consider consolidating these near-duplicate pages.",
+          evidence: [], pages: [{ url: "https://x.com/a" }, { url: "https://x.com/b" }],
+        }],
+      },
+    }));
+    renderAC();
+    await waitFor(() => expect(screen.getByText("Near-duplicate content")).toBeTruthy());
+    fireEvent.click(screen.getByText("See fix"));
+    const card = screen.getByText("Near-duplicate content").closest(".au-ac-card");
+    expect(within(card).queryByText("", { selector: ".au-ac-problem" })).toBeNull();
+    expect(within(card).getByText(/Strong signal/)).toBeTruthy();
   });
 
   it("mixed sources render together in one list, sorted by priority", async () => {
@@ -290,8 +312,9 @@ describe("ActionCenter V2 — AI Visibility / Content Intelligence / Technical S
     expect(getVerifications.mock.calls.length - verifyCallsBefore).toBe(1);
   });
 
-  it("shows a compact verification badge next to a recommendation action when a real persisted record exists", async () => {
+  it("Phase K: a genuinely verified-fixed action moves into the collapsed 'Verified fixed' section, not the active list, but still shows its real badge on demand", async () => {
     const { getVerifications } = await import("../api.js");
+    getReportAnswerSimulation.mockResolvedValue({ available: false, reason: "no_monitor" });
     getReport.mockResolvedValue(REPORT([REC("schema")]));
     getVerifications.mockResolvedValue({ verifications: [{
       id: "v1", signal_id: "schema", verification_status: "verified",
@@ -300,6 +323,12 @@ describe("ActionCenter V2 — AI Visibility / Content Intelligence / Technical S
       evidence_changes: [], created_at: "2026-01-05T00:00:00Z",
     }] });
     renderAC();
+    // Nothing left to fix — the only finding is verified — so the primary list is empty.
+    await waitFor(() => expect(screen.getByText("You're in good shape.")).toBeTruthy());
+    expect(screen.queryByText("Needs attention")).toBeNull();
+    // The finding itself is never deleted — it's demoted to a collapsed section.
+    expect(screen.queryByText("Fix schema")).toBeNull();
+    fireEvent.click(screen.getByText("1 verified fixed"));
     await waitFor(() => expect(screen.getByText("Fix schema")).toBeTruthy());
     const head = screen.getByText("Fix schema").closest(".au-ac-card-h");
     expect(within(head).getByText("Verified")).toBeTruthy();
@@ -313,6 +342,71 @@ describe("ActionCenter V2 — AI Visibility / Content Intelligence / Technical S
     await waitFor(() => expect(screen.getByText("Fix schema")).toBeTruthy());
     const head = screen.getByText("Fix schema").closest(".au-ac-card-h");
     expect(within(head).queryByText("Verified")).toBeNull();
+  });
+
+  describe("Phase K — verified items no longer behave like active unresolved actions", () => {
+    it("1. an unresolved (unverified) item remains in the active/primary list", async () => {
+      const { getVerifications } = await import("../api.js");
+      getReportAnswerSimulation.mockResolvedValue({ available: false, reason: "no_monitor" });
+      getReport.mockResolvedValue(REPORT([REC("schema"), REC("links")]));
+      getVerifications.mockResolvedValue({ verifications: [{
+        id: "v1", signal_id: "schema", verification_status: "verified",
+        status_before: "fail", status_after: "pass", score_before: 40, score_after: 90,
+        score_delta: 50, resolved_issues: [], remaining_issues: [], new_issues: [],
+        evidence_changes: [], created_at: "2026-01-05T00:00:00Z",
+      }] });
+      renderAC();
+      // "links" has no verification record at all -> stays active; "schema" is verified -> demoted.
+      await waitFor(() => expect(screen.getByText("Your latest scan found 1 problem to fix.")).toBeTruthy());
+      expect(screen.getByText("Fix links")).toBeTruthy();
+      expect(screen.queryByText("Fix schema")).toBeNull();
+    });
+
+    it("2. a verified item is excluded from the active count/headline and the priority breakdown", async () => {
+      const { getVerifications } = await import("../api.js");
+      getReportAnswerSimulation.mockResolvedValue({ available: false, reason: "no_monitor" });
+      getReport.mockResolvedValue(REPORT([REC("schema", { priority: "Critical" })]));
+      getVerifications.mockResolvedValue({ verifications: [{
+        id: "v1", signal_id: "schema", verification_status: "verified",
+        status_before: "fail", status_after: "pass", score_before: 40, score_after: 90,
+        score_delta: 50, resolved_issues: [], remaining_issues: [], new_issues: [],
+        evidence_changes: [], created_at: "2026-01-05T00:00:00Z",
+      }] });
+      renderAC();
+      await waitFor(() => expect(screen.getByText("You're in good shape.")).toBeTruthy());
+      // never counted in the Critical/High/etc. priority tally either
+      expect(screen.queryByText("Critical")).toBeNull();
+    });
+
+    it("3. the badge/status shown for a verified item stays the real persisted status — never upgraded/invented", async () => {
+      const { getVerifications } = await import("../api.js");
+      getReportAnswerSimulation.mockResolvedValue({ available: false, reason: "no_monitor" });
+      getReport.mockResolvedValue(REPORT([REC("schema")]));
+      getVerifications.mockResolvedValue({ verifications: [{
+        id: "v1", signal_id: "schema", verification_status: "partially_improved",
+        status_before: "fail", status_after: "warn", score_before: 40, score_after: 70,
+        score_delta: 30, resolved_issues: [], remaining_issues: [], new_issues: [],
+        evidence_changes: [], created_at: "2026-01-05T00:00:00Z",
+      }] });
+      renderAC();
+      // "partially_improved" is not "verified" -> stays an ACTIVE item, badge says so truthfully.
+      await waitFor(() => expect(screen.getByText("Fix schema")).toBeTruthy());
+      expect(screen.getByText("Your latest scan found 1 problem to fix.")).toBeTruthy();
+      const head = screen.getByText("Fix schema").closest(".au-ac-card-h");
+      expect(within(head).getByText("Partially improved")).toBeTruthy();
+      expect(within(head).queryByText("Verified")).toBeNull();
+    });
+
+    it("4. no verification record at all leaves behavior unchanged — item stays active, no verified section renders", async () => {
+      const { getVerifications } = await import("../api.js");
+      getReportAnswerSimulation.mockResolvedValue({ available: false, reason: "no_monitor" });
+      getReport.mockResolvedValue(REPORT([REC("schema")]));
+      getVerifications.mockResolvedValue({ verifications: [] });
+      renderAC();
+      await waitFor(() => expect(screen.getByText("Fix schema")).toBeTruthy());
+      expect(screen.getByText("Your latest scan found 1 problem to fix.")).toBeTruthy();
+      expect(screen.queryByText(/verified fixed/)).toBeNull();
+    });
   });
 });
 

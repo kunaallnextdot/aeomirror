@@ -539,6 +539,40 @@ def test_structured_verdict_from_stored_analysis_no_provider_call(monkeypatch):
     assert "position" in sample and "brand_urls_cited" in sample
 
 
+def test_results_endpoint_tags_citation_source_real_provider_vs_llm_extracted(monkeypatch):
+    """Phase H: GET /prompt-runs/{id}/results must let the UI tell a real
+    provider-reported citation apart from a URL our own extraction step inferred from
+    the answer text — never label the latter as if the provider returned it."""
+    def boom():
+        raise AssertionError("no provider may be called to render a stored verdict")
+    monkeypatch.setattr(at_providers, "enabled_providers", boom)
+    monkeypatch.setattr(at_providers, "extraction_provider", boom)
+    client, body = auth_client()
+    org = body["organization"]["id"]
+    db = SessionLocal()
+    try:
+        ps, prompts = _set(db, org, prompts=("What is best?", "Who offers this?"))
+        run = _run(db, ps, org)
+        # Sample 1: the provider itself returned structured citations (a real list).
+        r_provider = _result(db, run, prompts[0].id, org, run_index=0,
+                             citations=[{"url": "https://acme.com/pricing", "title": None}])
+        _analysis(db, run, r_provider.id, org, mentioned=True, urls=["https://acme.com/pricing"])
+        # Sample 2: the provider CANNOT report citations (None) -> our own extraction
+        # step supplied the URL from the answer text instead.
+        r_llm = _result(db, run, prompts[1].id, org, run_index=0, citations=None)
+        _analysis(db, run, r_llm.id, org, mentioned=True, urls=["https://acme.com/about"])
+        run_id = run.id
+    finally:
+        db.close()
+
+    got = client.get(f"/prompt-runs/{run_id}/results").json()
+    by_prompt = {p["text"]: p["results"][0] for p in got["prompts"]}
+    assert by_prompt["What is best?"]["citation_source"] == "provider"
+    assert by_prompt["Who offers this?"]["citation_source"] == "llm_extracted"
+    # never the reverse — the LLM-extracted sample must never be tagged "provider"
+    assert by_prompt["Who offers this?"]["citation_source"] != "provider"
+
+
 def test_recommended_entities_preserve_order(monkeypatch):
     ordered = ('{"brand_mentioned": false, "mention_context": null, "sentiment": null, '
                '"brand_urls_cited": [], "position": null, "competitors_mentioned": [], '

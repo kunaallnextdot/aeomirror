@@ -252,6 +252,11 @@ function SimulationResultCard({ result, onExplain, busy }) {
       <button className="au-as-card-head" onClick={() => setExpanded((e) => !e)} aria-expanded={expanded}>
         {expanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
         <span className="au-as-card-question">{result.question}</span>
+        {/* Always visible, not just on expand/hover — this card is AEOMirror's own
+            local simulation, never a real ChatGPT/Claude/Gemini/Perplexity answer
+            (that's Provider Tracking, a separate section below). One small tag,
+            never a loud banner. */}
+        <span className="au-as-sim-tag" title="AEOMirror's local simulation — not a live AI provider answer">Simulated</span>
         <span className="au-at-tag" style={{ color: ANSWERABILITY_COLOR[level] }}>
           {ANSWERABILITY_LABEL[level] || level}
         </span>

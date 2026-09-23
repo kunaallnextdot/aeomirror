@@ -161,6 +161,16 @@ class Settings(BaseSettings):
     # budget above — and so any threadpool call orphaned by a budget timeout self-
     # terminates quickly instead of burning tokens after we've returned 504.
     content_insight_ai_timeout_seconds: int = 20
+    # Content Insights' own JSON shape (tone + clarity + structure, each with its own
+    # fixes/implementation, plus suggestions and a rewrite example) is genuinely larger
+    # than the report-narrative prompt ai_max_tokens (1500) was sized for. Observed in
+    # production: a real, content-rich page's response regularly needs ~1600-2000+
+    # output tokens; at 1500 the model's response gets cut off mid-JSON, which then
+    # (correctly) fails to parse and surfaces as a 503 "AI analysis is temporarily
+    # unavailable." — a real bug, not a transient failure. Sized with headroom rather
+    # than raising the shared ai_max_tokens (which would also raise cost/latency on the
+    # unrelated report-narrative path).
+    content_insight_ai_max_tokens: int = 3000
 
     # --- AI Answer Tracking (Part A) ---
     # Measures whether AI assistants mention/cite a brand. All values are env-overridable;

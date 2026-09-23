@@ -16,7 +16,7 @@ from app.reports.engine import build_report
 from app.scanner.models import PageBundle
 from app.services.answer_tracking import visibility as V
 from tests.authutil import auth_client
-from tests.test_phase4 import _content_section, _links_section, _schema_section
+from tests.test_phase4 import _RELEVANT_CONTENT, _content_section, _links_section, _schema_section
 from tests.test_scanner import GOOD_HTML, GOOD_ROBOTS
 
 
@@ -60,14 +60,20 @@ def test_grouping_never_deletes_or_alters_evidence():
     """Every opportunity that existed before grouping still exists afterward, with its
     original fields (impact/priority/evidence/description) completely unchanged —
     grouping only ADDS is_primary/root_cause_id."""
-    sections = [_schema_section(state="present", has_entity=False, content={"WebSite": True})]
+    sections = [_schema_section(state="present", has_entity=False, content={"WebSite": True}),
+               _RELEVANT_CONTENT]
     report = build_report(_scan(sections))
     op = V.build_opportunities(_summary(), report, report["phase4"])
 
     schema_gaps = [o for o in op["items"] if o["type"] == "schema_opportunity"]
     entity_opp = next(o for o in op["items"] if o["type"] == "entity_opportunity")
     score_loss = next(o for o in op["items"] if o["id"] == "score_loss:schema")
-    assert len(schema_gaps) == 7            # every missing type still present (Organization excluded via has_entity)
+    # every missing type still present (Organization excluded via has_entity) — the
+    # content-type-dependent types (Article/FAQPage/Product/Service/Review) are
+    # missing here because _RELEVANT_CONTENT genuinely supports every one of them,
+    # not because they're recommended unconditionally (see test_phase4.py's own
+    # schema-relevance tests for the false-positive-prevention behavior itself).
+    assert len(schema_gaps) == 7
     assert entity_opp["evidence"]["missing_signals"]                 # real evidence intact
     assert score_loss["description"]                                # real description intact
     assert score_loss["impact"] == entity_opp["impact"] or True      # impacts may legitimately differ (different formulas)
@@ -78,12 +84,15 @@ def test_no_evidence_is_removed_only_annotated():
     # ABSENT links section is itself treated as "0 internal links, no nav" by Phase 4's
     # existing build_link_intelligence (pre-existing behavior, unrelated to grouping).
     sections = [_schema_section(state="present", has_entity=False, content={"WebSite": True}),
-               _links_section(internal=10, has_nav=True, score=100)]
+               _links_section(internal=10, has_nav=True, score=100), _RELEVANT_CONTENT]
     report = build_report(_scan(sections))
     op = V.build_opportunities(_summary(), report, report["phase4"])
-    # 1 score_loss + 7 schema_gap (Organization missing via has_entity=False, plus
-    # Article/FAQPage/BreadcrumbList/Product/Service/Review) + 1 entity_gap = 9 items
-    assert len(op["items"]) == 9
+    # 1 score_loss:schema + 7 schema_gap (Organization missing via has_entity=False,
+    # plus Article/FAQPage/BreadcrumbList/Product/Service/Review, all genuinely
+    # relevant per _RELEVANT_CONTENT) + 1 entity_gap + 1 score_loss:content (the
+    # added content section's own real, non-perfect score) + 1 question_opportunity
+    # (the content section's own real heading_questions entry) = 11 items
+    assert len(op["items"]) == 11
     for o in op["items"]:
         assert "is_primary" in o and "root_cause_id" in o          # additive fields present
         assert set(o.keys()) >= {"id", "type", "title", "description", "priority", "impact",
@@ -132,7 +141,9 @@ def test_single_ungrouped_schema_item_needs_no_group():
                                         "BreadcrumbList": True, "Service": True, "Review": True},
                                 score=100),
                _links_section(internal=10, has_nav=True, score=100)]
-    report = build_report(_scan(sections))
+    # Product is a gated schema type (see phase4.py's relevance gating) — a product-
+    # path URL is real, genuine relevance evidence, not a workaround.
+    report = build_report(_scan(sections, url="https://acme.example/products/widget"))
     op = V.build_opportunities(_summary(), report, report["phase4"])
     schema_gaps = [o for o in op["items"] if o["type"] == "schema_opportunity"]
     assert len(schema_gaps) == 1 and schema_gaps[0]["id"] == "schema_gap:product"

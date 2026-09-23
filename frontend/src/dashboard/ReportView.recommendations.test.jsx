@@ -46,6 +46,20 @@ import { getReport, getReportAccess } from "../api.js";
 import ReportView from "./ReportView.jsx";
 
 describe("ReportView recommendations — server-side gating", () => {
+  it("Phase H: the main report score shows its explicit scale, never a bare number that could read as a percentage", async () => {
+    getReport.mockResolvedValue({
+      ...BASE_REPORT,
+      recommendations: [REC("schema", "Add structured data", "schema")],
+      recommendation_count: 1,
+    });
+    getReportAccess.mockResolvedValue({ unlocked: true });
+
+    render(<MemoryRouter><ReportView scanId="s1" /></MemoryRouter>);
+
+    await waitFor(() => expect(screen.getByText("62 / 100")).toBeTruthy());
+    expect(screen.getByText(/Grade C/)).toBeTruthy();
+  });
+
   it("free/locked: shows only the free preview + a locked count, no hidden locked content", async () => {
     getReport.mockResolvedValue({
       ...BASE_REPORT,

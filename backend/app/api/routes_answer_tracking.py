@@ -484,6 +484,13 @@ def run_results(run_id: str,
             "mention_context": (a.mention_context if a else None),
             "sentiment": (a.sentiment if a else None),
             "brand_urls_cited": (a.brand_urls_cited if a else None),
+            # Provenance for brand_urls_cited (Phase H): the provider itself returned
+            # `citations` (a real list, possibly empty) -> those URLs are provider-
+            # reported ("provider"). The provider CAN'T report citations (`citations`
+            # is None) -> _normalize() falls back to our own LLM extracting URLs from
+            # the answer text instead ("llm_extracted"). Mirrors extraction.py's own
+            # `result.citations is None` branch exactly — never a second classifier.
+            "citation_source": "provider" if r.citations is not None else "llm_extracted",
             "position": (a.position if a else None),
             "recommended_entities": (a.recommended_entities if a else None),
             "extraction_failed": (a.extraction_failed if a else None),

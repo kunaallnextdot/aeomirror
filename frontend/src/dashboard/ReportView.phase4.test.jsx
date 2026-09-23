@@ -131,6 +131,17 @@ describe("ReportView Phase 4 sections", () => {
     expect(screen.queryByText(/more question/)).toBeNull();
   });
 
+  it("Phase I: Schema and Entity subtitles communicate the content-dependent vs. universal distinction", async () => {
+    getReport.mockResolvedValue({ ...BASE_REPORT, phase4: PAID_PHASE4 });
+    getReportAccess.mockResolvedValue({ unlocked: true });
+
+    render(<MemoryRouter><ReportView scanId="s1" /></MemoryRouter>);
+
+    await waitFor(() => expect(screen.getByText("Schema Intelligence")).toBeTruthy());
+    expect(screen.getByText(/some types only apply when your content supports them/)).toBeTruthy();
+    expect(screen.getByText(/checked the same way for every site/)).toBeTruthy();
+  });
+
   it("empty state: a section with nothing to report renders nothing (no fabricated content)", async () => {
     getReport.mockResolvedValue({
       ...BASE_REPORT,

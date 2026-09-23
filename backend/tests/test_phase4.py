@@ -54,14 +54,35 @@ def _links_section(*, internal=0, has_nav=False, diversity=0.0, generic=0, empty
     }
 
 
-def _content_section(*, heading_questions=None, score=80, weight=12):
+def _content_section(*, heading_questions=None, word_count=0, body_text="",
+                     score=80, weight=12):
     return {
         "id": "content", "label": "Content Structure", "weight": weight, "score": score,
         "status": "pass", "issues": [], "recommendations": [],
         "evidence": {"h1_count": 1, "h2_count": 2, "heading_jumps": 0,
                     "semantic_html": True, "paragraphs": 5, "lists": 1,
-                    "heading_questions": heading_questions or []},
+                    "heading_questions": heading_questions or [],
+                    "word_count": word_count,
+                    "body_evidence": {"word_count": word_count, "truncated": False,
+                                      "chunks": ([{"id": "chunk-0", "text": body_text,
+                                                  "start_word": 0, "end_word": word_count}]
+                                                 if body_text else [])}},
     }
+
+
+# A page with real, qualifying evidence for every gated schema type (long-form body
+# text, a question-shaped heading, price text, service-offer language, and a review/
+# rating phrase) — used by tests that need every gated type to be genuinely relevant,
+# without relying on any single test asserting the exact relevance heuristic itself.
+_RELEVANT_CONTENT = _content_section(
+    heading_questions=["Why should you choose us?"],
+    word_count=500,
+    body_text=(
+        "Why should you choose us? " + ("Our team has served customers for years. " * 60)
+        + "We offer premium consulting services starting at $99 per month. "
+        "Read our customer reviews — rated 5 stars by over 200 clients."
+    ),
+)
 
 
 def _scan(sections, url="https://acme.example/", overall_score=50):
@@ -100,15 +121,93 @@ def test_schema_affected_url_is_the_real_scanned_url_only():
 
 
 def test_schema_never_fabricates_a_detected_type():
-    """An absent-state page reports every checklist type as missing — never a type
-    that wasn't actually found, and never a fabricated 'detected' type."""
+    """An absent-state page never reports a type that wasn't actually found, and
+    never a fabricated 'detected' type. With NO content-relevance evidence at all,
+    only the universally-applicable types (Organization/WebSite/BreadcrumbList) are
+    surfaced as missing — the content-type-dependent types (Article/FAQPage/Product/
+    Service/Review) require real supporting evidence (see test_schema_relevance_*
+    below), never a blind checklist applied regardless of page content."""
     sec = [_schema_section(state="absent")]
     si = build_schema_intelligence(sec, "https://acme.example/")
     assert si["detected_types"] == []
     assert si["present_types"] == []
-    assert {m["type"] for m in si["missing_types"]} == {
-        "Organization", "WebSite", "Article", "FAQPage", "BreadcrumbList",
-        "Product", "Service", "Review"}
+    assert {m["type"] for m in si["missing_types"]} == {"Organization", "WebSite", "BreadcrumbList"}
+
+
+def test_schema_relevance_product_recommended_when_real_evidence_supports_it():
+    """A page whose content genuinely looks like a product page (real price text in
+    the scanned body) DOES get a Product schema recommendation, with real evidence
+    quoted in why_it_matters."""
+    sec = [_schema_section(state="absent"), _RELEVANT_CONTENT]
+    si = build_schema_intelligence(sec, "https://acme.example/")
+    product = [m for m in si["missing_types"] if m["type"] == "Product"]
+    assert len(product) == 1
+    assert "price" in product[0]["why_it_matters"].lower()
+
+
+def test_schema_relevance_product_not_recommended_without_evidence():
+    """A page with no product-page signal at all (no price text, no product-ish URL
+    path) never gets a 'Missing Product schema' recommendation — the false positive
+    this whole feature exists to eliminate."""
+    sec = [_schema_section(state="absent"), _content_section(word_count=50, body_text="Contact us for more information.")]
+    si = build_schema_intelligence(sec, "https://acme.example/contact")
+    assert not any(m["type"] == "Product" for m in si["missing_types"])
+
+
+def test_schema_relevance_review_requires_genuine_review_context():
+    """Review schema is not recommended without genuine review/rating language or a
+    review-shaped URL path — a plain contact page never gets it."""
+    sec = [_schema_section(state="absent"), _content_section(word_count=50, body_text="Contact us for more information.")]
+    si = build_schema_intelligence(sec, "https://acme.example/contact")
+    assert not any(m["type"] == "Review" for m in si["missing_types"])
+
+    sec_with_reviews = [_schema_section(state="absent"), _RELEVANT_CONTENT]
+    si2 = build_schema_intelligence(sec_with_reviews, "https://acme.example/")
+    review = [m for m in si2["missing_types"] if m["type"] == "Review"]
+    assert len(review) == 1
+    assert "review" in review[0]["why_it_matters"].lower() or "rating" in review[0]["why_it_matters"].lower()
+
+
+def test_schema_relevance_service_available_for_service_pages():
+    """Service schema remains available (not silently dropped) for a page whose URL
+    path or content genuinely describes a service."""
+    sec = [_schema_section(state="absent")]
+    si = build_schema_intelligence(sec, "https://acme.example/services/consulting")
+    service = [m for m in si["missing_types"] if m["type"] == "Service"]
+    assert len(service) == 1
+    assert "service" in service[0]["why_it_matters"].lower()
+
+
+def test_schema_relevance_service_not_recommended_without_evidence():
+    """Phase I regression: a page with no service-ish URL path and no service-offer
+    language never gets a 'Missing Service schema' recommendation — same false-
+    positive-elimination rule applied to the other gated types."""
+    sec = [_schema_section(state="absent"), _content_section(word_count=50, body_text="Contact us for more information.")]
+    si = build_schema_intelligence(sec, "https://acme.example/contact")
+    assert not any(m["type"] == "Service" for m in si["missing_types"])
+
+
+def test_schema_relevance_article_requires_substantial_body_content():
+    """Article schema is only suggested for genuinely long-form pages — a thin page
+    never gets it, a substantial one does, both using the real word_count signal."""
+    sec_thin = [_schema_section(state="absent"), _content_section(word_count=50, body_text="Short page.")]
+    si_thin = build_schema_intelligence(sec_thin, "https://acme.example/")
+    assert not any(m["type"] == "Article" for m in si_thin["missing_types"])
+
+    sec_long = [_schema_section(state="absent"), _RELEVANT_CONTENT]
+    si_long = build_schema_intelligence(sec_long, "https://acme.example/")
+    assert any(m["type"] == "Article" for m in si_long["missing_types"])
+
+
+def test_schema_relevance_faqpage_requires_real_question_headings():
+    sec_no_faq = [_schema_section(state="absent"), _content_section(word_count=50, body_text="Contact us.")]
+    si = build_schema_intelligence(sec_no_faq, "https://acme.example/")
+    assert not any(m["type"] == "FAQPage" for m in si["missing_types"])
+
+    sec_faq = [_schema_section(state="absent"), _RELEVANT_CONTENT]
+    si2 = build_schema_intelligence(sec_faq, "https://acme.example/")
+    faq = [m for m in si2["missing_types"] if m["type"] == "FAQPage"]
+    assert len(faq) == 1 and "question" in faq[0]["why_it_matters"].lower()
 
 
 # ===================================================================
@@ -364,8 +463,6 @@ def test_gate_phase4_no_paid_data_leaks_in_free_preview():
 # Fix 1: scan-readiness guard — never fabricate a diagnosis for an
 # incomplete/pending/running/failed scan.
 # ===================================================================
-_ALL_MISSING = {"Organization", "WebSite", "Article", "FAQPage", "BreadcrumbList",
-               "Product", "Service", "Review"}
 
 
 def test_pending_scan_does_not_show_all_schema_types_as_missing():
@@ -400,11 +497,15 @@ def test_incomplete_scan_does_not_fabricate_opportunities():
 
 def test_completed_scan_with_no_schema_still_shows_missing_schema():
     """The flip side of the fix: a GENUINELY complete scan with no structured data
-    must still say so plainly — readiness and "found nothing" are different facts."""
+    must still say so plainly — readiness and "found nothing" are different facts.
+    Only the universally-applicable types are unconditional (see
+    test_schema_never_fabricates_a_detected_type for why the content-type-dependent
+    types aren't included without real relevance evidence)."""
     block = build_phase4_block([_schema_section(state="absent")],
                                "https://acme.example/", scan_ready=True)
     assert block["available"] is True
-    assert {m["type"] for m in block["schema"]["missing_types"]} == _ALL_MISSING
+    assert {m["type"] for m in block["schema"]["missing_types"]} == {
+        "Organization", "WebSite", "BreadcrumbList"}
 
 
 def test_completed_scan_with_schema_still_works():

@@ -25,11 +25,32 @@ function Meter({ label, meter }) {
   );
 }
 
+/* Fix-first: a meter's own concrete action list + a short worked-example
+   implementation, immediately after the meters — real model output (see
+   backend/app/scanner/ai_content.py's _meter_with_fixes, the ONE shared shape used
+   for tone, clarity AND structure), never fabricated, honestly omitted when the
+   model found nothing to fix for that meter. */
+function FixBlock({ label, meter, className }) {
+  const fixes = meter?.fixes || [];
+  const implementation = meter?.implementation || "";
+  if (fixes.length === 0) return null;
+  return (
+    <div className={`ci-block ${className}`}>
+      <div className="ci-h">{label} — what to fix</div>
+      <ol className="ci-ol">{fixes.map((f, i) => <li key={i}>{f}</li>)}</ol>
+      {implementation && (
+        <>
+          <div className="ci-h" style={{ marginTop: 8 }}>Implementation</div>
+          <pre className="au-code">{implementation}</pre>
+        </>
+      )}
+    </div>
+  );
+}
+
 export function InsightsBody({ data }) {
   if (!data) return null;
   const rw = data.rewrite_example || {};
-  const structureFixes = data.structure?.fixes || [];
-  const structureImpl = data.structure?.implementation || "";
   return (
     <div className="ci-body">
       <div className="ci-meters">
@@ -38,22 +59,9 @@ export function InsightsBody({ data }) {
         <Meter label="Structure" meter={data.structure} />
       </div>
 
-      {/* Fix-first: Structure's own concrete action list + a short implementation
-          skeleton come immediately after the meters — real model output (see
-          backend/app/scanner/ai_content.py), never fabricated, and honestly omitted
-          when the model found nothing to fix. */}
-      {structureFixes.length > 0 && (
-        <div className="ci-block ci-structure-fix">
-          <div className="ci-h">Structure — what to fix</div>
-          <ol className="ci-ol">{structureFixes.map((f, i) => <li key={i}>{f}</li>)}</ol>
-          {structureImpl && (
-            <>
-              <div className="ci-h" style={{ marginTop: 8 }}>Implementation</div>
-              <pre className="au-code">{structureImpl}</pre>
-            </>
-          )}
-        </div>
-      )}
+      <FixBlock label="Tone" meter={data.tone} className="ci-tone-fix" />
+      <FixBlock label="Clarity" meter={data.clarity} className="ci-clarity-fix" />
+      <FixBlock label="Structure" meter={data.structure} className="ci-structure-fix" />
 
       {(data.suggestions || []).length > 0 && (
         <div className="ci-block">

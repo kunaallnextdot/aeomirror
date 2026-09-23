@@ -105,6 +105,21 @@ describe("ScanDetails — Problem/Evidence/Why/Fix", () => {
     expect(screen.queryByText("Review and update stale content.")).toBeNull();
   });
 
+  it("Phase H: composite render order is Problem -> Fix -> Evidence, not Problem -> Evidence -> Fix", async () => {
+    getReport.mockResolvedValue(REPORT([REC("freshness")]));
+    render(<ScanDetails scan={SCAN([FRESHNESS_FAIL])} onBack={() => {}} onRerun={() => {}} />);
+    await openSignal("Freshness");
+    await waitFor(() => expect(screen.getByText("Recommended step for freshness.")).toBeTruthy());
+
+    const problem = screen.getByText("Important content appears outdated.");   // native "What's wrong"
+    const fix = screen.getByText("Recommended step for freshness.");           // RecommendationCard's Fix step
+    const evidence = screen.getByText("last_modified");                        // native Evidence block
+
+    // problem comes before fix, and fix comes before evidence — never evidence before the fix
+    expect(problem.compareDocumentPosition(fix) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(fix.compareDocumentPosition(evidence) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
   it("never shows a duplicate 'Evidence' heading from RecommendationCard — Scan Details' own native evidence block is the only one", async () => {
     getReport.mockResolvedValue(REPORT([REC("freshness", {
       evidence: { issues: ["Important content appears outdated."], findings: { last_modified: "2025-01-01" } },
@@ -154,7 +169,7 @@ describe("ScanDetails — Problem/Evidence/Why/Fix", () => {
     expect(screen.getByText("No Organization schema detected.")).toBeTruthy();
     expect(screen.getByText("Evidence unavailable for this check.")).toBeTruthy();
     await waitFor(() => expect(screen.getByText(
-      "No specific implementation fix is available for this check yet.")).toBeTruthy());
+      "This check has no implementation example — see the issue above for what to address.")).toBeTruthy());
     expect(screen.queryByText(/Recommended fix/)).toBeNull();
   });
 

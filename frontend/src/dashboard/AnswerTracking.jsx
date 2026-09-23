@@ -80,6 +80,11 @@ export default function AnswerTracking({ selectedMonitorId = null, selectedRunId
   const noDomainMatch = !!(currentScanDomain && monitors && monitors.length > 0
     && matchingCurrentDomain.length === 0);
   const showSelector = monitors && (monitors.length > 1 || noDomainMatch);
+  // An explicit monitor id in the URL always wins (a bookmark/deep link/deliberate
+  // selector choice is authoritative — never overridden), but if it genuinely
+  // doesn't match the site the user is currently working with, say so. Small,
+  // non-blocking — the user stays exactly where they navigated.
+  const domainMismatch = !!(active && currentScanDomain && active.domain !== currentScanDomain);
 
   return (
     <div className="aurora-screen">
@@ -109,6 +114,15 @@ export default function AnswerTracking({ selectedMonitorId = null, selectedRunId
               // is never silently invisible again.
               <div className="au-at-context">
                 Answer Tracking <span className="au-at-context-domain">{active.domain || active.normalized_url || active.url}</span>
+              </div>
+            )}
+
+            {domainMismatch && (
+              // The user explicitly navigated/selected this monitor — that choice is
+              // never overridden — but it doesn't match their current scan's site, so
+              // say so plainly rather than leaving it silently ambiguous.
+              <div className="au-at-mismatch">
+                You are viewing Answer Tracking for <b>{active.domain}</b>, while this scan is for <b>{currentScanDomain}</b>.
               </div>
             )}
 
@@ -391,6 +405,10 @@ function PromptRow({ p, canRun, onToggle, onRemove, onSaved, onError }) {
 
 /* ============================ Part B — results ============================ */
 const SENT_COLOR = { positive: "var(--au-mint-d)", neutral: "var(--au-muted)", negative: "var(--au-peach-d)" };
+// A citation's real provenance — never let an LLM-extracted URL read as a provider-
+// reported fact (see backend/app/api/routes_answer_tracking.py's citation_source,
+// mirroring extraction.py's own `result.citations is None` branch exactly).
+const CITATION_SOURCE_LABEL = { provider: "Provider citation", llm_extracted: "Detected from answer" };
 const AXIS = { fill: "var(--au-muted)", fontSize: 10, fontFamily: "'DM Mono', monospace" };
 
 function pct(v) { return v == null ? "—" : `${v}%`; }
@@ -751,7 +769,7 @@ export function groupByProvider(samples) {
     const seenU = new Set();
     const citations = [];
     for (const r of rs) for (const u of (r.brand_urls_cited || [])) {
-      if (u && !seenU.has(u)) { seenU.add(u); citations.push(u); }
+      if (u && !seenU.has(u)) { seenU.add(u); citations.push({ url: u, source: r.citation_source }); }
     }
     const namedWithSent = named.find((r) => r.sentiment);
     const searchOff = rs.some((r) => r.search_enabled === false);
@@ -803,8 +821,11 @@ export function ProviderGroup({ g, ctx }) {
       )}
       {g.citations.length > 0 && (
         <div className="au-at-verdict-body">
-          {g.citations.map((u) => (
-            <a key={u} className="au-at-cite" href={u} target="_blank" rel="noreferrer">{u}</a>
+          {g.citations.map((c) => (
+            <div key={c.url} className="au-at-cite-row">
+              <a className="au-at-cite" href={c.url} target="_blank" rel="noreferrer">{c.url}</a>
+              <span className="au-at-cite-src">{CITATION_SOURCE_LABEL[c.source] || CITATION_SOURCE_LABEL.llm_extracted}</span>
+            </div>
           ))}
         </div>
       )}
@@ -871,7 +892,10 @@ function SampleVerdict({ r, label, ctx }) {
         <div className="au-at-verdict-body">
           {r.mention_context && <div className="au-at-quote">“{r.mention_context}”</div>}
           {(r.brand_urls_cited || []).map((u) => (
-            <a key={u} className="au-at-cite" href={u} target="_blank" rel="noreferrer">{u}</a>
+            <div key={u} className="au-at-cite-row">
+              <a className="au-at-cite" href={u} target="_blank" rel="noreferrer">{u}</a>
+              <span className="au-at-cite-src">{CITATION_SOURCE_LABEL[r.citation_source] || CITATION_SOURCE_LABEL.llm_extracted}</span>
+            </div>
           ))}
         </div>
       )}

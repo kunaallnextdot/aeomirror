@@ -3,6 +3,7 @@ import { describe, it, expect } from "vitest";
 import {
   normalizeRecommendation, normalizeContentCluster, normalizeThinContent,
   normalizeTechnicalIssues, normalizeAnswerSimulation, buildActionItems,
+  CONTENT_CLUSTER_TYPE_CAVEAT,
 } from "./actionSources.js";
 
 const REC = (id, overrides = {}) => ({
@@ -39,10 +40,25 @@ describe("actionSources — normalizeContentCluster", () => {
     const item = normalizeContentCluster(CLUSTER(), "s1");
     expect(item.source).toBe("Content Intelligence");
     expect(item.priority).toBe("High");
-    expect(item.problem).toBe("Review whether these pages should target distinct search intents.");
     expect(item.fullEvidence).toContain("Content similarity: 78% (word-trigram overlap)");
     expect(item.fullEvidence).toContain("https://x.com/a");
     expect(item.fixText).toBe("Differentiate the pages by search intent and content focus.");
+  });
+
+  it("Phase H: problem is the real diagnosed evidence, never the same text as the fix/recommendation", () => {
+    const item = normalizeContentCluster(CLUSTER(), "s1");
+    // problem must NOT equal the fix-flavored recommendation sentence (the bug this fixes)
+    expect(item.problem).not.toBe(CLUSTER().recommendation);
+    expect(item.problem).not.toBe(item.fixText);
+    // problem must be real, available evidence — the cluster's own first evidence line
+    expect(item.problem).toBe("Content similarity: 78% (word-trigram overlap)");
+    // fix remains a separate, actionable recommendation
+    expect(item.fixText).toBe("Differentiate the pages by search intent and content focus.");
+  });
+
+  it("Phase H: never invents evidence when a cluster genuinely has none", () => {
+    const item = normalizeContentCluster(CLUSTER({ evidence: [] }), "s1");
+    expect(item.problem).toBeNull();
   });
 
   it("CONSOLIDATE and REVIEW_CANONICAL map to the ticket's exact specified fix copy", () => {
@@ -54,6 +70,21 @@ describe("actionSources — normalizeContentCluster", () => {
 
   it("KEEP_SEPARATE never becomes an urgent action — it is not necessarily a problem", () => {
     expect(normalizeContentCluster(CLUSTER({ recommended_action: "KEEP_SEPARATE" }), "s1")).toBeNull();
+  });
+
+  it("Phase I: near_duplicate and potential_cannibalization carry distinct, cautious why-it-matters wording", () => {
+    const dup = normalizeContentCluster(CLUSTER({ type: "near_duplicate" }), "s1");
+    const cannibal = normalizeContentCluster(CLUSTER({ type: "potential_cannibalization" }), "s1");
+    expect(dup.why).toBe(CONTENT_CLUSTER_TYPE_CAVEAT.near_duplicate);
+    expect(cannibal.why).toBe(CONTENT_CLUSTER_TYPE_CAVEAT.potential_cannibalization);
+    expect(dup.why).not.toBe(cannibal.why);
+    // potential_cannibalization must never claim a confirmed conflict — only an inference
+    expect(cannibal.why.toLowerCase()).toMatch(/inference|not proof|may compete/);
+  });
+
+  it("Phase I: an unknown/unmapped cluster type never invents why-it-matters copy", () => {
+    const item = normalizeContentCluster(CLUSTER({ type: "content_overlap" }), "s1");
+    expect(item.why).toBeNull();
   });
 });
 

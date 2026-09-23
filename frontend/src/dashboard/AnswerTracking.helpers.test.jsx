@@ -65,12 +65,18 @@ describe("groupByProvider (FIX 1)", () => {
     expect(g.recommended.map((e) => e.name)).toEqual(["Beta", "Zeta", "Acme"]);
   });
 
-  it("dedupes citations across samples, first-seen order", () => {
+  it("dedupes citations across samples, first-seen order, tagged with each sample's real provenance", () => {
     const [g] = groupByProvider([
-      { provider: "anthropic", brand_mentioned: true, brand_urls_cited: ["https://a.com", "https://b.com"] },
-      { provider: "anthropic", brand_mentioned: true, brand_urls_cited: ["https://b.com", "https://c.com"] },
+      { provider: "anthropic", brand_mentioned: true, citation_source: "provider",
+        brand_urls_cited: ["https://a.com", "https://b.com"] },
+      { provider: "anthropic", brand_mentioned: true, citation_source: "llm_extracted",
+        brand_urls_cited: ["https://b.com", "https://c.com"] },
     ]);
-    expect(g.citations).toEqual(["https://a.com", "https://b.com", "https://c.com"]);
+    expect(g.citations).toEqual([
+      { url: "https://a.com", source: "provider" },
+      { url: "https://b.com", source: "provider" },      // first-seen sample's source wins, never overwritten
+      { url: "https://c.com", source: "llm_extracted" },
+    ]);
   });
 
   it("orders providers where the brand was named BEFORE not-named ones", () => {

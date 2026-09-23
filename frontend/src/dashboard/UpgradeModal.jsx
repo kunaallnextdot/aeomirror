@@ -20,7 +20,7 @@ const COPY = {
   compares: { title: "You've used your Free comparison",       sub: "Upgrade to Pro for unlimited scan comparisons." },
   report:   { title: "Unlock the full report",                 sub: "Every recommendation and fix, the AI-written narrative, and PDF / CSV / JSON exports." },
   page_details: { title: "See every page's full breakdown",    sub: "See the full signal breakdown for every page. Pro unlocks detailed reports for up to 50 URLs per bulk scan." },
-  ai_content: { title: "AI Content Insights is a Pro feature",  sub: "AI-written tone, clarity and structure analysis with specific rewrite suggestions for every page." },
+  ai_content: { title: "Content Insights is a Pro feature",  sub: "AI-written tone, clarity and structure analysis with specific rewrite suggestions for every page." },
   share:    { title: "You've reached your share-link limit",    sub: "Free includes 3 active public share links. Revoke one, or upgrade to Pro for unlimited." },
   ai_visibility: { title: "Unlock complete AI Visibility",       sub: "Full provider & prompt analysis, every content gap with grounded actions, and trends over time." },
   competitor_intelligence: { title: "See the full AI competitor landscape", sub: "The complete leaderboard plus head-to-head — every tracked answer where a competitor appeared and your brand was absent." },

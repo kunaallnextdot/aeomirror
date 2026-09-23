@@ -124,7 +124,7 @@ describe("AnswerTracking — cross-site isolation (bug fix regression)", () => {
     expect(indicator.textContent).toContain("webpulseindia.com");
   });
 
-  it("an explicit selectedMonitorId in the URL always wins — no auto-select logic involved on reload", async () => {
+  it("an explicit selectedMonitorId in the URL always wins — no auto-select logic involved on reload — but a real domain mismatch is shown, non-blocking", async () => {
     listMonitors.mockResolvedValue({ monitors: [DOCMIRROR, WEBPULSE] });
     getMonitorAnswerTracking.mockResolvedValue({
       site_name: "Webpulse", site_url: "webpulseindia.com", prompts: [], max_prompts: 10,
@@ -135,5 +135,21 @@ describe("AnswerTracking — cross-site isolation (bug fix regression)", () => {
     await waitFor(() => expect(screen.getByTestId("answer-simulator")).toBeTruthy());
     // even though currentScanDomain points elsewhere, an explicit id in the URL is authoritative
     expect(getMonitorAnswerTracking).toHaveBeenCalledWith("mon-webpulse");
+    // Phase H: the mismatch is surfaced, never silently invisible, but never blocks the user
+    const warning = document.querySelector(".au-at-mismatch");
+    expect(warning.textContent).toContain("webpulseindia.com");
+    expect(warning.textContent).toContain("thedocmirror.com");
+  });
+
+  it("no mismatch warning when the explicitly-selected monitor's domain matches the current scan", async () => {
+    listMonitors.mockResolvedValue({ monitors: [WEBPULSE] });
+    getMonitorAnswerTracking.mockResolvedValue({
+      site_name: "Webpulse", site_url: "webpulseindia.com", prompts: [], max_prompts: 10,
+      runs: [], estimate: { call_count: 0, providers: [] },
+    });
+    renderAT({ selectedMonitorId: "mon-webpulse", currentScanDomain: "webpulseindia.com" });
+
+    await waitFor(() => expect(screen.getByTestId("answer-simulator")).toBeTruthy());
+    expect(document.querySelector(".au-at-mismatch")).toBeNull();
   });
 });
