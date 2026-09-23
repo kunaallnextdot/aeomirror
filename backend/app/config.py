@@ -153,14 +153,34 @@ class Settings(BaseSettings):
     # Hard overall wall-clock budget for the interactive "Analyze content" endpoint
     # (page re-fetch + AI analysis). Past this the request returns 504 instead of
     # running long enough for an upstream proxy to sever the connection. Sized to fit
-    # the AI call WITH its one retry: 2 × content_insight_ai_timeout_seconds + backoff
-    # (~41s) plus a normal cached re-fetch, with headroom under a ~60s proxy limit.
-    content_insight_budget_seconds: int = 55
+    # a normal fetch (well under fetch_timeout_seconds) plus ONE successful AI attempt
+    # at content_insight_ai_timeout_seconds, with headroom under Render's proxy limit
+    # (not configured in render.yaml — assumed ~100s, the commonly documented Render
+    # default for a web service; this stays comfortably under that). A genuine retry
+    # (transient network/5xx, not "the model is just generating a lot of tokens") may
+    # still exceed this budget and return an honest 504 rather than holding the
+    # connection open indefinitely — see content_insight_ai_timeout_seconds below for
+    # why raising this alone, without also raising the per-attempt timeout, would not
+    # have fixed the actual failure.
+    content_insight_budget_seconds: int = 75
     # Per-attempt AI timeout for the INTERACTIVE content-insight path only. Shorter than
-    # ai_timeout_seconds (which the report-narrative path keeps) so a retry fits the
-    # budget above — and so any threadpool call orphaned by a budget timeout self-
-    # terminates quickly instead of burning tokens after we've returned 504.
-    content_insight_ai_timeout_seconds: int = 20
+    # ai_timeout_seconds (which the report-narrative path keeps) so any threadpool call
+    # orphaned by a budget timeout self-terminates quickly instead of burning tokens
+    # after we've returned 504.
+    #
+    # MEASURED root cause of the post-max_tokens-fix production timeout: raising
+    # content_insight_ai_max_tokens (1500 -> 3000, see below) fixed truncation but also
+    # means the model legitimately generates more output — and generating more output
+    # takes proportionally longer wall-clock time. A real, instrumented reproduction
+    # against a genuinely content-rich production page measured ai.complete() at
+    # 19.19s against the OLD 20s timeout — a ~0.8s margin, so any normal production
+    # network/latency variance (Render vs. localhost) tips this over,
+    # triggering a retry that then ALSO runs into the same inherent generation time and
+    # times out again, burning ~41s before the endpoint's own budget above gives up.
+    # This was never a fetch/network/retry problem — it's that content_insight_ai_max_tokens
+    # went up without content_insight_ai_timeout_seconds going up to match. Sized to
+    # ~2.3x the measured 19.19s for real headroom on a single (non-retried) attempt.
+    content_insight_ai_timeout_seconds: int = 45
     # Content Insights' own JSON shape (tone + clarity + structure, each with its own
     # fixes/implementation, plus suggestions and a rewrite example) is genuinely larger
     # than the report-narrative prompt ai_max_tokens (1500) was sized for. Observed in

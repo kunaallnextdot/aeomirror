@@ -195,16 +195,25 @@ export async function captureLead(email, url) {
    Dashboard API (Phase 4). Single request helper; all throw ScanError on
    failure so the dashboard can render consistent error states.
    ===================================================================== */
-// Client-side ceiling, slightly above the server's content_insight_budget_seconds (55s)
-// so a slow "Analyze content" call is aborted as a timeout — not left to an upstream
-// connection kill that would look like an unreachable backend.
+// Client-side ceiling for an ordinary API call — comfortably above any normal
+// (non-AI) request's real duration, so a hung connection is aborted as a timeout
+// rather than left to an upstream connection kill that would look like an
+// unreachable backend.
 const REQUEST_TIMEOUT_MS = 60000;
+// Content Insights ("Analyze content") is the one call whose OWN backend budget
+// (content_insight_budget_seconds, see config.py) legitimately exceeds the generic
+// ceiling above — this used to share REQUEST_TIMEOUT_MS, sized specifically around
+// the backend's old 55s budget, which silently broke when that budget was raised to
+// accommodate a longer AI generation time (see config.py's content_insight_ai_timeout_seconds
+// comment for the measured root cause). Feature-specific override, not a blanket
+// increase of REQUEST_TIMEOUT_MS for every other call in this file.
+const CONTENT_INSIGHT_TIMEOUT_MS = 90000;   // backend budget (75s) + margin for network/response transfer
 
 async function request(path, opts = {}) {
-  const { errorContext, genericMessage, ...fetchOpts } = opts;
+  const { errorContext, genericMessage, timeoutMs, ...fetchOpts } = opts;
   let res;
   const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), REQUEST_TIMEOUT_MS);
+  const timer = setTimeout(() => ctrl.abort(), timeoutMs || REQUEST_TIMEOUT_MS);
   try {
     res = await authFetch(path, { ...fetchOpts, signal: ctrl.signal });  // Bearer token + refresh-on-401
   } catch (e) {
@@ -353,6 +362,11 @@ export function analyzeContent(scanId, pageUrl) {
     // ">=500" fallback, so the user sees why it actually failed instead of an opaque
     // "unexpected error" message.
     errorContext: true,
+    // Feature-specific timeout — see CONTENT_INSIGHT_TIMEOUT_MS above. Without this,
+    // the frontend's generic 60s ceiling aborts the request (client-side) before the
+    // backend's own 75s content_insight_budget_seconds gets a chance to finish, which
+    // would silently mask a legitimately-completing analysis as a client timeout.
+    timeoutMs: CONTENT_INSIGHT_TIMEOUT_MS,
   });
 }
 
