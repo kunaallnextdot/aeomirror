@@ -14,7 +14,8 @@ from sqlalchemy.orm import Session
 
 from app.core.ssrf import validate_url
 from app.db.models import (
-    JOB_FAILED, JOB_KIND_BULK_SCAN, SCAN_FAILED, Monitor, MonitorHistory, Scan,
+    JOB_FAILED, JOB_KIND_BULK_SCAN, JOB_KIND_GA4_SYNC, SCAN_FAILED,
+    GoogleAnalyticsConnection, Monitor, MonitorHistory, Scan,
 )
 from app.monitoring import scheduler
 from app.monitoring.alerts import evaluate_alerts, persist_alerts
@@ -87,6 +88,9 @@ async def process_job(db: Session, job) -> None:
     if job.kind == JOB_KIND_BULK_SCAN:
         await _process_bulk_scan_job(db, job)
         return
+    if job.kind == JOB_KIND_GA4_SYNC:
+        await _process_ga4_sync_job(db, job)
+        return
 
     monitor = db.get(Monitor, job.monitor_id)
     if not monitor:
@@ -98,6 +102,29 @@ async def process_job(db: Session, job) -> None:
     except Exception as e:
         db.rollback()
         logger.warning("monitor job %s failed: %s", job.id, type(e).__name__)
+        scheduler.fail_job(db, job, e)
+
+
+async def _process_ga4_sync_job(db: Session, job) -> None:
+    """Execute one GA4 traffic-sync job. The connection is re-loaded from the DB and
+    its OWN persisted organization_id is what every downstream check (status,
+    property, credential) uses — the job row is never trusted as proof of
+    authorization on its own, only as a pointer to re-fetch the real record."""
+    from app.services.integrations.google_analytics import run_sync
+
+    connection = db.get(GoogleAnalyticsConnection, job.connection_id)
+    if not connection:
+        scheduler.fail_job(db, job, "connection no longer exists")
+        return
+    if connection.organization_id != job.organization_id:
+        scheduler.fail_job(db, job, "connection/job organization mismatch")
+        return
+    try:
+        await run_sync(db, connection)
+        scheduler.complete_job(db, job)
+    except Exception as e:
+        db.rollback()
+        logger.warning("ga4 sync job %s failed: %s", job.id, type(e).__name__)
         scheduler.fail_job(db, job, e)
 
 

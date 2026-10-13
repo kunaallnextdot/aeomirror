@@ -453,6 +453,56 @@ export function runPromptSet(id, { override } = {}) {
   const qs = override ? `?override=true` : "";
   return request(`/prompt-sets/${encodeURIComponent(id)}/run${qs}`, { method: "POST" });
 }
+
+/* =====================================================================
+   Google Analytics 4 integration (P0: AI referral traffic). Org-scoped, Pro-only
+   (throws ScanError code 402 like other premium endpoints). /connect returns an
+   authorize_url for the CALLER to navigate the real browser to (window.location) —
+   it cannot issue a redirect itself since it's an authenticated fetch(), not a
+   browser navigation. The backend's /callback route (hit by Google's redirect
+   directly) is never called from this file.
+
+   Every call below sets BOTH a GA4-specific `genericMessage` (so an unhandled 5xx
+   with no detail body shows GA4 wording, not request()'s hardcoded default "The
+   scanner hit an unexpected error" — confusing copy on a page that has nothing to
+   do with scanning a site) AND `errorContext: true` (so a real, deliberate curated
+   5xx detail — e.g. /connect's 503 "Google Analytics integration is not configured
+   on this server" when GOOGLE_OAUTH_* env vars are unset — is shown VERBATIM instead
+   of being discarded in favor of the generic fallback; messageForStatus() only
+   prefers the real detail over genericMessage when `context` is set). Found via a
+   real repro: a stale local dev DB missing the GA4 migration threw a 500 from
+   /status (fixed by applying the migration + this genericMessage), and separately
+   /connect's own clear "not configured" message was being silently replaced by the
+   generic fallback because errorContext wasn't set on that call — also fixed here. */
+const GA4_GENERIC_MESSAGE = "Could not load Google Analytics data right now. Please try again in a moment.";
+const GA4_OPTS = { errorContext: true, genericMessage: GA4_GENERIC_MESSAGE };
+
+export function getGa4Status() {
+  return request(`/integrations/google/status`, GA4_OPTS);
+}
+export function connectGoogleAnalytics() {
+  return request(`/integrations/google/connect`, GA4_OPTS);
+}
+export function listGa4Properties() {
+  return request(`/integrations/google/properties`, GA4_OPTS);
+}
+export function selectGa4Property(propertyId) {
+  return request(`/integrations/google/select-property`, {
+    method: "POST", body: JSON.stringify({ property_id: propertyId }), ...GA4_OPTS,
+  });
+}
+export function triggerGa4Sync() {
+  return request(`/integrations/google/sync`, { method: "POST", ...GA4_OPTS });
+}
+export function getGa4Traffic({ startDate, endDate } = {}) {
+  const clean = Object.entries({ start_date: startDate, end_date: endDate })
+    .filter(([, v]) => v);
+  const qs = new URLSearchParams(clean).toString();
+  return request(`/integrations/google/traffic${qs ? `?${qs}` : ""}`, GA4_OPTS);
+}
+export function disconnectGoogleAnalytics() {
+  return request(`/integrations/google`, { method: "DELETE", ...GA4_OPTS });
+}
 export function getPromptRun(id) { return request(`/prompt-runs/${encodeURIComponent(id)}`); }
 export function getPromptRunSummary(id) {
   return request(`/prompt-runs/${encodeURIComponent(id)}/summary`);

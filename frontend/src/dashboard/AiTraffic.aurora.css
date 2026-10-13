@@ -1,0 +1,36 @@
+/* Aurora styling for AI Traffic (/app/analytics/ai-traffic). Shared `au-ga4-*`
+   classes, token-styled (reuses existing design tokens, no new palette). */
+
+.au-ga4-head h1{display:flex;align-items:center;gap:9px;font-family:var(--au-font-heading);
+  font-size:20px;font-weight:700;color:var(--au-ink);margin:0}
+.au-ga4-sub{font-size:13px;color:var(--au-muted);margin:6px 0 18px;max-width:640px;line-height:1.6}
+
+.au-ga4-banner{padding:10px 14px;border-radius:var(--au-r-m);font-size:13px;margin-bottom:14px}
+.au-ga4-banner-ok{background:var(--au-mint);color:var(--au-mint-d)}
+.au-ga4-banner-error{background:var(--au-peach);color:var(--au-peach-d)}
+
+.au-ga4-card{background:var(--au-solid);border:1px solid var(--au-line);border-radius:var(--au-r-m);
+  padding:18px;box-shadow:var(--au-sh-s);margin-bottom:14px}
+.au-ga4-card p{font-size:13.5px;color:var(--au-ink);line-height:1.6;margin:8px 0 12px}
+
+.au-ga4-toolbar{display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap}
+.au-ga4-toolbar strong{font-size:15px;color:var(--au-ink)}
+.au-ga4-synced{font-family:var(--au-font-numeric);font-size:11.5px;color:var(--au-muted);margin-top:3px}
+.au-ga4-actions{display:flex;gap:8px;flex-wrap:wrap}
+
+.au-ga4-proplist{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px}
+.au-ga4-proplist button{width:100%;text-align:left;padding:10px 12px;border:1px solid var(--au-line);
+  border-radius:var(--au-r-m);background:var(--au-bg);font-size:13.5px;color:var(--au-ink);cursor:pointer;
+  display:flex;align-items:center;justify-content:space-between;gap:10px;transition:border-color .15s}
+.au-ga4-proplist button:hover{border-color:var(--au-primary)}
+.au-ga4-prop-account{font-size:11.5px;color:var(--au-muted)}
+
+.au-ga4-sources{list-style:none;margin:0;padding:0}
+.au-ga4-sources li{display:flex;align-items:center;justify-content:space-between;
+  padding:9px 0;border-bottom:1px solid var(--au-line-2);font-size:13.5px;color:var(--au-ink)}
+.au-ga4-sources li:last-child{border-bottom:0}
+.au-ga4-sources strong{font-family:var(--au-font-numeric);font-weight:500}
+
+.au-ga4-note{display:flex;align-items:flex-start;gap:10px;background:var(--au-bg)}
+.au-ga4-note svg{flex:none;margin-top:2px;color:var(--au-muted)}
+.au-ga4-note p{margin:0;font-size:12.5px;color:var(--au-muted)}

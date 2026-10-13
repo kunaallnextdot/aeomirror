@@ -8,6 +8,7 @@ import { Link, NavLink, Outlet, useLocation, useNavigate } from "react-router-do
 import {
   Radar, LayoutDashboard, ScanLine, GitCompare, Globe, ArrowLeft, FileText, FileSearch,
   Activity, User, Users, Building2, LogOut, Shield, CreditCard, MessageSquare, Mail, ListChecks,
+  BarChart3,
 } from "lucide-react";
 import {
   getDashboard, getScans, deleteScan, rerunScan, bulkScanUrls, ScanError,
@@ -34,6 +35,7 @@ export const NAV = [
   { to: "/app/action-center", label: "Action Center", icon: ListChecks },
   { to: "/app/monitoring", label: "Monitoring", icon: Activity },
   { to: "/app/answer-tracking", label: "Answer Tracking", icon: MessageSquare },
+  { to: "/app/analytics/ai-traffic", label: "AI Traffic", icon: BarChart3 },
   { to: "/app/scans/latest", label: "Scan Details", icon: FileText },
   { to: "/app/compare", label: "Compare", icon: GitCompare },
   { to: "/app/website-summary", label: "Websites", icon: Globe },
@@ -51,6 +53,7 @@ const FOOTER_PRODUCT = [
   { to: "/app/action-center", label: "Action Center" },
   { to: "/app/report", label: "View Report" },
   { to: "/app/answer-tracking", label: "Answer Tracking" },
+  { to: "/app/analytics/ai-traffic", label: "AI Traffic" },
   { to: "/app/monitoring", label: "Monitoring" },
 ];
 const FOOTER_RESOURCES = [
@@ -77,6 +80,7 @@ function routeMeta(pathname) {
     monitoring: isDetail ? ["Monitor", "Historical timeline, trends, changes and alerts"]
                          : ["Monitoring", "Track AI visibility over time and get alerted on changes"],
     "answer-tracking": ["Answer Tracking", "Track whether AI assistants mention and cite your brand"],
+    analytics: ["AI Traffic", "Real inbound visitor traffic from AI assistants, via your connected Google Analytics property"],
     report: ["View Report", "What's wrong, why it matters, and how to fix it"],
     compare: ["Compare Scans", "Diff two scans signal by signal"],
     "website-summary": ["Websites", "Every domain you've scanned, with its latest and best/worst scores"],

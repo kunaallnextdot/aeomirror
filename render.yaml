@@ -78,6 +78,16 @@ services:
         sync: false
       - key: ANTHROPIC_API_KEY
         sync: false          # optional; AI features stay off when unset
+      # Google Analytics 4 integration (P0). Leave unset to keep it fully disabled
+      # (connect returns 503). See backend/GOOGLE_ANALYTICS_SETUP.md.
+      - key: GOOGLE_OAUTH_CLIENT_ID
+        sync: false
+      - key: GOOGLE_OAUTH_CLIENT_SECRET
+        sync: false
+      - key: GOOGLE_OAUTH_REDIRECT_URI
+        sync: false   # the API service's own public URL + /integrations/google/callback
+      - key: TOKEN_ENCRYPTION_KEY
+        sync: false          # required the moment the three GOOGLE_OAUTH_* vars above are set
 
   # ---------------- monitoring worker ----------------
   - type: worker
@@ -113,3 +123,13 @@ services:
         sync: false
       - key: ANTHROPIC_API_KEY
         sync: false          # worker generates AI report content for bulk/scheduled jobs
+      # The worker runs ga4_sync jobs (decrypts the stored refresh token, calls Google
+      # directly) — needs the same four values as the API service.
+      - key: GOOGLE_OAUTH_CLIENT_ID
+        sync: false
+      - key: GOOGLE_OAUTH_CLIENT_SECRET
+        sync: false
+      - key: GOOGLE_OAUTH_REDIRECT_URI
+        sync: false
+      - key: TOKEN_ENCRYPTION_KEY
+        sync: false          # MUST be the same value as the API service's

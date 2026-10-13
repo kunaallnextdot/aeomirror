@@ -11,8 +11,8 @@ from fastapi.responses import JSONResponse
 
 from app.api import (
     routes_admin, routes_answer_simulator, routes_answer_tracking, routes_auth, routes_billing,
-    routes_contact, routes_dashboard, routes_digest, routes_misc, routes_monitors, routes_org,
-    routes_public, routes_reports, routes_scan,
+    routes_contact, routes_dashboard, routes_digest, routes_integrations, routes_misc,
+    routes_monitors, routes_org, routes_public, routes_reports, routes_scan,
 )
 from app.config import settings
 from app.core.observability import (
@@ -85,6 +85,7 @@ app.include_router(routes_public.router)    # /public/* (unauthenticated shared-
 app.include_router(routes_digest.router)    # /digest/* (unauthenticated unsubscribe)
 app.include_router(routes_answer_tracking.router)  # /prompt-sets/*, /prompts/*, /prompt-runs/*
 app.include_router(routes_answer_simulator.router)  # /monitors/{id}/answer-simulator/*
+app.include_router(routes_integrations.router)      # /integrations/google/* (GA4, P0)
 
 # NOTE: schema creation is intentionally NOT done at startup. Alembic migrations
 # own the schema — run `alembic upgrade head` (or `npm run db:upgrade`) before

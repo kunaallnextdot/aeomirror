@@ -20,8 +20,8 @@ from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.db.models import (
-    JOB_COMPLETED, JOB_FAILED, JOB_KIND_BULK_SCAN, JOB_PENDING, JOB_RUNNING,
-    MONITOR_ACTIVE, Monitor, ScheduledJob,
+    GA4_STATUS_ACTIVE, JOB_COMPLETED, JOB_FAILED, JOB_KIND_BULK_SCAN, JOB_KIND_GA4_SYNC,
+    JOB_PENDING, JOB_RUNNING, MONITOR_ACTIVE, GoogleAnalyticsConnection, Monitor, ScheduledJob,
 )
 
 logger = logging.getLogger("aeomirror.scheduler")
@@ -118,6 +118,71 @@ def enqueue_manual(db: Session, monitor: Monitor, now: datetime | None = None) -
         # A concurrent enqueue won the race; return the active job that exists now.
         db.rollback()
         return has_active_job(db, monitor.id)
+    db.refresh(job)
+    return job
+
+
+def has_active_ga4_sync_job(db: Session, connection_id: str) -> ScheduledJob | None:
+    return (db.query(ScheduledJob)
+            .filter(ScheduledJob.connection_id == connection_id,
+                    ScheduledJob.status.in_((JOB_PENDING, JOB_RUNNING)))
+            .first())
+
+
+def enqueue_due_ga4_syncs(db: Session, now: datetime | None = None) -> int:
+    """Create ga4_sync jobs for active, property-selected connections whose
+    next_sync_at has passed. Exact mirror of enqueue_due()'s monitor pattern: dedupe
+    via the partial unique index (uq_scheduled_jobs_active_per_connection), commit
+    per-connection so a concurrent scheduler race just loses gracefully rather than
+    double-enqueuing."""
+    now = now or datetime.utcnow()
+    due = (db.query(GoogleAnalyticsConnection)
+           .filter(GoogleAnalyticsConnection.status == GA4_STATUS_ACTIVE,
+                   GoogleAnalyticsConnection.ga4_property_id.isnot(None),
+                   GoogleAnalyticsConnection.next_sync_at.isnot(None),
+                   GoogleAnalyticsConnection.next_sync_at <= now)
+           .all())
+    created = 0
+    for conn in due:
+        if has_active_ga4_sync_job(db, conn.id):
+            continue
+        job = ScheduledJob(
+            connection_id=conn.id, organization_id=conn.organization_id,
+            kind=JOB_KIND_GA4_SYNC, status=JOB_PENDING, attempts=0,
+            max_attempts=settings.monitor_job_max_attempts,
+            scheduled_for=now, run_after=now, created_at=now, updated_at=now,
+        )
+        db.add(job)
+        try:
+            db.commit()
+            created += 1
+        except IntegrityError:
+            db.rollback()
+            logger.info("enqueue race: connection %s already has an active sync job; skipped",
+                        conn.id)
+    return created
+
+
+def enqueue_manual_ga4_sync(db: Session, connection: GoogleAnalyticsConnection,
+                            now: datetime | None = None) -> ScheduledJob:
+    """Queue an immediate GA4 sync. If one is already active for this connection,
+    return it (dedupe) rather than queueing a second one."""
+    existing = has_active_ga4_sync_job(db, connection.id)
+    if existing:
+        return existing
+    now = now or datetime.utcnow()
+    job = ScheduledJob(
+        connection_id=connection.id, organization_id=connection.organization_id,
+        kind=JOB_KIND_GA4_SYNC, status=JOB_PENDING, attempts=0,
+        max_attempts=settings.monitor_job_max_attempts,
+        scheduled_for=now, run_after=now, created_at=now, updated_at=now,
+    )
+    db.add(job)
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        return has_active_ga4_sync_job(db, connection.id)
     db.refresh(job)
     return job
 

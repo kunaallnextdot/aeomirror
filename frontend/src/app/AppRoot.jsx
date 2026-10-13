@@ -10,7 +10,7 @@ import {
   AppIndexRedirect, DashboardHomeRoute, ScansRoute, ScanDetailRoute, LatestScanRoute,
   ActionCenterRoute, MonitoringRoute, MonitorDetailRoute, AnswerTrackingRoute, ReportRoute,
   CompareRoute, SummaryRoute, BillingRoute, ProfileRoute, TeamRoute, OrganizationRoute,
-  NotFoundRoute,
+  AiTrafficRoute, NotFoundRoute,
 } from "./routes.jsx";
 
 export default function AppRoot() {
@@ -33,6 +33,7 @@ export default function AppRoot() {
           <Route path="answer-tracking" element={<AnswerTrackingRoute />} />
           <Route path="answer-tracking/:monitorId" element={<AnswerTrackingRoute />} />
           <Route path="answer-tracking/:monitorId/runs/:runId" element={<AnswerTrackingRoute />} />
+          <Route path="analytics/ai-traffic" element={<AiTrafficRoute />} />
           <Route path="report" element={<ReportRoute />} />
           <Route path="compare" element={<CompareRoute />} />
           <Route path="website-summary" element={<SummaryRoute />} />

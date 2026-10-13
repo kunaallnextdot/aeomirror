@@ -319,6 +319,45 @@ class Settings(BaseSettings):
     def stripe_configured(self) -> bool:
         return bool(self.stripe_secret_key)
 
+    # --- Google Analytics 4 integration (P0: AI referral traffic) ---
+    # Server-side OAuth 2.0 (authorization-code flow) client registered in Google Cloud
+    # Console. Unset (the default) => the integration is fully disabled: /connect
+    # returns 503 rather than attempting a broken OAuth redirect. See
+    # app/services/integrations/google_analytics.py and GOOGLE_ANALYTICS_SETUP.md.
+    google_oauth_client_id: str = ""
+    google_oauth_client_secret: str = ""
+    # Must exactly match a redirect URI registered on the OAuth client in Google Cloud
+    # Console (Google rejects any mismatch). Points at THIS backend's callback route,
+    # not the frontend.
+    google_oauth_redirect_uri: str = ""
+    # Fernet key (urlsafe-base64, 32 raw bytes) encrypting the ONE secret this
+    # integration persists: the connected account's refresh token. Generate via
+    # `python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"`.
+    # Validated at startup (see _validate_production below) whenever the GA4 client
+    # id/secret are configured, so a misconfigured key fails at deploy time, not on
+    # the first real sync. A per-process random key is NEVER generated for this value
+    # (unlike jwt_secret) — tokens encrypted under a throwaway key become permanently
+    # undecryptable the moment the process restarts.
+    token_encryption_key: str = ""
+    # How many trailing days of daily aggregates a sync fetches per run. Re-fetching a
+    # short trailing window (not just "yesterday") absorbs GA4's own data-freshness lag
+    # (same-day data can still be revised) via the idempotent upsert in Ga4TrafficSnapshot.
+    ga4_sync_lookback_days: int = 7
+    # First sync after connecting pulls this much history once.
+    ga4_initial_sync_lookback_days: int = 30
+    ga4_sync_interval_hours: int = 24
+    ga4_api_timeout_seconds: int = 20
+    # How long an OAuth `state` value is valid before /callback rejects it as expired
+    # (also rejects it outright if already consumed — single-use either way).
+    oauth_state_ttl_seconds: int = 600
+
+    @property
+    def ga4_integration_enabled(self) -> bool:
+        """False (not just 'misconfigured') hides the feature entirely rather than
+        exposing a connect button that would fail immediately."""
+        return bool(self.google_oauth_client_id and self.google_oauth_client_secret
+                    and self.google_oauth_redirect_uri)
+
     # --- Phase 8: admin platform ---
     # Comma-separated emails auto-granted platform-admin access (in addition to any
     # user with is_platform_admin=True). Lets you bootstrap the first admin.
@@ -476,6 +515,26 @@ class Settings(BaseSettings):
                 )
             # Never ship insecure auth cookies over HTTP in production.
             self.auth_cookie_secure = True
+        # GA4 is opt-in (ga4_integration_enabled requires client id/secret/redirect to
+        # all be set) — but the moment it IS enabled, the encryption key is mandatory
+        # and must actually be a valid Fernet key, in every environment (not just
+        # production): a connection created under an invalid key would be unrecoverable
+        # garbage the instant anything touches it. Fail at startup, not on first use.
+        if self.ga4_integration_enabled:
+            if not self.token_encryption_key:
+                raise ValueError(
+                    "GA4 integration is configured (GOOGLE_OAUTH_CLIENT_ID/SECRET/"
+                    "REDIRECT_URI set) but TOKEN_ENCRYPTION_KEY is missing. Generate one: "
+                    'python -c "from cryptography.fernet import Fernet; '
+                    'print(Fernet.generate_key().decode())"'
+                )
+            from cryptography.fernet import Fernet
+            try:
+                Fernet(self.token_encryption_key.encode())
+            except Exception as exc:
+                raise ValueError(
+                    "TOKEN_ENCRYPTION_KEY is not a valid Fernet key."
+                ) from exc
         # Non-production convenience: a per-process random secret so local dev works
         # with zero config. It changes on restart (existing tokens invalidate) — that
         # is fine for dev and never used in production (validated above).

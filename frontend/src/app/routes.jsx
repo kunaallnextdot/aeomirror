@@ -23,6 +23,7 @@ import BillingView from "../dashboard/BillingView.jsx";
 import ProfilePage from "../auth/pages/ProfilePage.jsx";
 import TeamPage from "../auth/pages/TeamPage.jsx";
 import OrganizationPage from "../auth/pages/OrganizationPage.jsx";
+import AiTraffic from "../dashboard/AiTraffic.jsx";
 import { Globe } from "lucide-react";
 
 export function useAppCtx() { return useOutletContext(); }
@@ -169,6 +170,7 @@ export function AnswerTrackingRoute() {
                          currentScanDomain={currentScanDomain} />;
 }
 
+export function AiTrafficRoute() { return <AiTraffic />; }
 export function BillingRoute() { return <BillingView />; }
 export function ProfileRoute() { return <ProfilePage />; }
 export function TeamRoute() { return <TeamPage />; }

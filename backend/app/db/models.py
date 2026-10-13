@@ -285,6 +285,7 @@ JOB_FAILED = "failed"
 JOB_KIND_SCHEDULED = "scheduled"
 JOB_KIND_MANUAL = "manual"
 JOB_KIND_BULK_SCAN = "bulk_scan"
+JOB_KIND_GA4_SYNC = "ga4_sync"
 
 ALERT_OPEN = "open"
 ALERT_ACK = "acknowledged"
@@ -327,6 +328,7 @@ class ScheduledJob(Base):
     __table_args__ = (
         Index("ix_jobs_claimable", "status", "run_after"),
         Index("ix_jobs_monitor_status", "monitor_id", "status"),
+        Index("ix_jobs_connection_status", "connection_id", "status"),
         # At most ONE active (pending|running) job per monitor — enforced atomically at the
         # DB level so two concurrent scheduler processes cannot both enqueue the same
         # monitor (partial unique index; NULL monitor_id bulk jobs are excluded). Same
@@ -334,14 +336,20 @@ class ScheduledJob(Base):
         Index("uq_scheduled_jobs_active_per_monitor", "monitor_id", unique=True,
               sqlite_where=text("status IN ('pending','running') AND monitor_id IS NOT NULL"),
               postgresql_where=text("status IN ('pending','running') AND monitor_id IS NOT NULL")),
+        # Same pattern for ga4_sync jobs: at most one active sync per GA4 connection.
+        Index("uq_scheduled_jobs_active_per_connection", "connection_id", unique=True,
+              sqlite_where=text("status IN ('pending','running') AND connection_id IS NOT NULL"),
+              postgresql_where=text("status IN ('pending','running') AND connection_id IS NOT NULL")),
     )
     id = Column(String, primary_key=True, default=_uuid)
-    # Monitor jobs reference a monitor; site_scan jobs reference a scan instead, so
-    # both are nullable and the worker dispatches on `kind`.
+    # Monitor jobs reference a monitor; site_scan jobs reference a scan instead;
+    # ga4_sync jobs reference a GoogleAnalyticsConnection — all three are nullable and
+    # the worker dispatches on `kind`.
     monitor_id = Column(String, index=True, nullable=True)
     scan_id = Column(String, index=True, nullable=True)          # set for kind="site_scan"
+    connection_id = Column(String, index=True, nullable=True)    # set for kind="ga4_sync"
     organization_id = Column(String, index=True, nullable=True)
-    kind = Column(String, nullable=False, default="scheduled")   # scheduled|manual|site_scan
+    kind = Column(String, nullable=False, default="scheduled")   # scheduled|manual|site_scan|ga4_sync
     status = Column(String, nullable=False, default=JOB_PENDING)
     attempts = Column(Integer, nullable=False, default=0)
     max_attempts = Column(Integer, nullable=False, default=3)
@@ -837,3 +845,108 @@ class Verification(Base):
     new_issues = Column(JSON, nullable=False, default=list)
     evidence_changes = Column(JSON, nullable=False, default=list)
     created_at = Column(DateTime, default=datetime.utcnow, index=True)
+
+
+# --- Google Analytics 4 integration (P0: AI referral traffic) ---
+# See app/services/integrations/google_analytics.py (OAuth + sync) and
+# app/services/integrations/classification.py (AI-source labeling).
+GA4_STATUS_PENDING_PROPERTY = "pending_property"   # OAuth done, no property chosen yet
+GA4_STATUS_ACTIVE = "active"
+GA4_STATUS_REVOKED = "revoked"
+GA4_STATUS_ERROR = "error"
+
+# Deterministic classification buckets (see classification.py) — "unattributable"
+# specifically covers Google organic search, which the GA4 API cannot separate from
+# an AI Overview click. Never a database CHECK constraint: the label vocabulary is
+# allowed to grow (e.g. a new assistant) without a migration.
+AI_SOURCE_LABELS = (
+    "chatgpt", "perplexity", "gemini", "copilot", "claude",
+    "other_identifiable", "unattributable",
+)
+
+
+class OAuthState(Base):
+    """A short-lived, single-use anti-CSRF/anti-replay token for the Google OAuth
+    authorization-code flow. /connect creates one bound to the authenticated caller's
+    org+user and embeds only its opaque `state` string in the redirect to Google;
+    /callback (which Google redirects the BROWSER to directly — it can carry no
+    Authorization header) looks up this row by `state` to recover who initiated the
+    flow, rather than trusting anything the browser or Google's redirect supplies.
+    Expired or already-consumed rows are rejected (see services/integrations/
+    google_analytics.py::consume_oauth_state)."""
+    __tablename__ = "oauth_states"
+    __table_args__ = (
+        Index("ix_oauth_states_expires", "expires_at"),
+    )
+    id = Column(String, primary_key=True, default=_uuid)
+    organization_id = Column(String, index=True, nullable=False)
+    user_id = Column(String, index=True, nullable=False)
+    provider = Column(String, nullable=False, default="google")
+    state = Column(String, unique=True, index=True, nullable=False)
+    # PKCE code_verifier (RFC 7636) — generated and held server-side only; never sent
+    # to the browser. Defense in depth against authorization-code interception.
+    code_verifier = Column(String, nullable=False)
+    consumed = Column(Boolean, nullable=False, default=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    expires_at = Column(DateTime, nullable=False)
+
+
+class GoogleAnalyticsConnection(Base):
+    """One organization's connected Google account + selected GA4 property. At most
+    one row per organization (reused across connect/disconnect/reconnect cycles, so
+    sync history in Ga4TrafficSnapshot stays attached to a stable connection_id — see
+    the unique index below). `encrypted_refresh_token` is the ONLY credential
+    persisted (see app/core/token_crypto.py); the short-lived access token is never
+    stored, only held in memory for the duration of a single sync/API call. A
+    connection with `ga4_property_id IS NULL` is mid-setup and must never be synced
+    (enforced in the scheduler's enqueue_due_ga4_syncs, not just the API layer).
+    No FK constraints (codebase convention — see ScheduledJob/Monitor): organization_id
+    and connection_id elsewhere are plain indexed String columns."""
+    __tablename__ = "google_analytics_connections"
+    __table_args__ = (
+        Index("ix_ga4_conn_org", "organization_id", unique=True),
+    )
+    id = Column(String, primary_key=True, default=_uuid)
+    organization_id = Column(String, index=True, nullable=False)
+    google_account_email = Column(String, nullable=True)   # informational display only
+    encrypted_refresh_token = Column(Text, nullable=True)  # None while status=revoked
+    ga4_property_id = Column(String, nullable=True)
+    ga4_property_name = Column(String, nullable=True)
+    connected_by_user_id = Column(String, nullable=False)
+    connected_at = Column(DateTime, default=datetime.utcnow)
+    last_synced_at = Column(DateTime, nullable=True)
+    last_sync_status = Column(String, nullable=True)       # success|error|never
+    # Safe, non-sensitive code only — never a raw exception message or API error body.
+    last_sync_error_code = Column(String, nullable=True)
+    next_sync_at = Column(DateTime, nullable=True, index=True)
+    status = Column(String, nullable=False, default=GA4_STATUS_PENDING_PROPERTY)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow)
+
+
+class Ga4TrafficSnapshot(Base):
+    """One aggregated daily row from a GA4 runReport call: a (date, channel grouping,
+    source, medium) combination's session count, plus the deterministic AI-source
+    classification of that combination (see classification.py — computed at sync
+    time and stored, not recomputed per-request, so a future classification-rule
+    change doesn't silently rewrite historical dashboards). Aggregated counts only —
+    never raw per-visitor events (P0 scope). `date` is the GA4 API's own "YYYYMMDD"
+    dimension value, stored verbatim as a string (avoids timezone-conversion
+    ambiguity and sorts correctly lexicographically for range queries)."""
+    __tablename__ = "ga4_traffic_snapshots"
+    __table_args__ = (
+        Index("ix_ga4_snap_org_date", "organization_id", "date"),
+        Index("uq_ga4_snap_dimension", "connection_id", "date", "channel_grouping",
+              "source", "medium", unique=True),
+    )
+    id = Column(String, primary_key=True, default=_uuid)
+    organization_id = Column(String, index=True, nullable=False)
+    connection_id = Column(String, index=True, nullable=False)
+    date = Column(String, nullable=False)                  # "YYYYMMDD", GA4's own format
+    channel_grouping = Column(String, nullable=False, default="(not set)")
+    source = Column(String, nullable=False, default="(not set)")
+    medium = Column(String, nullable=False, default="(not set)")
+    ai_source_label = Column(String, nullable=False)       # one of AI_SOURCE_LABELS
+    sessions = Column(Integer, nullable=False, default=0)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow)
