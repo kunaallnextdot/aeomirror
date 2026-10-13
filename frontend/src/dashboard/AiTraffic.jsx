@@ -210,7 +210,17 @@ export default function AiTraffic() {
           {!properties ? (
             <Button onClick={loadProperties} loading={busy}>Load properties</Button>
           ) : properties.length === 0 ? (
-            <p>No GA4 properties are accessible to that Google account.</p>
+            <>
+              <p>
+                No GA4 properties are accessible to that Google account. This usually
+                means either the Google account you signed in with doesn't have access
+                to a GA4 property, or you meant to sign in with a different Google
+                account. Check Admin → Property Access Management in Google Analytics
+                for the account you expect to use, or try connecting again and pick a
+                different Google account.
+              </p>
+              <Button onClick={connect} loading={busy}>Try a different Google account</Button>
+            </>
           ) : (
             <ul className="au-ga4-proplist">
               {properties.map((p) => (

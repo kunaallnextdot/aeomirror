@@ -99,7 +99,14 @@ def build_authorize_url(state: str, code_challenge: str) -> str:
         "response_type": "code",
         "scope": GA4_SCOPE,
         "access_type": "offline",
-        "prompt": "consent",   # ensures a refresh_token is issued even on a reconnect
+        # "consent" ensures a refresh_token is issued even on a reconnect. "select_account"
+        # is deliberately ALSO included: without it, Google often silently reuses the
+        # browser's last-authenticated Google session instead of showing the account
+        # chooser — the single most common cause of "connected, but 0 GA4 properties
+        # accessible" (the wrong Google account, with no GA4 access, never got a chance
+        # to be swapped out). Space-delimited multi-value prompt is per Google's own
+        # documented OAuth 2.0 spec, not a workaround.
+        "prompt": "consent select_account",
         "include_granted_scopes": "true",
         "state": state,
         "code_challenge": code_challenge,

@@ -9,6 +9,7 @@ entitlement gate, matching Content Insights' established pattern
 """
 from __future__ import annotations
 
+import logging
 from datetime import date, datetime, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -24,6 +25,7 @@ from app.monitoring import scheduler
 from app.schemas.integrations import SelectGa4PropertyRequest
 from app.services.integrations import google_analytics as ga4
 
+log = logging.getLogger("app.integrations.google_analytics.routes")
 router = APIRouter(prefix="/integrations/google", tags=["integrations"])
 
 # Non-sensitive error codes the frontend maps to a human message. Never a raw
@@ -62,6 +64,18 @@ def connect(ctx: AuthContext = Depends(require_permission("org:update")),
     _require_enabled()
     _require_pro(db, ctx)
     state_row, code_challenge = ga4.create_oauth_state(db, org_id=ctx.org_id, user_id=ctx.user.id)
+    # Diagnostic only, nothing sensitive: redirect_uri is a public URL Google itself
+    # requires to match EXACTLY what's registered in Cloud Console (and is already
+    # visible in the browser's address bar during the OAuth flow), and client_id is
+    # OAuth2's public identifier, never confidential — only truncated here out of
+    # extra caution. The client_secret, state, code_verifier, and any token are
+    # NEVER logged, here or anywhere in this module. This exists to let a
+    # redirect_uri mismatch (a common cause of a Google-side failure mid-flow,
+    # e.g. a trailing-space/newline paste artifact in the Render env var) be
+    # confirmed from logs rather than guessed at.
+    log.info("ga4 connect: org=%s redirect_uri=%r client_id_prefix=%r",
+             ctx.org_id, settings.google_oauth_redirect_uri,
+             settings.google_oauth_client_id[:12])
     return {"authorize_url": ga4.build_authorize_url(state_row.state, code_challenge)}
 
 
@@ -83,6 +97,10 @@ async def callback(code: str | None = Query(default=None),
         reason = result.get("error_code", "unknown")
         if reason not in _SAFE_ERROR_CODES:
             reason = "unknown"   # never reflect an unrecognized value into the redirect
+        # Safe: only the classified error_code (e.g. "invalid_state",
+        # "token_exchange_failed") — never the raw `code`/`state` query params or
+        # Google's response body.
+        log.warning("ga4 callback failed: reason=%s", reason)
         return RedirectResponse(url=f"{target}?ga4=error&reason={reason}", status_code=302)
     return RedirectResponse(url=f"{target}?ga4=connected", status_code=302)
 

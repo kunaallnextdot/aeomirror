@@ -9,7 +9,7 @@ See INTEGRATIONS.md (A1 Postgres, A3 Redis, B1 Email) and PHASE_1_*.md.
 """
 from __future__ import annotations
 
-from pydantic import model_validator
+from pydantic import field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -330,6 +330,19 @@ class Settings(BaseSettings):
     # Console (Google rejects any mismatch). Points at THIS backend's callback route,
     # not the frontend.
     google_oauth_redirect_uri: str = ""
+
+    @field_validator("google_oauth_client_id", "google_oauth_client_secret",
+                     "google_oauth_redirect_uri", mode="before")
+    @classmethod
+    def _strip_ga4_oauth_values(cls, v):
+        """Pasting a Client ID/Secret/redirect URI from the Cloud Console or a
+        dashboard's env-var field very commonly carries a trailing newline or space
+        (a one-character paste artifact, invisible in most UIs). Google's redirect_uri
+        check is an exact byte-for-byte string match, so an untrimmed value would
+        silently fail with a confusing downstream error rather than an obvious
+        "redirect_uri_mismatch" — this strips it at the one place every one of these
+        three values is read from, rather than at each call site."""
+        return v.strip() if isinstance(v, str) else v
     # Fernet key (urlsafe-base64, 32 raw bytes) encrypting the ONE secret this
     # integration persists: the connected account's refresh token. Generate via
     # `python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"`.

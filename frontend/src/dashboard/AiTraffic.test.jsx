@@ -102,6 +102,24 @@ describe("AiTraffic", () => {
     await waitFor(() => expect(selectGa4Property).toHaveBeenCalledWith("111"));
   });
 
+  it("pending_property + zero accessible properties: shows actionable guidance and a way to try a different Google account, not a dead end", async () => {
+    // This is the exact production symptom under investigation: OAuth succeeds,
+    // but the connected Google account has no accessible GA4 property.
+    getGa4Status.mockResolvedValue({ status: "pending_property" });
+    listGa4Properties.mockResolvedValue({ properties: [] });
+    connectGoogleAnalytics.mockResolvedValue({ authorize_url: "https://accounts.google.com/o/oauth2/v2/auth?x=1" });
+    renderAt();
+    await waitFor(() => screen.getByText(/load properties/i));
+    fireEvent.click(screen.getByText(/load properties/i));
+    await waitFor(() => screen.getByText(/no ga4 properties are accessible/i));
+
+    const retryButton = screen.getByRole("button", { name: /try a different google account/i });
+    fireEvent.click(retryButton);
+    await waitFor(() => expect(connectGoogleAnalytics).toHaveBeenCalled());
+    await waitFor(() => expect(assignSpy).toHaveBeenCalledWith(
+      "https://accounts.google.com/o/oauth2/v2/auth?x=1"));
+  });
+
   it("active but not yet synced: shows a pending message, never fake zero numbers", async () => {
     getGa4Status.mockResolvedValue({
       status: "active", ga4_property_name: "Acme Main", last_synced_at: null,

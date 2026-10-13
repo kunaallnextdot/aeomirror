@@ -27,6 +27,8 @@ import { Loader2 } from "lucide-react";
 const AppRoot = React.lazy(() => import("./app/AppRoot.jsx"));
 const AdminApp = React.lazy(() => import("./admin/AdminApp.jsx"));
 const Contact = React.lazy(() => import("./pages/Contact.jsx"));
+const PrivacyPolicy = React.lazy(() => import("./pages/PrivacyPolicy.jsx"));
+const TermsOfService = React.lazy(() => import("./pages/TermsOfService.jsx"));
 const PublicReport = React.lazy(() => import("./dashboard/PublicReport.jsx"));
 // DEV-only Aurora UI kit review surface. Gating the lazy import on import.meta.env.DEV (a
 // build-time constant) puts the dynamic import in a dead branch for production, so Rollup emits
@@ -687,6 +689,30 @@ function ContactRoot() {
   );
 }
 
+/* Public /privacy and /terms page shells: same marketing chrome as /contact. */
+function PrivacyRoot() {
+  return (
+    <div className="au-site">
+      <TopBar />
+      <div className="au-site-content">
+        <Suspense fallback={<FullScreenLoader />}><PrivacyPolicy /></Suspense>
+      </div>
+      <SiteFooter />
+    </div>
+  );
+}
+function TermsRoot() {
+  return (
+    <div className="au-site">
+      <TopBar />
+      <div className="au-site-content">
+        <Suspense fallback={<FullScreenLoader />}><TermsOfService /></Suspense>
+      </div>
+      <SiteFooter />
+    </div>
+  );
+}
+
 /* Website footer with a Contact/Support section. */
 function SiteFooter() {
   return (
@@ -706,7 +732,13 @@ function SiteFooter() {
           </button>
         </div>
       </div>
-      <div className="au-footer-bottom">© {new Date().getFullYear()} AEOMirror. All rights reserved.</div>
+      <div className="au-footer-bottom">
+        © {new Date().getFullYear()} AEOMirror. All rights reserved.
+        <span className="au-footer-legal">
+          <button onClick={() => navigate("/privacy")}>Privacy Policy</button>
+          <button onClick={() => navigate("/terms")}>Terms of Service</button>
+        </span>
+      </div>
     </footer>
   );
 }
@@ -742,6 +774,8 @@ function AppRouter() {
       {/* public marketing + support */}
       <Route path="/" element={<MarketingRoot />} />
       <Route path="/contact" element={<ContactRoot />} />
+      <Route path="/privacy" element={<PrivacyRoot />} />
+      <Route path="/terms" element={<TermsRoot />} />
 
       {/* public auth pages (paths unchanged — external links point here) */}
       <Route path="/login" element={<Login />} />

@@ -100,6 +100,27 @@ def test_properties_credential_failure_returns_safe_502(monkeypatch):
     assert "token" not in r.json()["detail"].lower() or "rt-secret" not in r.text
 
 
+def test_properties_admin_api_failure_returns_safe_502_not_a_fake_empty_list(monkeypatch):
+    """Distinguishes a genuine Google API failure (Admin API not enabled in the Cloud
+    project, rate limited, transient 5xx) from a real empty result — these must NEVER
+    look the same to the customer. A 403/429/5xx from accountSummaries.list must
+    surface as "could not load", not silently render as "you have 0 properties"."""
+    _enable_ga4(monkeypatch)
+    client, body = auth_client()
+    _make_connection(body["organization"]["id"], body["user"]["id"])
+    _patch_refresh_ok(monkeypatch)
+
+    async def fake_list_fails(token):
+        return None   # list_ga4_properties' own contract: None = API call failed
+    monkeypatch.setattr(ga4, "list_ga4_properties", fake_list_fails)
+
+    r = client.get("/integrations/google/properties")
+    assert r.status_code == 502
+    body = r.json()
+    assert isinstance(body["detail"], str) and body["detail"]
+    assert "properties" not in body  # never a disguised 200-shaped empty-list response
+
+
 async def _async(value):
     return value
 

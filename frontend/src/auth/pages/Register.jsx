@@ -64,6 +64,12 @@ export default function Register() {
         <AuPasswordStrength value={password} />
         <AuSubmitButton busy={busy}>Create account</AuSubmitButton>
         <div className="au-field-hint" style={{ textAlign: "center" }}>
+          By creating an account, you agree to our{" "}
+          <button type="button" className="au-authlink" onClick={() => navigate("/terms")}>Terms of Service</button>
+          {" "}and{" "}
+          <button type="button" className="au-authlink" onClick={() => navigate("/privacy")}>Privacy Policy</button>.
+        </div>
+        <div className="au-field-hint" style={{ textAlign: "center" }}>
           We'll email you a link to verify your address.
         </div>
       </form>
