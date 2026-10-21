@@ -15,6 +15,7 @@ import { fmtDate } from "./ui.jsx";
 import { useAuth } from "../auth/AuthContext.jsx";
 import { useUpgrade } from "./UpgradeModal.jsx";
 import { Shell, Cell, Button, Skeleton } from "./aurora.jsx";
+import GoogleConsentModal from "./GoogleConsentModal.jsx";
 import "./AiTraffic.aurora.css";
 
 const AI_LABELS = {
@@ -51,6 +52,8 @@ export default function AiTraffic() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
   const [banner, setBanner] = useState(null);
+  const [showConsent, setShowConsent] = useState(false);
+  const [consentError, setConsentError] = useState(null);
 
   const loadStatus = useCallback(async () => {
     try {
@@ -88,16 +91,27 @@ export default function AiTraffic() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const connect = async () => {
-    setBusy(true); setError(null);
+  // The actual OAuth kickoff — called either directly (reconnect/property-switch
+  // paths, which have already been through the consent step once) or from the
+  // consent modal's "Agree & Continue to Google". `busy` guards against duplicate
+  // submissions (the button disables itself while true). A failure here, while the
+  // modal is open, surfaces inline in the modal (with Retry) instead of behind it.
+  const beginOAuth = async () => {
+    setBusy(true); setError(null); setConsentError(null);
     try {
       const { authorize_url } = await connectGoogleAnalytics();
+      if (!authorize_url) throw new ScanError("Could not start the connection.", 500);
       window.location.assign(authorize_url);   // real browser navigation to Google
+      // No setBusy(false) on success — the browser is navigating away from this page.
     } catch (e) {
-      setError(e instanceof ScanError ? e.message : "Could not start the connection.");
+      const msg = e instanceof ScanError ? e.message : "Could not start the connection.";
+      if (showConsent) setConsentError(msg); else setError(msg);
       setBusy(false);
     }
   };
+
+  const openConsent = () => { setConsentError(null); setShowConsent(true); };
+  const closeConsent = () => { if (!busy) setShowConsent(false); };
 
   const loadProperties = async () => {
     setBusy(true); setError(null);
@@ -151,6 +165,7 @@ export default function AiTraffic() {
   }
 
   return (
+    <>
     <Shell className="au-ga4">
       <header className="au-ga4-head">
         <h1><BarChart3 size={20} /> AI Traffic</h1>
@@ -188,7 +203,7 @@ export default function AiTraffic() {
       {status?.status === "not_connected" && canManage && (
         <Cell className="au-ga4-card">
           <p>Connect your Google Analytics account to see which AI assistants are sending you traffic.</p>
-          <Button onClick={connect} loading={busy}>Connect Google Analytics</Button>
+          <Button onClick={openConsent} loading={busy}>Connect Google Analytics</Button>
         </Cell>
       )}
 
@@ -197,7 +212,7 @@ export default function AiTraffic() {
           <Unplug size={18} />
           <p>Google Analytics was disconnected and is no longer syncing.</p>
           {canManage ? (
-            <Button onClick={connect} loading={busy}>Connect Google Analytics</Button>
+            <Button onClick={openConsent} loading={busy}>Connect Google Analytics</Button>
           ) : (
             <p>Ask an organization owner or admin to reconnect it.</p>
           )}
@@ -219,7 +234,7 @@ export default function AiTraffic() {
                 for the account you expect to use, or try connecting again and pick a
                 different Google account.
               </p>
-              <Button onClick={connect} loading={busy}>Try a different Google account</Button>
+              <Button onClick={beginOAuth} loading={busy}>Try a different Google account</Button>
             </>
           ) : (
             <ul className="au-ga4-proplist">
@@ -238,7 +253,7 @@ export default function AiTraffic() {
       {status?.status === "error" && (
         <Cell className="au-ga4-card">
           <p>{errorMessage(status.last_sync_error_code)}</p>
-          {canManage && <Button onClick={connect} loading={busy}>Reconnect</Button>}
+          {canManage && <Button onClick={beginOAuth} loading={busy}>Reconnect</Button>}
         </Cell>
       )}
 
@@ -302,5 +317,13 @@ export default function AiTraffic() {
         </Cell>
       )}
     </Shell>
+
+    {showConsent && (
+      <GoogleConsentModal
+        onCancel={closeConsent} onConfirm={beginOAuth} busy={busy}
+        error={consentError} onRetry={beginOAuth}
+      />
+    )}
+    </>
   );
 }

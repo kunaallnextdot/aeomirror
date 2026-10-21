@@ -34,3 +34,50 @@
 .au-ga4-note{display:flex;align-items:flex-start;gap:10px;background:var(--au-bg)}
 .au-ga4-note svg{flex:none;margin-top:2px;color:var(--au-muted)}
 .au-ga4-note p{margin:0;font-size:12.5px;color:var(--au-muted)}
+
+/* ---- Google consent modal (pre-OAuth trust step) ---- */
+.au-gcm-overlay{position:fixed;inset:0;background:rgba(20,30,51,.42);backdrop-filter:blur(4px);
+  z-index:100;display:flex;align-items:center;justify-content:center;padding:20px;overflow-y:auto}
+.au-gcm-overlay :focus-visible{outline:2px solid var(--au-primary);outline-offset:2px}
+.au-gcm-modal{position:relative;background:var(--au-solid);border:1px solid var(--au-line);
+  border-radius:16px;padding:26px;max-width:560px;width:100%;max-height:calc(100vh - 40px);
+  overflow-y:auto;box-shadow:var(--au-sh-l);font-family:var(--au-font-body);color:var(--au-ink)}
+.au-gcm-x{position:absolute;top:14px;right:14px;background:none;border:none;color:var(--au-muted);
+  cursor:pointer;padding:4px;display:flex;border-radius:6px}
+.au-gcm-x:hover{color:var(--au-ink)}
+.au-gcm-x:disabled{opacity:.4;cursor:default}
+.au-gcm-title{font-family:var(--au-font-heading);font-size:21px;font-weight:700;margin:0 0 6px;
+  padding-right:28px;color:var(--au-ink)}
+.au-gcm-sub{color:var(--au-muted);font-size:13.5px;line-height:1.55;margin:0 0 20px}
+
+.au-gcm-section{margin-bottom:18px}
+.au-gcm-section h3{display:flex;align-items:center;gap:7px;font-family:var(--au-font-heading);
+  font-size:13.5px;font-weight:700;color:var(--au-ink);margin:0 0 8px}
+.au-gcm-section h3 svg{color:var(--au-primary);flex:none}
+.au-gcm-section ul{margin:0;padding-left:18px;display:flex;flex-direction:column;gap:5px}
+.au-gcm-section li{font-size:13px;color:var(--au-ink-2);line-height:1.55}
+.au-gcm-section a{color:var(--au-primary);text-decoration:none;font-weight:500;
+  display:inline-flex;align-items:center;gap:3px}
+.au-gcm-section a:hover{text-decoration:underline}
+
+.au-gcm-scope{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:10px;
+  background:var(--au-bg);border:1px solid var(--au-line);border-radius:var(--au-r-s);padding:10px 12px}
+.au-gcm-scope code{font-family:var(--au-font-numeric);font-size:11px;color:var(--au-ink);
+  word-break:break-all;flex:1;min-width:200px}
+.au-gcm-scope span{font-size:11.5px;color:var(--au-muted);background:var(--au-solid);
+  border:1px solid var(--au-line);border-radius:var(--au-r-pill);padding:3px 10px;flex:none}
+
+.au-gcm-checkbox{display:flex;align-items:flex-start;gap:8px;font-size:12.5px;color:var(--au-ink-2);
+  line-height:1.5;margin:4px 0 16px;cursor:pointer}
+.au-gcm-checkbox input{margin-top:2px;flex:none;cursor:pointer}
+
+.au-gcm-err{display:flex;align-items:center;gap:8px;background:var(--au-peach);color:var(--au-peach-d);
+  border-radius:var(--au-r-s);padding:9px 12px;font-size:12.5px;margin-bottom:14px}
+.au-gcm-err svg{flex:none}
+.au-gcm-err span{flex:1}
+.au-gcm-err button{flex:none;background:none;border:1px solid var(--au-peach-d);color:var(--au-peach-d);
+  border-radius:var(--au-r-s);padding:3px 10px;font-size:11.5px;cursor:pointer;font-family:inherit}
+
+.au-gcm-actions{display:flex;justify-content:flex-end;gap:10px;flex-wrap:wrap}
+@media(max-width:480px){.au-gcm-actions{flex-direction:column-reverse}
+  .au-gcm-actions .au-btn{width:100%;justify-content:center}}

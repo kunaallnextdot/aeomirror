@@ -63,14 +63,113 @@ describe("AiTraffic", () => {
     expect(screen.queryByText(/sessions by source/i)).toBeNull();
   });
 
-  it("connect() navigates the real browser to the authorize_url, not just a fetch", async () => {
+  it("clicking Connect Google Analytics opens the consent modal first, WITHOUT calling the backend yet", async () => {
     getGa4Status.mockResolvedValue({ status: "not_connected" });
-    connectGoogleAnalytics.mockResolvedValue({ authorize_url: "https://accounts.google.com/o/oauth2/v2/auth?x=1" });
     renderAt();
     await waitFor(() => screen.getByText(/connect google analytics/i));
     fireEvent.click(screen.getByText(/connect google analytics/i));
+    await waitFor(() => screen.getByRole("dialog"));
+    screen.getByText(/what you'll get/i);
+    screen.getByText(/what data will aeomirror access\?/i);
+    screen.getByText(/your control and privacy/i);
+    expect(connectGoogleAnalytics).not.toHaveBeenCalled();
+  });
+
+  it("the consent modal shows the exact requested scope in readable language", async () => {
+    getGa4Status.mockResolvedValue({ status: "not_connected" });
+    renderAt();
+    fireEvent.click(await screen.findByText(/connect google analytics/i));
+    await waitFor(() => screen.getByRole("dialog"));
+    screen.getByText("https://www.googleapis.com/auth/analytics.readonly");
+    screen.getByText(/view your google analytics data\./i);
+  });
+
+  it("the consent modal links to the real, public Privacy Policy and Terms of Service", async () => {
+    getGa4Status.mockResolvedValue({ status: "not_connected" });
+    renderAt();
+    fireEvent.click(await screen.findByText(/connect google analytics/i));
+    await waitFor(() => screen.getByRole("dialog"));
+    expect(screen.getByRole("link", { name: /privacy policy/i }).getAttribute("href")).toBe("/privacy");
+    expect(screen.getByRole("link", { name: /terms of service/i }).getAttribute("href")).toBe("/terms");
+  });
+
+  it("cancelling the consent modal closes it and never initiates OAuth", async () => {
+    getGa4Status.mockResolvedValue({ status: "not_connected" });
+    renderAt();
+    fireEvent.click(await screen.findByText(/connect google analytics/i));
+    await waitFor(() => screen.getByRole("dialog"));
+    fireEvent.click(screen.getByText(/^cancel$/i));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(connectGoogleAnalytics).not.toHaveBeenCalled();
+  });
+
+  it("the continue button is disabled until the acknowledgement checkbox is checked", async () => {
+    getGa4Status.mockResolvedValue({ status: "not_connected" });
+    renderAt();
+    fireEvent.click(await screen.findByText(/connect google analytics/i));
+    await waitFor(() => screen.getByRole("dialog"));
+    const confirmBtn = screen.getByRole("button", { name: /agree & continue to google/i });
+    expect(confirmBtn.disabled).toBe(true);
+    fireEvent.click(screen.getByRole("checkbox"));
+    expect(confirmBtn.disabled).toBe(false);
+  });
+
+  it("agreeing and continuing calls the real OAuth-connect endpoint and navigates the real browser to the authorize_url returned", async () => {
+    getGa4Status.mockResolvedValue({ status: "not_connected" });
+    connectGoogleAnalytics.mockResolvedValue({ authorize_url: "https://accounts.google.com/o/oauth2/v2/auth?x=1" });
+    renderAt();
+    fireEvent.click(await screen.findByText(/connect google analytics/i));
+    await waitFor(() => screen.getByRole("dialog"));
+    fireEvent.click(screen.getByRole("checkbox"));
+    fireEvent.click(screen.getByRole("button", { name: /agree & continue to google/i }));
+    await waitFor(() => expect(connectGoogleAnalytics).toHaveBeenCalledTimes(1));
     await waitFor(() => expect(assignSpy).toHaveBeenCalledWith(
       "https://accounts.google.com/o/oauth2/v2/auth?x=1"));
+  });
+
+  it("prevents duplicate submissions: the continue button disables itself while the request is in flight", async () => {
+    getGa4Status.mockResolvedValue({ status: "not_connected" });
+    let resolveConnect;
+    connectGoogleAnalytics.mockReturnValue(new Promise((res) => { resolveConnect = res; }));
+    renderAt();
+    fireEvent.click(await screen.findByText(/connect google analytics/i));
+    await waitFor(() => screen.getByRole("dialog"));
+    fireEvent.click(screen.getByRole("checkbox"));
+    const confirmBtn = screen.getByRole("button", { name: /redirecting|agree & continue to google/i });
+    fireEvent.click(confirmBtn);
+    await waitFor(() => expect(screen.getByRole("button", { name: /redirecting/i }).disabled).toBe(true));
+    fireEvent.click(screen.getByRole("button", { name: /redirecting/i }));   // a second click while busy
+    expect(connectGoogleAnalytics).toHaveBeenCalledTimes(1);   // never double-fired
+    resolveConnect({ authorize_url: "https://accounts.google.com/o/oauth2/v2/auth?x=1" });
+  });
+
+  it("an OAuth-initiation failure shows an actionable error inside the modal with a Retry action, never a fake success", async () => {
+    getGa4Status.mockResolvedValue({ status: "not_connected" });
+    connectGoogleAnalytics.mockRejectedValueOnce(new ScanError("Could not start the connection.", 500));
+    renderAt();
+    fireEvent.click(await screen.findByText(/connect google analytics/i));
+    await waitFor(() => screen.getByRole("dialog"));
+    fireEvent.click(screen.getByRole("checkbox"));
+    fireEvent.click(screen.getByRole("button", { name: /agree & continue to google/i }));
+    await waitFor(() => screen.getByText("Could not start the connection."));
+    expect(assignSpy).not.toHaveBeenCalled();
+    // Retry re-attempts the same call, and this time it succeeds.
+    connectGoogleAnalytics.mockResolvedValueOnce({ authorize_url: "https://accounts.google.com/o/oauth2/v2/auth?x=2" });
+    fireEvent.click(screen.getByRole("button", { name: /retry/i }));
+    await waitFor(() => expect(assignSpy).toHaveBeenCalledWith(
+      "https://accounts.google.com/o/oauth2/v2/auth?x=2"));
+  });
+
+  it("an invalid (empty) authorization URL from the backend is treated as an error, never followed", async () => {
+    getGa4Status.mockResolvedValue({ status: "not_connected" });
+    connectGoogleAnalytics.mockResolvedValue({ authorize_url: "" });
+    renderAt();
+    fireEvent.click(await screen.findByText(/connect google analytics/i));
+    await waitFor(() => screen.getByRole("dialog"));
+    fireEvent.click(screen.getByRole("checkbox"));
+    fireEvent.click(screen.getByRole("button", { name: /agree & continue to google/i }));
+    await waitFor(() => screen.getByText(/could not start the connection/i));
+    expect(assignSpy).not.toHaveBeenCalled();
   });
 
   it("shows a success banner after a successful OAuth redirect (?ga4=connected)", async () => {
