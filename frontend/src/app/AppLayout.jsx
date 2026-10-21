@@ -8,7 +8,7 @@ import { Link, NavLink, Outlet, useLocation, useNavigate } from "react-router-do
 import {
   Radar, LayoutDashboard, ScanLine, GitCompare, Globe, ArrowLeft, FileText, FileSearch,
   Activity, User, Users, Building2, LogOut, Shield, CreditCard, MessageSquare, Mail, ListChecks,
-  BarChart3,
+  BarChart3, TrendingUp,
 } from "lucide-react";
 import {
   getDashboard, getScans, deleteScan, rerunScan, bulkScanUrls, ScanError,
@@ -36,6 +36,7 @@ export const NAV = [
   { to: "/app/monitoring", label: "Monitoring", icon: Activity },
   { to: "/app/answer-tracking", label: "Answer Tracking", icon: MessageSquare },
   { to: "/app/analytics/ai-traffic", label: "AI Traffic", icon: BarChart3 },
+  { to: "/app/business-impact", label: "AI Business Impact", icon: TrendingUp },
   { to: "/app/scans/latest", label: "Scan Details", icon: FileText },
   { to: "/app/compare", label: "Compare", icon: GitCompare },
   { to: "/app/website-summary", label: "Websites", icon: Globe },
@@ -54,6 +55,7 @@ const FOOTER_PRODUCT = [
   { to: "/app/report", label: "View Report" },
   { to: "/app/answer-tracking", label: "Answer Tracking" },
   { to: "/app/analytics/ai-traffic", label: "AI Traffic" },
+  { to: "/app/business-impact", label: "AI Business Impact" },
   { to: "/app/monitoring", label: "Monitoring" },
 ];
 const FOOTER_RESOURCES = [
@@ -72,15 +74,19 @@ function routeMeta(pathname) {
   const seg = p.split("/")[2] || "dashboard";     // segment after /app
   const isLatest = p.split("/")[3] === "latest";
   const isDetail = p.split("/").length > 3 && !isLatest;
+  const isIntelligence = p.split("/")[4] === "intelligence";
   const M = {
     dashboard: ["Dashboard", "Your AI-visibility overview"],
     scans: isLatest ? ["Scan Details", "Your latest completed scan"]
                     : isDetail ? ["Scan Details", "Full diagnosis"] : ["Recent Scans", "Every scan you have run"],
     "action-center": ["Action Center", "What to fix next, in priority order"],
-    monitoring: isDetail ? ["Monitor", "Historical timeline, trends, changes and alerts"]
-                         : ["Monitoring", "Track AI visibility over time and get alerted on changes"],
+    monitoring: isIntelligence
+      ? ["Site Intelligence", "Crawl, classify and prioritize every page with evidence-backed AI analysis"]
+      : isDetail ? ["Monitor", "Historical timeline, trends, changes and alerts"]
+                 : ["Monitoring", "Track AI visibility over time and get alerted on changes"],
     "answer-tracking": ["Answer Tracking", "Track whether AI assistants mention and cite your brand"],
     analytics: ["AI Traffic", "Real inbound visitor traffic from AI assistants, via your connected Google Analytics property"],
+    "business-impact": ["AI Business Impact", "How much traffic, leads, bookings and revenue come from AI assistants"],
     report: ["View Report", "What's wrong, why it matters, and how to fix it"],
     compare: ["Compare Scans", "Diff two scans signal by signal"],
     "website-summary": ["Websites", "Every domain you've scanned, with its latest and best/worst scores"],

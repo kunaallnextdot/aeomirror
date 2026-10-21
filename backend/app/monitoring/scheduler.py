@@ -21,7 +21,8 @@ from sqlalchemy.orm import Session
 from app.config import settings
 from app.db.models import (
     GA4_STATUS_ACTIVE, JOB_COMPLETED, JOB_FAILED, JOB_KIND_BULK_SCAN, JOB_KIND_GA4_SYNC,
-    JOB_PENDING, JOB_RUNNING, MONITOR_ACTIVE, GoogleAnalyticsConnection, Monitor, ScheduledJob,
+    JOB_KIND_URL_CRAWL, JOB_PENDING, JOB_RUNNING, MONITOR_ACTIVE, GoogleAnalyticsConnection,
+    Monitor, ScheduledJob,
 )
 
 logger = logging.getLogger("aeomirror.scheduler")
@@ -218,6 +219,40 @@ def complete_job(db: Session, job: ScheduledJob, now: datetime | None = None) ->
     job.updated_at = now
     job.error = None
     db.commit()
+
+
+def has_active_url_crawl_job(db: Session, crawl_job_id: str) -> ScheduledJob | None:
+    return (db.query(ScheduledJob)
+            .filter(ScheduledJob.crawl_job_id == crawl_job_id,
+                    ScheduledJob.status.in_((JOB_PENDING, JOB_RUNNING)))
+            .first())
+
+
+def enqueue_url_crawl_chunk(db: Session, crawl_job_id: str, org_id: str | None,
+                            now: datetime | None = None) -> ScheduledJob:
+    """Queue the next bounded chunk of a CrawlJob. Used both to start a brand-new job
+    and, by the runner, to re-enqueue a continuation after each chunk — the partial
+    unique index guarantees at most one active chunk per crawl job, so a restart or a
+    slow worker can never process the same job's state concurrently. Dedupes like
+    enqueue_manual: if a chunk is already active, returns it instead of double-queueing."""
+    existing = has_active_url_crawl_job(db, crawl_job_id)
+    if existing:
+        return existing
+    now = now or datetime.utcnow()
+    job = ScheduledJob(
+        crawl_job_id=crawl_job_id, organization_id=org_id,
+        kind=JOB_KIND_URL_CRAWL, status=JOB_PENDING, attempts=0,
+        max_attempts=settings.monitor_job_max_attempts,
+        scheduled_for=now, run_after=now, created_at=now, updated_at=now,
+    )
+    db.add(job)
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        return has_active_url_crawl_job(db, crawl_job_id)
+    db.refresh(job)
+    return job
 
 
 def fail_job(db: Session, job: ScheduledJob, error, now: datetime | None = None) -> None:

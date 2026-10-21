@@ -91,6 +91,58 @@ def complete(system: str, user_content: str, *, max_tokens: int | None = None,
     return None
 
 
+def complete_with_usage(system: str, user_content: str, *, max_tokens: int | None = None,
+                        timeout: int | None = None) -> tuple[str | None, dict | None]:
+    """Same contract as `complete()` (one retry on transient errors, never raises,
+    None on any failure) but also returns token usage as {"input": int, "output": int}
+    for cost accounting. Added as a SEPARATE function rather than changing `complete()`'s
+    return shape, so every existing caller (ai_writer, ai_content, the answer-simulator
+    provider) is completely unaffected. Usage is None whenever text is None."""
+    if not settings.ai_enabled:
+        return None, None
+
+    system_prompt = (system or "").strip() + _STRICT
+    tokens = max_tokens or settings.ai_max_tokens
+    call_timeout = timeout or settings.ai_timeout_seconds
+    last_exc: Exception | None = None
+
+    for attempt in range(2):
+        try:
+            import anthropic
+
+            client = anthropic.Anthropic(
+                api_key=settings.anthropic_api_key,
+                timeout=call_timeout,
+            )
+            msg = client.messages.create(
+                model=settings.ai_model,
+                max_tokens=tokens,
+                system=system_prompt,
+                messages=[{"role": "user", "content": user_content}],
+            )
+            text = "".join(
+                getattr(b, "text", "") for b in msg.content
+                if getattr(b, "type", None) == "text"
+            ).strip()
+            usage = None
+            raw_usage = getattr(msg, "usage", None)
+            if raw_usage is not None:
+                usage = {
+                    "input": getattr(raw_usage, "input_tokens", None) or 0,
+                    "output": getattr(raw_usage, "output_tokens", None) or 0,
+                }
+            return (text or None), (usage if text else None)
+        except Exception as exc:  # noqa: BLE001 — must never propagate to callers
+            last_exc = exc
+            if attempt == 0 and _is_transient(exc):
+                time.sleep(_RETRY_BACKOFF_SECONDS)
+                continue
+            break
+
+    log.warning("AI completion failed (%s)", type(last_exc).__name__ if last_exc else "unknown")
+    return None, None
+
+
 def parse_json(raw: str | None) -> dict | None:
     """Best-effort extraction of a single JSON object from a model response.
 

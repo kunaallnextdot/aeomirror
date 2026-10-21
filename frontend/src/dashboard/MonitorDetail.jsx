@@ -4,7 +4,7 @@
 import React, { useCallback, useEffect, useState } from "react";
 import {
   ChevronLeft, Play, Pause, Trash2, FileText, ArrowUpRight, ArrowDownRight,
-  AlertTriangle, CheckCircle2, Bell, Clock, Bot, Wrench, CheckCircle, History,
+  AlertTriangle, CheckCircle2, Bell, Clock, Bot, Wrench, CheckCircle, History, Sparkles,
 } from "lucide-react";
 import {
   Line, LineChart, Bar, BarChart, CartesianGrid, Legend,
@@ -37,7 +37,7 @@ const TT = {
 };
 const shortDate = (iso) => { try { return new Date(iso).toLocaleDateString(undefined, { month: "short", day: "numeric" }); } catch { return ""; } };
 
-export default function MonitorDetail({ monitorId, onBack, onOpenReport }) {
+export default function MonitorDetail({ monitorId, onBack, onOpenReport, onOpenIntelligence }) {
   const { hasPermission } = useAuth();
   const canRun = hasPermission("scan:run");
   const canDelete = hasPermission("scan:delete");
@@ -94,6 +94,7 @@ export default function MonitorDetail({ monitorId, onBack, onOpenReport }) {
           <Button variant="ghost" onClick={onBack}><ChevronLeft size={14} /> Back to monitoring</Button>
           <div className="au-sd-toolbar-r">
             {m.latest_scan_id && <Button variant="ghost" onClick={() => onOpenReport(m.latest_scan_id)}><FileText size={13} /> Latest report</Button>}
+            {onOpenIntelligence && <Button variant="ghost" onClick={onOpenIntelligence}><Sparkles size={13} /> Site Intelligence</Button>}
             {canRun && <Button variant="ghost" loading={busy} onClick={doRun}>{!busy && <Play size={13} />} {busy ? "Scanning…" : "Run now"}</Button>}
             {canRun && <Button variant="ghost" disabled={busy} onClick={doToggle}>{m.status === "active" ? <><Pause size={13} /> Pause</> : <><Play size={13} /> Resume</>}</Button>}
             {canDelete && <Button variant="ghost" onClick={doDelete}><Trash2 size={13} /> Delete</Button>}

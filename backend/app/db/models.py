@@ -286,6 +286,7 @@ JOB_KIND_SCHEDULED = "scheduled"
 JOB_KIND_MANUAL = "manual"
 JOB_KIND_BULK_SCAN = "bulk_scan"
 JOB_KIND_GA4_SYNC = "ga4_sync"
+JOB_KIND_URL_CRAWL = "url_crawl"   # one bounded chunk of a CrawlJob; re-enqueues itself
 
 ALERT_OPEN = "open"
 ALERT_ACK = "acknowledged"
@@ -318,6 +319,12 @@ class Monitor(Base):
     brand_domain = Column(String, nullable=True)
     brand_aliases = Column(JSON, nullable=True)              # list[str]
     competitor_domains = Column(JSON, nullable=True)         # list[str], max 5
+    # First-party website analytics (AI Business Impact): a sha256 hash of the secret
+    # the SITE'S OWN backend presents (Bearer) to POST /monitors/{id}/tracking/confirm
+    # to mark a purchase/booking as verified — the raw key is shown to the org ONCE
+    # (on generation) and never stored or logged in plaintext, same convention as
+    # Session.refresh_token_hash. Nullable until first generated.
+    tracking_api_key_hash = Column(String, nullable=True)
 
 
 class ScheduledJob(Base):
@@ -340,14 +347,20 @@ class ScheduledJob(Base):
         Index("uq_scheduled_jobs_active_per_connection", "connection_id", unique=True,
               sqlite_where=text("status IN ('pending','running') AND connection_id IS NOT NULL"),
               postgresql_where=text("status IN ('pending','running') AND connection_id IS NOT NULL")),
+        # Same pattern for url_crawl jobs: at most one active chunk per crawl job, so
+        # two ticks can never process the same CrawlJob concurrently.
+        Index("uq_scheduled_jobs_active_per_crawl_job", "crawl_job_id", unique=True,
+              sqlite_where=text("status IN ('pending','running') AND crawl_job_id IS NOT NULL"),
+              postgresql_where=text("status IN ('pending','running') AND crawl_job_id IS NOT NULL")),
     )
     id = Column(String, primary_key=True, default=_uuid)
     # Monitor jobs reference a monitor; site_scan jobs reference a scan instead;
-    # ga4_sync jobs reference a GoogleAnalyticsConnection — all three are nullable and
-    # the worker dispatches on `kind`.
+    # ga4_sync jobs reference a GoogleAnalyticsConnection; url_crawl jobs reference a
+    # CrawlJob — all nullable, and the worker dispatches on `kind`.
     monitor_id = Column(String, index=True, nullable=True)
     scan_id = Column(String, index=True, nullable=True)          # set for kind="site_scan"
     connection_id = Column(String, index=True, nullable=True)    # set for kind="ga4_sync"
+    crawl_job_id = Column(String, index=True, nullable=True)     # set for kind="url_crawl"
     organization_id = Column(String, index=True, nullable=True)
     kind = Column(String, nullable=False, default="scheduled")   # scheduled|manual|site_scan|ga4_sync
     status = Column(String, nullable=False, default=JOB_PENDING)
@@ -948,5 +961,251 @@ class Ga4TrafficSnapshot(Base):
     medium = Column(String, nullable=False, default="(not set)")
     ai_source_label = Column(String, nullable=False)       # one of AI_SOURCE_LABELS
     sessions = Column(Integer, nullable=False, default=0)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow)
+
+
+# --- First-party website analytics (AI Business Impact) ---
+# GA4-independent: a lightweight tracker.js installed on a customer's site posts
+# pageview/conversion events to POST /t/collect, keyed by a Monitor's id as the
+# public "site id" (reuses the existing Monitor = "a site this org tracks" entity
+# rather than inventing a parallel site model). See
+# app/services/analytics/classification.py (channel rules) and
+# app/api/routes_tracking.py (the public collector + tracker.js).
+ANALYTICS_CHANNELS = (
+    "chatgpt", "perplexity", "gemini", "copilot", "claude", "other_identifiable_ai",
+    "organic_search", "direct", "paid", "social", "email", "referral", "unknown",
+)
+CONVERSION_TYPES = (
+    "purchase", "lead_submitted", "booking_confirmed", "signup_completed",
+    "contact_submitted", "custom",
+)
+
+
+class AnalyticsSession(Base):
+    """One browser session on one tracked site. `channel`/`referrer_host`/`utm_*` are
+    the FIRST-TOUCH attribution for this session and are set ONLY at creation — never
+    overwritten by a later same-session pageview with internal or missing referrer
+    (see services/analytics/ingest.py). `visitor_id` is a long-lived, first-party id
+    (tracker-generated, stored in the visitor's own localStorage) used only to tell
+    new vs. returning sessions apart — never a cross-site identifier."""
+    __tablename__ = "analytics_sessions"
+    __table_args__ = (
+        Index("uq_analytics_sessions_monitor_session", "monitor_id", "session_id", unique=True),
+        Index("ix_analytics_sessions_org_started", "organization_id", "started_at"),
+        Index("ix_analytics_sessions_monitor_started", "monitor_id", "started_at"),
+        Index("ix_analytics_sessions_visitor", "monitor_id", "visitor_id"),
+    )
+    id = Column(String, primary_key=True, default=_uuid)
+    organization_id = Column(String, index=True, nullable=False)
+    monitor_id = Column(String, index=True, nullable=False)
+    session_id = Column(String, nullable=False)          # client-generated (sessionStorage)
+    visitor_id = Column(String, nullable=True)            # client-generated (localStorage)
+    is_returning = Column(Boolean, nullable=False, default=False)
+    landing_url = Column(String, nullable=False)
+    referrer_host = Column(String, nullable=True)
+    utm_source = Column(String, nullable=True)
+    utm_medium = Column(String, nullable=True)
+    utm_campaign = Column(String, nullable=True)
+    channel = Column(String, nullable=False)              # one of ANALYTICS_CHANNELS
+    started_at = Column(DateTime, default=datetime.utcnow, index=True)
+    last_seen_at = Column(DateTime, default=datetime.utcnow)
+    page_view_count = Column(Integer, nullable=False, default=0)
+
+
+class AnalyticsPageview(Base):
+    """One pageview within a session — kept separate from AnalyticsSession (rather than
+    just incrementing a counter) so landing-page and per-URL performance can be
+    aggregated without re-deriving it from a session's single landing_url."""
+    __tablename__ = "analytics_pageviews"
+    __table_args__ = (
+        Index("ix_analytics_pv_monitor_created", "monitor_id", "created_at"),
+        Index("ix_analytics_pv_session", "analytics_session_id"),
+        Index("uq_analytics_pv_event", "monitor_id", "event_id", unique=True),
+    )
+    id = Column(String, primary_key=True, default=_uuid)
+    organization_id = Column(String, index=True, nullable=False)
+    monitor_id = Column(String, index=True, nullable=False)
+    analytics_session_id = Column(String, nullable=False)   # -> analytics_sessions.id
+    event_id = Column(String, nullable=False)   # client-generated idempotency key
+    url = Column(String, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class AnalyticsConversion(Base):
+    """A purchase/lead/booking/signup/custom conversion. `verified=False` means it was
+    only ever client-reported (the public collector accepts these, but they are never
+    treated as proof of a real transaction); `verified=True` means it was created or
+    confirmed via the authenticated, per-site server-to-server confirm endpoint — the
+    ONLY path that counts toward "confirmed" revenue/booking metrics. Deduplicated per
+    (monitor, event_type, external_id): a client-reported row and a later server
+    confirmation for the SAME external_id update the same row rather than double
+    counting."""
+    __tablename__ = "analytics_conversions"
+    __table_args__ = (
+        Index("ix_analytics_conv_monitor_created", "monitor_id", "created_at"),
+        Index("uq_analytics_conv_external", "monitor_id", "event_type", "external_id", unique=True),
+    )
+    id = Column(String, primary_key=True, default=_uuid)
+    organization_id = Column(String, index=True, nullable=False)
+    monitor_id = Column(String, index=True, nullable=False)
+    analytics_session_id = Column(String, nullable=True)   # -> analytics_sessions.id, if correlated
+    event_type = Column(String, nullable=False)             # one of CONVERSION_TYPES
+    event_name = Column(String, nullable=True)              # label when event_type="custom"
+    external_id = Column(String, nullable=False)            # stable dedupe key (order/booking/lead id)
+    value_cents = Column(Integer, nullable=True)
+    currency = Column(String, nullable=True)                # ISO 4217, e.g. "USD"
+    verified = Column(Boolean, nullable=False, default=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+# ==================== URL Intelligence Engine + AI Expert Analysis ====================
+# A CrawlJob discovers/crawls/analyzes up to `max_urls` pages of one monitored site,
+# in bounded chunks processed by the SAME ScheduledJob queue the monitor/bulk-scan/ga4
+# jobs already use (kind=JOB_KIND_URL_CRAWL) — never a second queue or worker. Each
+# chunk advances `phase`/`cursor` and re-enqueues a continuation job if work remains,
+# which is what makes a 100k-URL crawl resumable instead of one long-running task.
+CRAWL_PENDING = "pending"
+CRAWL_DISCOVERING = "discovering"
+CRAWL_CRAWLING = "crawling"
+CRAWL_ANALYZING = "analyzing"
+CRAWL_COMPLETED = "completed"
+CRAWL_FAILED = "failed"
+CRAWL_CANCELLED = "cancelled"
+CRAWL_PHASES = (CRAWL_PENDING, CRAWL_DISCOVERING, CRAWL_CRAWLING, CRAWL_ANALYZING,
+                CRAWL_COMPLETED, CRAWL_FAILED, CRAWL_CANCELLED)
+
+URL_DISCOVERED = "discovered"    # found (sitemap/internal link), not yet eligibility-checked
+URL_ELIGIBLE = "eligible"        # SSRF+robots+dedup passed, queued to crawl
+URL_CRAWLED = "crawled"          # fetched + deterministic evidence extracted
+URL_SKIPPED = "skipped"          # ineligible (robots/ssrf/duplicate/over_limit/non_html)
+URL_FAILED = "failed"            # fetch/parse error
+
+FINDING_OPEN = "open"
+FINDING_IN_PROGRESS = "in_progress"
+FINDING_FIXED = "fixed"
+FINDING_WONT_FIX = "wont_fix"
+FINDING_STATUSES = (FINDING_OPEN, FINDING_IN_PROGRESS, FINDING_FIXED, FINDING_WONT_FIX)
+
+# Mirrors app.services.verification's state vocabulary so the two "has this improved"
+# concepts stay consistent across the product, even though the comparison here is
+# evidence-based (per-URL) rather than signal-score-based (per-scan).
+VERIFY_NOT_COMPARABLE = "not_comparable"
+VERIFY_VERIFIED = "verified"
+VERIFY_PARTIALLY_IMPROVED = "partially_improved"
+VERIFY_UNCHANGED = "unchanged"
+VERIFY_REGRESSED = "regressed"
+
+USAGE_URL_AI_ANALYSIS = "url_ai_analysis"   # UsageEvent kind: one row per AI template call
+
+
+class CrawlJob(Base):
+    __tablename__ = "crawl_jobs"
+    __table_args__ = (
+        Index("ix_crawl_jobs_org_created", "organization_id", "created_at"),
+        Index("ix_crawl_jobs_monitor", "monitor_id"),
+    )
+    id = Column(String, primary_key=True, default=_uuid)
+    organization_id = Column(String, index=True, nullable=False)
+    user_id = Column(String, index=True, nullable=True)
+    monitor_id = Column(String, index=True, nullable=False)
+    seed_url = Column(String, nullable=False)
+    normalized_seed_url = Column(String, nullable=False)
+    max_urls = Column(Integer, nullable=False)
+    phase = Column(String, nullable=False, default=CRAWL_PENDING)
+    # Resumability checkpoint for the current phase: discovery frontier / remaining
+    # sitemap URLs / crawl cursor / analyze cursor. Shape is private to
+    # app.services.url_intelligence.discovery — never read elsewhere.
+    cursor = Column(JSON, nullable=True)
+    discovered_count = Column(Integer, nullable=False, default=0)
+    eligible_count = Column(Integer, nullable=False, default=0)
+    crawled_count = Column(Integer, nullable=False, default=0)
+    analyzed_count = Column(Integer, nullable=False, default=0)
+    failed_count = Column(Integer, nullable=False, default=0)
+    skipped_count = Column(Integer, nullable=False, default=0)
+    ai_calls_total = Column(Integer, nullable=False, default=0)
+    ai_calls_cached = Column(Integer, nullable=False, default=0)
+    ai_tokens_input_total = Column(Integer, nullable=False, default=0)
+    ai_tokens_output_total = Column(Integer, nullable=False, default=0)
+    error = Column(String, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    started_at = Column(DateTime, nullable=True)
+    finished_at = Column(DateTime, nullable=True)
+    updated_at = Column(DateTime, default=datetime.utcnow)
+
+
+class CrawlUrl(Base):
+    """One discovered/crawled URL belonging to a CrawlJob. Deduplicated per job by
+    normalized URL (the SAME normalize_dedup_key the bulk scanner already uses)."""
+    __tablename__ = "crawl_urls"
+    __table_args__ = (
+        Index("ix_crawl_urls_job_status", "crawl_job_id", "status"),
+        Index("ix_crawl_urls_job_page_type", "crawl_job_id", "page_type"),
+        Index("ix_crawl_urls_job_template", "crawl_job_id", "template_id"),
+        Index("uq_crawl_urls_job_normalized", "crawl_job_id", "normalized_key", unique=True),
+    )
+    id = Column(String, primary_key=True, default=_uuid)
+    crawl_job_id = Column(String, index=True, nullable=False)
+    organization_id = Column(String, index=True, nullable=False)
+    url = Column(String, nullable=False)
+    normalized_key = Column(String, nullable=False)
+    discovery_source = Column(String, nullable=False)   # seed | sitemap | internal_link
+    discovery_depth = Column(Integer, nullable=False, default=0)
+    status = Column(String, nullable=False, default=URL_DISCOVERED)
+    skip_reason = Column(String, nullable=True)
+    http_status = Column(Integer, nullable=True)
+    canonical_url = Column(String, nullable=True)
+    page_type = Column(String, nullable=True)
+    template_id = Column(String, nullable=True)
+    content_fingerprint = Column(String, nullable=True)
+    evidence = Column(JSON, nullable=True)     # deterministic evidence (Phase 4)
+    analyzed = Column(Boolean, nullable=False, default=False)
+    error = Column(String, nullable=True)
+    discovered_at = Column(DateTime, default=datetime.utcnow)
+    crawled_at = Column(DateTime, nullable=True)
+    analyzed_at = Column(DateTime, nullable=True)
+
+
+class UrlFinding(Base):
+    """AI Expert Analysis Engine output (Phase 5), one row per finding. `crawl_url_id`
+    is set for a single-URL finding; `template_id` + `affected_url_count` carry a
+    template-level finding that applies to every page sharing that template (Phase 6:
+    analyze the representative page once, apply the finding across the cluster).
+    `status`/`verification_status` drive the Expert Action Center (Phase 9)."""
+    __tablename__ = "url_findings"
+    __table_args__ = (
+        Index("ix_url_findings_job_priority", "crawl_job_id", "priority"),
+        Index("ix_url_findings_job_status", "crawl_job_id", "status"),
+        Index("ix_url_findings_org_created", "organization_id", "created_at"),
+    )
+    id = Column(String, primary_key=True, default=_uuid)
+    crawl_job_id = Column(String, index=True, nullable=False)
+    crawl_url_id = Column(String, index=True, nullable=True)
+    organization_id = Column(String, index=True, nullable=False)
+    url = Column(String, nullable=True)
+    template_id = Column(String, nullable=True)
+    affected_url_count = Column(Integer, nullable=False, default=1)
+    page_type = Column(String, nullable=True)
+    finding_title = Column(String, nullable=False)
+    category = Column(String, nullable=False)
+    evidence = Column(JSON, nullable=True)
+    evidence_source = Column(String, nullable=True)
+    why_it_matters = Column(Text, nullable=True)
+    recommended_fix = Column(Text, nullable=True)
+    expected_benefit = Column(String, nullable=True)
+    priority = Column(String, nullable=False, default="unknown")
+    confidence = Column(String, nullable=False, default="insufficient_evidence")
+    evidence_limitations = Column(Text, nullable=True)
+    verification_procedure = Column(Text, nullable=True)
+    status = Column(String, nullable=False, default=FINDING_OPEN)
+    verification_status = Column(String, nullable=True)
+    content_fingerprint = Column(String, nullable=True)   # cache/dedupe key for re-analysis
+    model_used = Column(String, nullable=True)
+    tokens_input = Column(Integer, nullable=True)
+    tokens_output = Column(Integer, nullable=True)
+    cache_hit = Column(Boolean, nullable=False, default=False)
+    first_detected_at = Column(DateTime, default=datetime.utcnow)
+    last_checked_at = Column(DateTime, default=datetime.utcnow)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow)

@@ -14,8 +14,8 @@ from sqlalchemy.orm import Session
 
 from app.core.ssrf import validate_url
 from app.db.models import (
-    JOB_FAILED, JOB_KIND_BULK_SCAN, JOB_KIND_GA4_SYNC, SCAN_FAILED,
-    GoogleAnalyticsConnection, Monitor, MonitorHistory, Scan,
+    CRAWL_FAILED, JOB_FAILED, JOB_KIND_BULK_SCAN, JOB_KIND_GA4_SYNC, JOB_KIND_URL_CRAWL,
+    SCAN_FAILED, CrawlJob, GoogleAnalyticsConnection, Monitor, MonitorHistory, Scan,
 )
 from app.monitoring import scheduler
 from app.monitoring.alerts import evaluate_alerts, persist_alerts
@@ -91,6 +91,9 @@ async def process_job(db: Session, job) -> None:
     if job.kind == JOB_KIND_GA4_SYNC:
         await _process_ga4_sync_job(db, job)
         return
+    if job.kind == JOB_KIND_URL_CRAWL:
+        await _process_url_crawl_job(db, job)
+        return
 
     monitor = db.get(Monitor, job.monitor_id)
     if not monitor:
@@ -162,3 +165,34 @@ async def _process_bulk_scan_job(db: Session, job) -> None:
         scheduler.fail_job(db, job, e)
         if job.status == JOB_FAILED:        # no retries left -> the scan is done, failed
             _mark_scan_failed(db, job.scan_id, e)
+
+
+async def _process_url_crawl_job(db: Session, job) -> None:
+    """Execute ONE bounded chunk of a CrawlJob (discovery/crawl/analyze — see
+    app.services.url_intelligence.orchestrator) and, if the job isn't finished yet,
+    re-enqueue a continuation chunk. This is what makes a 100k-URL crawl resumable
+    across many worker ticks instead of needing one long-running task; the partial
+    unique index on scheduled_jobs.crawl_job_id guarantees only one chunk per crawl
+    job is ever active at a time."""
+    from app.services.url_intelligence import orchestrator
+
+    crawl_job = db.get(CrawlJob, job.crawl_job_id)
+    if not crawl_job:
+        scheduler.fail_job(db, job, "crawl job no longer exists")
+        return
+    try:
+        await orchestrator.run_chunk(db, crawl_job)
+        scheduler.complete_job(db, job)
+        if not orchestrator.is_terminal(crawl_job.phase):
+            scheduler.enqueue_url_crawl_chunk(db, crawl_job.id, crawl_job.organization_id)
+    except Exception as e:
+        db.rollback()
+        logger.warning("url_crawl job %s failed: %s", job.id, type(e).__name__)
+        scheduler.fail_job(db, job, e)
+        if job.status == JOB_FAILED:   # no retries left -> the crawl job itself is done, failed
+            cj = db.get(CrawlJob, job.crawl_job_id)
+            if cj:
+                cj.phase = CRAWL_FAILED
+                cj.error = "The crawl could not be completed. Please try again."
+                cj.finished_at = datetime.utcnow()
+                db.commit()

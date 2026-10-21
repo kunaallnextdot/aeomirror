@@ -503,6 +503,85 @@ export function getGa4Traffic({ startDate, endDate } = {}) {
 export function disconnectGoogleAnalytics() {
   return request(`/integrations/google`, { method: "DELETE", ...GA4_OPTS });
 }
+
+/* =====================================================================
+   First-party website analytics / AI Business Impact — GA4-independent. One
+   Monitor = one tracked site = one public "site id" embedded in the installed
+   tracker.js snippet (never a secret; see routes_tracking.py's module docstring). */
+export function getTrackingStatus(monitorId) {
+  return request(`/monitors/${encodeURIComponent(monitorId)}/tracking`);
+}
+export function generateTrackingApiKey(monitorId) {
+  return request(`/monitors/${encodeURIComponent(monitorId)}/tracking/api-key`, { method: "POST" });
+}
+
+function _biQuery({ startDate, endDate, monitorId, ...rest } = {}) {
+  const clean = Object.entries({ start_date: startDate, end_date: endDate, monitor_id: monitorId, ...rest })
+    .filter(([, v]) => v !== undefined && v !== null && v !== "");
+  const qs = new URLSearchParams(clean).toString();
+  return qs ? `?${qs}` : "";
+}
+export function getBusinessImpactSummary(params) {
+  return request(`/business-impact/summary${_biQuery(params)}`);
+}
+export function getBusinessImpactTrafficOverTime(params) {
+  return request(`/business-impact/traffic-over-time${_biQuery(params)}`);
+}
+export function getBusinessImpactChannels(params) {
+  return request(`/business-impact/channels${_biQuery(params)}`);
+}
+export function getBusinessImpactLandingPages(params) {
+  return request(`/business-impact/landing-pages${_biQuery(params)}`);
+}
+
+/* =====================================================================
+   URL Intelligence Engine / AI Expert Analysis / Expert Action Center
+   (app/api/routes_url_intelligence.py). A crawl job belongs to a Monitor (its seed
+   URL is that monitor's own URL) — there is no separate "site" concept here. */
+export function createCrawlJob(monitorId, maxUrls) {
+  return request(`/monitors/${encodeURIComponent(monitorId)}/crawl-jobs`, {
+    method: "POST", body: JSON.stringify(maxUrls ? { max_urls: maxUrls } : {}),
+  });
+}
+export function listCrawlJobs(monitorId) {
+  return request(`/monitors/${encodeURIComponent(monitorId)}/crawl-jobs`);
+}
+export function getCrawlJob(monitorId, jobId) {
+  return request(`/monitors/${encodeURIComponent(monitorId)}/crawl-jobs/${encodeURIComponent(jobId)}`);
+}
+export function cancelCrawlJob(monitorId, jobId) {
+  return request(`/monitors/${encodeURIComponent(monitorId)}/crawl-jobs/${encodeURIComponent(jobId)}/cancel`,
+    { method: "POST" });
+}
+function _qs(params = {}) {
+  const clean = Object.entries(params).filter(([, v]) => v !== undefined && v !== null && v !== "");
+  const qs = new URLSearchParams(clean).toString();
+  return qs ? `?${qs}` : "";
+}
+export function listCrawlUrls(monitorId, jobId, params) {
+  return request(`/monitors/${encodeURIComponent(monitorId)}/crawl-jobs/${encodeURIComponent(jobId)}/urls${_qs(params)}`);
+}
+export function listCrawlTemplates(monitorId, jobId) {
+  return request(`/monitors/${encodeURIComponent(monitorId)}/crawl-jobs/${encodeURIComponent(jobId)}/templates`);
+}
+export function listUrlFindings(monitorId, jobId, params) {
+  return request(`/monitors/${encodeURIComponent(monitorId)}/crawl-jobs/${encodeURIComponent(jobId)}/findings${_qs(params)}`);
+}
+export function updateFindingStatus(monitorId, jobId, findingId, status) {
+  return request(
+    `/monitors/${encodeURIComponent(monitorId)}/crawl-jobs/${encodeURIComponent(jobId)}/findings/${encodeURIComponent(findingId)}`,
+    { method: "PATCH", body: JSON.stringify({ status }) });
+}
+export function bulkUpdateFindingStatus(monitorId, jobId, findingIds, status) {
+  return request(
+    `/monitors/${encodeURIComponent(monitorId)}/crawl-jobs/${encodeURIComponent(jobId)}/findings/bulk-status`,
+    { method: "POST", body: JSON.stringify({ finding_ids: findingIds, status }) });
+}
+export function recrawlFinding(monitorId, jobId, findingId) {
+  return request(
+    `/monitors/${encodeURIComponent(monitorId)}/crawl-jobs/${encodeURIComponent(jobId)}/findings/${encodeURIComponent(findingId)}/recrawl`,
+    { method: "POST" });
+}
 export function getPromptRun(id) { return request(`/prompt-runs/${encodeURIComponent(id)}`); }
 export function getPromptRunSummary(id) {
   return request(`/prompt-runs/${encodeURIComponent(id)}/summary`);

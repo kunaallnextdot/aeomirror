@@ -1,0 +1,64 @@
+/* Aurora styling for Site Intelligence (/app/monitoring/:id/intelligence). `au-si-*`
+   classes, reusing existing design tokens — no new palette. */
+
+.au-si-toolbar{margin-bottom:10px}
+.au-si-head h1{display:flex;align-items:center;gap:9px;font-family:var(--au-font-heading);
+  font-size:20px;font-weight:700;color:var(--au-ink);margin:0}
+.au-si-sub{font-size:13px;color:var(--au-muted);margin:6px 0 18px;max-width:680px;line-height:1.6}
+.au-si-sub-sm{font-size:12.5px;color:var(--au-muted);margin:0 0 14px;line-height:1.6}
+
+.au-si-banner{display:flex;align-items:center;gap:8px;padding:10px 14px;border-radius:var(--au-r-m);
+  font-size:13px;margin-bottom:14px}
+.au-si-banner.err{background:var(--au-peach);color:var(--au-peach-d)}
+
+.au-si-card{background:var(--au-solid);border:1px solid var(--au-line);border-radius:var(--au-r-m);
+  padding:18px;box-shadow:var(--au-sh-s);margin-bottom:14px}
+.au-si-card h2{display:flex;align-items:center;gap:8px;font-family:var(--au-font-heading);
+  font-size:15px;font-weight:700;color:var(--au-ink);margin:0 0 10px}
+.au-si-card p{font-size:13.5px;color:var(--au-ink-2);line-height:1.6;margin:0 0 10px}
+
+/* ---- job status ---- */
+.au-si-job-top{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:8px}
+.au-si-job-top h2{margin:0}
+.au-si-spin{animation:au-si-spin 1.2s linear infinite}
+@keyframes au-si-spin{to{transform:rotate(360deg)}}
+.au-si-job-error{color:var(--au-peach-d);font-size:13px}
+.au-si-job-stats{display:flex;flex-wrap:wrap;gap:14px;font-size:13px;color:var(--au-ink-2);margin:8px 0}
+
+/* ---- templates / url table ---- */
+.au-si-table{width:100%;border-collapse:collapse;font-size:13px}
+.au-si-table th{text-align:left;color:var(--au-muted);font-size:11px;text-transform:uppercase;
+  letter-spacing:.04em;padding:8px 6px;border-bottom:1px solid var(--au-line)}
+.au-si-table td{padding:8px 6px;border-bottom:1px solid var(--au-line-2);color:var(--au-ink);word-break:break-all}
+
+/* ---- bulk actions ---- */
+.au-si-bulk{display:flex;align-items:center;gap:10px;margin-bottom:12px;flex-wrap:wrap}
+.au-si-bulk select{border:1px solid var(--au-line);border-radius:var(--au-r-s);padding:7px 10px;
+  background:var(--au-solid);color:var(--au-ink);font-size:13px;font-family:inherit}
+
+/* ---- findings ---- */
+.au-si-findings{display:flex;flex-direction:column;gap:12px}
+.au-si-finding{border:1px solid var(--au-line);border-radius:var(--au-r-s);padding:12px}
+.au-si-finding.pri-critical{border-color:var(--au-peach-d)}
+.au-si-finding-top{display:flex;align-items:center;gap:9px;flex-wrap:wrap;margin-bottom:6px}
+.au-si-finding-top strong{font-size:13.5px;color:var(--au-ink)}
+.au-si-pri{font-size:10.5px;font-weight:600;padding:3px 9px;border-radius:var(--au-r-pill);flex:none}
+.au-si-pri.pri-critical{background:var(--au-peach);color:var(--au-peach-d)}
+.au-si-pri.pri-high{background:var(--au-peach);color:var(--au-peach-d)}
+.au-si-pri.pri-medium{background:var(--au-lemon);color:var(--au-lemon-d)}
+.au-si-pri.pri-low{background:var(--au-sky);color:var(--au-sky-d)}
+.au-si-affected{font-size:11px;color:var(--au-muted);background:var(--au-bg);border-radius:var(--au-r-pill);
+  padding:2px 8px}
+.au-si-finding-url{display:block;font-size:12px;color:var(--au-primary);text-decoration:none;
+  word-break:break-all;margin-bottom:6px}
+.au-si-finding-url:hover{text-decoration:underline}
+.au-si-finding-why,.au-si-finding-fix{font-size:13px;color:var(--au-ink-2);margin:4px 0}
+.au-si-finding-meta{font-size:11.5px;color:var(--au-muted);margin:6px 0 0}
+.au-si-finding-limits{font-size:11.5px;color:var(--au-muted);margin:2px 0 0;font-style:italic}
+.au-si-finding-actions{display:flex;align-items:center;gap:8px;margin-top:10px;flex-wrap:wrap}
+.au-si-finding-actions select{border:1px solid var(--au-line);border-radius:var(--au-r-s);padding:6px 9px;
+  background:var(--au-solid);color:var(--au-ink);font-size:12.5px;font-family:inherit}
+
+.au-si-locked-banner{display:flex;align-items:center;gap:8px;width:100%;margin-top:12px;
+  background:var(--au-lemon);border:1px solid var(--au-lemon-d);border-radius:var(--au-r-s);
+  padding:10px 14px;font-size:12.5px;color:var(--au-lemon-d);cursor:pointer;font-family:inherit}

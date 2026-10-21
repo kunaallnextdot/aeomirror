@@ -24,6 +24,8 @@ import ProfilePage from "../auth/pages/ProfilePage.jsx";
 import TeamPage from "../auth/pages/TeamPage.jsx";
 import OrganizationPage from "../auth/pages/OrganizationPage.jsx";
 import AiTraffic from "../dashboard/AiTraffic.jsx";
+import BusinessImpact from "../dashboard/BusinessImpact.jsx";
+import SiteIntelligence from "../dashboard/SiteIntelligence.jsx";
 import { Globe } from "lucide-react";
 
 export function useAppCtx() { return useOutletContext(); }
@@ -155,7 +157,14 @@ export function MonitorDetailRoute() {
   const navigate = useNavigate();
   const { openReport } = useAppCtx();
   return <MonitorDetail key={monitorId} monitorId={monitorId}
-                        onBack={() => navigate("/app/monitoring")} onOpenReport={openReport} />;
+                        onBack={() => navigate("/app/monitoring")} onOpenReport={openReport}
+                        onOpenIntelligence={() => navigate(`/app/monitoring/${encodeURIComponent(monitorId)}/intelligence`)} />;
+}
+
+export function SiteIntelligenceRoute() {
+  const { monitorId } = useParams();
+  const navigate = useNavigate();
+  return <SiteIntelligence monitorId={monitorId} onBack={() => navigate(`/app/monitoring/${encodeURIComponent(monitorId)}`)} />;
 }
 
 export function AnswerTrackingRoute() {
@@ -171,6 +180,7 @@ export function AnswerTrackingRoute() {
 }
 
 export function AiTrafficRoute() { return <AiTraffic />; }
+export function BusinessImpactRoute() { return <BusinessImpact />; }
 export function BillingRoute() { return <BillingView />; }
 export function ProfileRoute() { return <ProfilePage />; }
 export function TeamRoute() { return <TeamPage />; }

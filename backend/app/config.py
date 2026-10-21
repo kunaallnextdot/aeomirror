@@ -371,6 +371,49 @@ class Settings(BaseSettings):
         return bool(self.google_oauth_client_id and self.google_oauth_client_secret
                     and self.google_oauth_redirect_uri)
 
+    # --- First-party website analytics (AI Business Impact) ---
+    # Public ingestion endpoint (tracker.js -> POST /t/collect). GA4-independent: works
+    # for every org regardless of whether they've connected Google Analytics. See
+    # app/api/routes_tracking.py and app/services/analytics/.
+    tracking_max_events_per_batch: int = 25
+    tracking_max_events_per_window: int = 120   # per (site_id, ip_hash) rate-limit budget
+    tracking_rate_window_seconds: int = 60
+    # A session with no new pageview/event for this long is considered ended; the next
+    # event from the same visitor starts a NEW session (and may re-attribute source).
+    analytics_session_timeout_minutes: int = 30
+    # How long raw pageview/session rows are kept before periodic purge (mirrors the
+    # existing snapshot_retention_days pattern) — conversions are never auto-purged.
+    analytics_raw_retention_days: int = 180
+
+    # --- URL Intelligence Engine + AI Expert Analysis (large-site crawling) ---
+    # Per-crawl-job URL cap by plan. Free is a small sample; Pro reaches the system's
+    # own absolute safety ceiling — NOT literally unlimited (never assume a paid plan
+    # means unlimited spend/load; see url_crawl_ai_daily_cap below).
+    url_crawl_free_max_urls: int = 100
+    url_crawl_max_urls_ceiling: int = 100_000
+    # Bounded concurrency for the crawl-phase page fetches (separate from bulk_concurrency
+    # — a crawl job can run far longer / far larger than a bulk scan).
+    url_crawl_concurrency: int = 8
+    # Each worker tick processes at most ONE bounded chunk of a crawl job, then
+    # re-enqueues a continuation job if more work remains — this is what makes a
+    # 100k-URL crawl resumable/checkpointed instead of needing one giant unbounded task.
+    url_crawl_discovery_batch_size: int = 300   # sitemap/internal-link URLs discovered per chunk
+    url_crawl_fetch_batch_size: int = 20        # pages fetched + evidence-extracted per chunk
+    url_crawl_analyze_batch_size: int = 6       # AI template analyses per chunk
+    url_crawl_max_depth: int = 4                # internal-link discovery depth cap from the seed
+    # AI Expert Analysis Engine (Phase 5/6): reuses app.core.ai.complete_with_usage.
+    # Representative-template analysis only (Phase 6) — never one AI call per URL.
+    url_intel_ai_max_tokens: int = 1400
+    url_intel_ai_timeout_seconds: int = 30
+    # Global per-day ceiling on URL-intelligence AI calls, ALL orgs combined — mirrors
+    # ai_global_daily_calls. Once hit, remaining template analyses are skipped (not
+    # queued/retried) for the rest of the day; the crawl itself still completes with
+    # deterministic-only evidence for the skipped templates.
+    url_crawl_ai_daily_cap: int = 300
+    # A template's AI analysis is reused (not re-run) while its content fingerprint is
+    # unchanged and the existing finding is within this freshness window.
+    url_crawl_ai_cache_days: int = 14
+
     # --- Phase 8: admin platform ---
     # Comma-separated emails auto-granted platform-admin access (in addition to any
     # user with is_platform_admin=True). Lets you bootstrap the first admin.

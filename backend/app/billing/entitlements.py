@@ -235,6 +235,16 @@ def can_view_page_details(db: Session, org_id: str | None, scan_row) -> bool:
     return (getattr(scan_row, "result", None) or {}).get("bulk") is None
 
 
+def url_crawl_max_urls(db: Session, org_id: str) -> int:
+    """Per-crawl-job URL cap for the URL Intelligence Engine. Free gets a small
+    sample; Pro (and billing-off) reaches the system's own absolute safety ceiling —
+    deliberately NOT unlimited (a paid plan is never treated as unlimited spend/load;
+    see settings.url_crawl_ai_daily_cap for the matching AI-call ceiling)."""
+    if is_pro(db, org_id):
+        return settings.url_crawl_max_urls_ceiling
+    return settings.url_crawl_free_max_urls
+
+
 def mark_bulk_trial_used(db: Session, org_id: str) -> None:
     """Consume the one-time bulk trial (idempotent). Called when a bulk trial scan is
     accepted; the flag never resets. Implemented here so the later bulk-scan task just
