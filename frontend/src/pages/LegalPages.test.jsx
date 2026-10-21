@@ -37,6 +37,14 @@ describe("PrivacyPolicy", () => {
     expect(links[0].getAttribute("href")).toBe("mailto:aeomirror.support@gmail.com");
   });
 
+  it("includes the Google API Services User Data Policy / Limited Use disclosure, and explicitly rules out selling data or using it for ads", () => {
+    render(<PrivacyPolicy />);
+    screen.getByRole("link", { name: /Google API Services User Data Policy/i });
+    screen.getByText(/including the Limited Use requirements/i);
+    screen.getByText(/we do not sell google user data/i);
+    screen.getByText(/to serve\s*advertisements of any kind/i);
+  });
+
   it("never makes a blanket 'we never store/share any data' claim (narrow, accurate claims like 'never store your password in plain text' are fine)", () => {
     const { container } = render(<PrivacyPolicy />);
     const text = container.textContent.toLowerCase();

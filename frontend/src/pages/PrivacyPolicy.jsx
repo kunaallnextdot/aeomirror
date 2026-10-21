@@ -6,7 +6,7 @@ import React from "react";
 import LegalPage, { Section } from "./LegalPage.jsx";
 
 const SUPPORT_EMAIL = "aeomirror.support@gmail.com";
-const EFFECTIVE_DATE = "October 13, 2026";
+const EFFECTIVE_DATE = "October 21, 2026";
 
 export default function PrivacyPolicy() {
   return (
@@ -81,6 +81,32 @@ export default function PrivacyPolicy() {
           immediately, regardless of whether Google's revocation succeeds. Historical
           traffic numbers already synced before you disconnected are kept (so you
           don't lose your own historical data), but no further syncing occurs.</p>
+        <p><strong>Google API Services User Data Policy.</strong> AEOMirror's use and
+          transfer of information received from Google APIs to any other app will
+          adhere to the{" "}
+          <a href="https://developers.google.com/terms/api-services-user-data-policy"
+             target="_blank" rel="noreferrer">
+            Google API Services User Data Policy
+          </a>, including the Limited Use requirements. Specifically:</p>
+        <ul>
+          <li>We do not sell Google user data, and we do not transfer it to any third
+            party except where necessary to provide or improve this feature as
+            described above, to comply with applicable law, or as part of a merger,
+            acquisition, or asset sale — in which case we will notify affected users
+            before their data becomes subject to a different privacy policy.</li>
+          <li>We do not use Google user data, or anything derived from it, to serve
+            advertisements of any kind, including personalized or interest-based
+            advertising.</li>
+          <li>We do not allow any human — employee, contractor, or otherwise — to read
+            your Google Analytics data, except: with your consent; where strictly
+            necessary for security purposes (for example, investigating a suspected
+            abuse of the service); to comply with applicable law; or to maintain and
+            debug the feature itself (for example, diagnosing why a sync failed).</li>
+          <li>We use Google user data only to provide and improve the AI-referral
+            traffic dashboard feature described on this page — a user-facing feature
+            of AEOMirror consistent with what we disclose here — and for no other
+            purpose.</li>
+        </ul>
       </Section>
 
       <Section title="3. AI processing of submitted content">
