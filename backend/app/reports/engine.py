@@ -89,7 +89,21 @@ def _localize_example(text: str, domain: str) -> str:
                 .replace("AEOMirror", brand))
 
 
-def _section_recommendation(section: dict, domain: str = "") -> dict | None:
+def _confidence(issues: list, evidence: dict) -> str:
+    """Deterministic confidence from evidence RICHNESS actually present on this
+    signal — never invented, never an LLM-generated confidence string. 'high' when
+    there's both specific issue text AND structured evidence backing it; 'medium'
+    when there's issue text but no structured evidence dict; 'low' when this
+    recommendation only exists because the signal is unhealthy with no specific
+    issue captured (the generic fallback description in _section_recommendation)."""
+    if issues and evidence:
+        return "high"
+    if issues:
+        return "medium"
+    return "low"
+
+
+def _section_recommendation(section: dict, domain: str = "", url: str | None = None) -> dict | None:
     """Build one rich recommendation from a signal section, or None if the signal
     is healthy with nothing to improve (it becomes a strength instead)."""
     score = section.get("score", 0)
@@ -113,6 +127,7 @@ def _section_recommendation(section: dict, domain: str = "") -> dict | None:
         else f"{label} scored {score}/100 and has room to improve."
     )
     recommended_fix = signal_recs or [tpl["outcome"]]
+    evidence_findings = section.get("evidence") or {}
 
     return {
         "id": sid,
@@ -122,6 +137,15 @@ def _section_recommendation(section: dict, domain: str = "") -> dict | None:
         "severity": severity,
         "priority": level,
         "priority_score": pscore,
+        # Confidence in THIS finding, derived from how much real evidence backs it
+        # (see _confidence) — never an LLM-generated or hardcoded value.
+        "confidence": _confidence(issues, evidence_findings),
+        # The specific page this applies to. Only ever set for a single-page scan,
+        # where every signal is unambiguously about that one URL — a bulk scan's
+        # sections are an aggregate across many pages, so `url` stays None rather
+        # than guessing which of the bulk pages it refers to (a real, documented
+        # limitation, not a bug: see technical_seo/phase4 for per-URL bulk detail).
+        "url": url,
         "score": score,
         "weight": weight,
         "status": status,
@@ -130,7 +154,7 @@ def _section_recommendation(section: dict, domain: str = "") -> dict | None:
             "signal_score": score,
             "status": status,
             "issues": issues,
-            "findings": section.get("evidence") or {},
+            "findings": evidence_findings,
         },
         "business_impact": tpl["business_impact"],
         "ai_visibility_impact": tpl["ai_impact"],
@@ -151,10 +175,11 @@ def _section_recommendation(section: dict, domain: str = "") -> dict | None:
 _PRIORITY_RANK = {"Critical": 0, "High": 1, "Medium": 2, "Low": 3}
 
 
-def build_recommendations(sections: list[dict], domain: str = "") -> list[dict]:
+def build_recommendations(sections: list[dict], domain: str = "", *, url: str | None = None) -> list[dict]:
     """All recommendations, most important first (priority, then priority_score).
-    `domain` localizes each implementation example (real URL + brand, not placeholders)."""
-    recs = [r for r in (_section_recommendation(s, domain) for s in sections) if r]
+    `domain` localizes each implementation example (real URL + brand, not placeholders).
+    `url` is only passed for a single-page scan (see _section_recommendation)."""
+    recs = [r for r in (_section_recommendation(s, domain, url) for s in sections) if r]
     recs.sort(key=lambda r: (_PRIORITY_RANK[r["priority"]], -r["priority_score"]))
     return recs
 
@@ -263,10 +288,15 @@ def build_report(scan: dict) -> dict:
     Tolerates missing/empty sections (returns an empty-but-valid report).
     """
     sections = scan.get("sections") or []
-    recommendations = build_recommendations(sections, scan.get("domain") or scan.get("url") or "")
+    bulk_pages = scan.get("bulk_pages")
+    # Per-recommendation `url` is only meaningful for a single-page scan (see
+    # build_recommendations/_section_recommendation's docstrings) — a bulk scan's
+    # sections are an aggregate across many pages, so `url` stays unset for those.
+    single_page_url = scan.get("url") if not bulk_pages else None
+    recommendations = build_recommendations(
+        sections, scan.get("domain") or scan.get("url") or "", url=single_page_url)
     scorecard = build_scorecard(scan, recommendations)
     scan_ready = scan.get("scan_ready", True)
-    bulk_pages = scan.get("bulk_pages")
 
     # Additive (Phase 4): deeper Schema / Internal Link / Entity intelligence + the
     # scan-only slice of Question Mining, derived from the SAME sections. Never

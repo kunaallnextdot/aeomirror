@@ -90,6 +90,9 @@ def test_viewer_is_read_only(monkeypatch):
     assert viewer.post(f"/api/scans/{scan_id}/rerun").status_code == 403
     assert viewer.delete(f"/api/scans/{scan_id}").status_code == 403
     assert viewer.post("/org/invitations", json={"email": unique_email(), "role": "member"}).status_code == 403
+    # A VIEWER must not be able to trigger a bulk scan either — it burns the org's
+    # metered scan-job quota / one-time bulk trial, same as any other scan:run action.
+    assert viewer.post("/v1/scan/bulk", json={"urls": ["https://rbac-viewer-bulk.example/"]}).status_code == 403
 
 
 def test_member_can_run_but_not_delete_or_invite(monkeypatch):

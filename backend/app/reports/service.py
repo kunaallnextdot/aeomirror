@@ -88,6 +88,83 @@ def _ai_narrative(db, report: dict, scan_row, *, tier: str, email_verified: bool
     return fresh
 
 
+_URL_INTEL_FREE_PREVIEW = 3
+_URL_INTEL_MAX_FINDINGS = 20
+
+
+def build_url_intelligence_summary(db, scan_row) -> dict:
+    """Live (never cached/persisted) summary of the URL Intelligence Engine's crawl
+    findings for the Monitor that matches this scan's site, if one exists. Connects
+    the previously-standalone crawler/AI-analysis engine (app/services/url_intelligence)
+    into the main report WITHOUT duplicating work:
+    - Read-only — never creates a CrawlJob, never triggers a crawl. A scan that has no
+      matching monitor, or a monitor with no completed crawl yet, gets an honest
+      {"available": False, "reason": ...} rather than a fabricated empty-but-present
+      block.
+    - Computed fresh on every call (unlike the deterministic scan report, which is
+      cached in `reports.data`) specifically so a finding's live `status` (open/
+      in_progress/fixed) and `verification_status` (set by recrawl-to-verify) are
+      always current, never a stale snapshot from whenever this scan's report was
+      first generated.
+    - The monitor match is by (organization_id, normalized_url) — the SAME two
+      columns Scan and Monitor both already store, so no new linkage/column is
+      needed."""
+    from app.billing import entitlements
+    from app.db.models import CRAWL_COMPLETED, CrawlJob, Monitor, UrlFinding
+    from app.services.url_intelligence.prioritization import priority_score
+
+    org_id = scan_row.organization_id
+    if not org_id:
+        return {"available": False, "reason": "no_organization"}
+
+    monitor = (db.query(Monitor)
+              .filter(Monitor.organization_id == org_id,
+                      Monitor.normalized_url == scan_row.normalized_url)
+              .first())
+    if not monitor:
+        return {"available": False, "reason": "no_monitor"}
+
+    job = (db.query(CrawlJob)
+          .filter(CrawlJob.monitor_id == monitor.id, CrawlJob.organization_id == org_id,
+                  CrawlJob.phase == CRAWL_COMPLETED)
+          .order_by(CrawlJob.finished_at.desc())
+          .first())
+    if not job:
+        return {"available": False, "reason": "no_completed_crawl", "monitor_id": monitor.id}
+
+    findings = db.query(UrlFinding).filter(UrlFinding.crawl_job_id == job.id).all()
+    scored = sorted(findings, key=lambda f: priority_score(f)["score"], reverse=True)
+
+    is_pro = entitlements.is_pro(db, org_id)
+    limit = _URL_INTEL_MAX_FINDINGS if is_pro else _URL_INTEL_FREE_PREVIEW
+    visible = scored[:limit]
+
+    def _finding(f) -> dict:
+        s = priority_score(f)
+        return {
+            "id": f.id, "url": f.url, "template_id": f.template_id,
+            "affected_url_count": f.affected_url_count, "page_type": f.page_type,
+            "finding_title": f.finding_title, "category": f.category,
+            "why_it_matters": f.why_it_matters, "recommended_fix": f.recommended_fix,
+            "priority": f.priority, "confidence": f.confidence,
+            "status": f.status, "verification_status": f.verification_status,
+            "priority_score": s["score"], "priority_reason": s["reason"],
+        }
+
+    return {
+        "available": True,
+        "is_pro": is_pro,
+        "monitor_id": monitor.id,
+        "crawl_job_id": job.id,
+        "crawled_at": job.finished_at.isoformat() if job.finished_at else None,
+        "crawled_count": job.crawled_count,
+        "analyzed_count": job.analyzed_count,
+        "finding_count": len(findings),
+        "locked_finding_count": max(0, len(scored) - len(visible)),
+        "findings": [_finding(f) for f in visible],
+    }
+
+
 def _latest_report_row(db, scan_id: str) -> Report | None:
     return (db.query(Report)
             .filter(Report.scan_id == scan_id)
@@ -137,13 +214,20 @@ def get_or_build_report(db, scan_row) -> tuple[dict, Report | None]:
     row = _latest_report_row(db, scan_row.id)
     ready = scan_row.status == SCAN_COMPLETED
     if row and ready and row.version == REPORT_VERSION:
-        return dict(row.data), row          # cache hit — build_report is NOT called
-    scan_input = scan_to_input(scan_row)
-    report = build_report(scan_input)
-    if not ready:
-        return report, row                  # honest, unpersisted (see docstring)
-    row = _persist_report(db, scan_row, report, row)
-    return dict(row.data), row
+        report = dict(row.data)             # cache hit — build_report is NOT called
+    else:
+        scan_input = scan_to_input(scan_row)
+        report = build_report(scan_input)
+        if ready:
+            row = _persist_report(db, scan_row, report, row)
+            report = dict(row.data)
+        # else: honest, unpersisted (see docstring) — report stays as freshly built
+
+    # Merged in AFTER the cache read/write above, on every call, so it reflects live
+    # finding status/verification state — see build_url_intelligence_summary's
+    # docstring for why this is intentionally never part of the cached `row.data`.
+    report["url_intelligence"] = build_url_intelligence_summary(db, scan_row)
+    return report, row
 
 
 def generate_report(db, scan_row, *, user=None, refresh_ai: bool = False) -> dict:

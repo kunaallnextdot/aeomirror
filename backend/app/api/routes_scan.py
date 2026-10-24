@@ -13,7 +13,7 @@ from starlette.concurrency import run_in_threadpool
 import time
 from datetime import datetime, timezone
 
-from app.api.deps import AuthContext, get_context, get_optional_user
+from app.api.deps import AuthContext, get_optional_user, require_permission
 from app.config import settings
 from app.core.cache import rate_limiter, scan_cache
 from app.core.fetch import fetch
@@ -705,12 +705,17 @@ async def _read_bulk_urls(request: Request) -> list[str]:
 
 @router.post("/scan/bulk")
 async def create_bulk_scan(request: Request, db: Session = Depends(get_db),
-                           ctx: AuthContext = Depends(get_context)):
+                           ctx: AuthContext = Depends(require_permission("scan:run"))):
     """Start a BULK scan of up to bulk_max_urls user-provided URLs (JSON list or a
     CSV/XLSX upload). Validates + dedupes + SSRF-checks the URLs, enforces the plan
     quota (one scan job) and the Free one-time bulk trial, then creates a PENDING Scan
     row + enqueues a background bulk_scan job and returns 202 with the accept/skip
-    summary. The client polls GET /api/scans/{id}/status."""
+    summary. The client polls GET /api/scans/{id}/status.
+
+    Requires scan:run (not just authentication) — consistent with every other
+    scan-creating endpoint (routes_monitors.py, routes_dashboard.py); a VIEWER-role
+    member must not be able to burn the org's metered scan-job quota or one-time
+    bulk trial."""
     from app.admin import settings_store
     if settings_store.is_maintenance(db) and not ctx.user.is_platform_admin:
         raise HTTPException(status_code=503, detail=settings_store.get(db, "maintenance_message"))

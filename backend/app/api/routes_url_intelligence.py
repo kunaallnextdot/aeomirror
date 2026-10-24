@@ -29,6 +29,7 @@ from app.monitoring import scheduler
 from app.scanner.bulk import normalize_url
 from app.schemas.url_intelligence import CreateCrawlJobRequest, UpdateFindingStatusRequest
 from app.services.url_intelligence.prioritization import priority_score
+from app.services.url_intelligence.site_profile import build_site_profile
 from app.services.url_intelligence.verification import verify_finding
 
 router = APIRouter(tags=["url-intelligence"])
@@ -172,6 +173,14 @@ def list_templates(monitor_id: str, job_id: str,
         {"template_id": t, "page_type": pt, "url_count": c, "representative_url": u}
         for t, pt, c, u in rows
     ]}
+
+
+@router.get("/monitors/{monitor_id}/crawl-jobs/{job_id}/site-profile")
+def get_site_profile(monitor_id: str, job_id: str,
+                     ctx: AuthContext = Depends(require_permission("report:view")),
+                     db: Session = Depends(get_db)):
+    job = _owned_job(db, ctx, monitor_id, job_id)
+    return build_site_profile(db, job)
 
 
 def _finding_dict(f: UrlFinding) -> dict:
