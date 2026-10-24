@@ -25,6 +25,15 @@
 .au-si-job-error{color:var(--au-peach-d);font-size:13px}
 .au-si-job-stats{display:flex;flex-wrap:wrap;gap:14px;font-size:13px;color:var(--au-ink-2);margin:8px 0}
 
+/* ---- site profile ---- */
+.au-si-profile-row{display:flex;flex-wrap:wrap;gap:24px;margin-bottom:10px}
+.au-si-profile-label{font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--au-muted)}
+.au-si-profile-value{font-size:15px;font-weight:600;color:var(--au-ink);margin:3px 0}
+.au-si-profile-conf{font-size:11.5px;color:var(--au-primary)}
+.au-si-profile-basis{font-size:12.5px;color:var(--au-muted);margin:4px 0}
+.au-si-profile-warn{font-size:12.5px;color:var(--au-peach-d);background:var(--au-peach);
+  border-radius:var(--au-r-s);padding:8px 12px;margin:6px 0 0}
+
 /* ---- templates / url table ---- */
 .au-si-table{width:100%;border-collapse:collapse;font-size:13px}
 .au-si-table th{text-align:left;color:var(--au-muted);font-size:11px;text-transform:uppercase;

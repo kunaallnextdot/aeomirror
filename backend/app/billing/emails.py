@@ -50,9 +50,14 @@ def _emit(db: Session, org: Organization, kind: str, subject: str, text: str,
     return status
 
 
+def _logo() -> str:
+    return (f"<p style=\"margin:0 0 20px\"><img src=\"{settings.app_base_url}/brand/lockup-480.png\" "
+            f"alt=\"AEOMirror\" width=\"160\" style=\"display:block;height:auto;border:0\"/></p>")
+
+
 def _wrap(body: str) -> str:
     return (f"<div style=\"font-family:system-ui,sans-serif;line-height:1.6;color:#0B0F14\">"
-            f"{body}</div>")
+            f"{_logo()}{body}</div>")
 
 
 def send_receipt(db, org, payment) -> str:

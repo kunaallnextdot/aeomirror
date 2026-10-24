@@ -14,9 +14,11 @@ import {
 import { fmtDate } from "./ui.jsx";
 import { useAuth } from "../auth/AuthContext.jsx";
 import { useUpgrade } from "./UpgradeModal.jsx";
-import { Shell, Cell, Button, Skeleton } from "./aurora.jsx";
+import { Shell, Cell, Button, Skeleton } from "../shared/spectrum.jsx";
 import GoogleConsentModal from "./GoogleConsentModal.jsx";
-import "./AiTraffic.aurora.css";
+// GoogleConsentModal.jsx's au-gcm-* rules have moved into AiTraffic.spectrum.css
+// (final-integration pass) — the Aurora stylesheet is no longer needed here.
+import "./AiTraffic.spectrum.css";
 
 const AI_LABELS = {
   chatgpt: "ChatGPT", perplexity: "Perplexity", gemini: "Gemini", copilot: "Copilot",
@@ -158,7 +160,7 @@ export default function AiTraffic() {
 
   if (loading) {
     return (
-      <Shell className="au-ga4">
+      <Shell className="sp-ga4">
         <Skeleton h={160} />
       </Shell>
     );
@@ -166,10 +168,10 @@ export default function AiTraffic() {
 
   return (
     <>
-    <Shell className="au-ga4">
-      <header className="au-ga4-head">
+    <Shell className="sp-ga4">
+      <header className="sp-ga4-head">
         <h1><BarChart3 size={20} /> AI Traffic</h1>
-        <p className="au-ga4-sub">
+        <p className="sp-ga4-sub">
           Real inbound visitor traffic from your connected Google Analytics property,
           classified by AI-assistant source — separate from Answer Tracking, which tests
           how AI assistants answer queries about your site, not real visitor traffic.
@@ -177,12 +179,12 @@ export default function AiTraffic() {
       </header>
 
       {banner && (
-        <div className={`au-ga4-banner au-ga4-banner-${banner.kind}`}>{banner.text}</div>
+        <div className={`sp-ga4-banner sp-ga4-banner-${banner.kind}`}>{banner.text}</div>
       )}
-      {error && <div className="au-ga4-banner au-ga4-banner-error">{error}</div>}
+      {error && <div className="sp-ga4-banner sp-ga4-banner-error">{error}</div>}
 
       {status?.status === "not_configured" && (
-        <Cell className="au-ga4-card">
+        <Cell className="sp-ga4-card">
           <Info size={18} />
           <p>
             Google Analytics connection is temporarily unavailable because AEOMirror
@@ -193,26 +195,26 @@ export default function AiTraffic() {
       )}
 
       {status?.status === "not_available" && (
-        <Cell className="au-ga4-card">
+        <Cell className="sp-ga4-card">
           <Lock size={18} />
           <p>AI Traffic is a Pro feature.</p>
-          <Button onClick={() => openUpgrade("ai_traffic")}>Upgrade</Button>
+          <Button variant="gradient" onClick={() => openUpgrade("ai_traffic")}>Upgrade</Button>
         </Cell>
       )}
 
       {status?.status === "not_connected" && canManage && (
-        <Cell className="au-ga4-card">
+        <Cell className="sp-ga4-card">
           <p>Connect your Google Analytics account to see which AI assistants are sending you traffic.</p>
-          <Button onClick={openConsent} loading={busy}>Connect Google Analytics</Button>
+          <Button variant="gradient" onClick={openConsent} loading={busy}>Connect Google Analytics</Button>
         </Cell>
       )}
 
       {status?.status === "revoked" && (
-        <Cell className="au-ga4-card">
+        <Cell className="sp-ga4-card">
           <Unplug size={18} />
           <p>Google Analytics was disconnected and is no longer syncing.</p>
           {canManage ? (
-            <Button onClick={openConsent} loading={busy}>Connect Google Analytics</Button>
+            <Button variant="gradient" onClick={openConsent} loading={busy}>Connect Google Analytics</Button>
           ) : (
             <p>Ask an organization owner or admin to reconnect it.</p>
           )}
@@ -220,10 +222,10 @@ export default function AiTraffic() {
       )}
 
       {status?.status === "pending_property" && canManage && (
-        <Cell className="au-ga4-card">
+        <Cell className="sp-ga4-card">
           <p>Connected. Choose the GA4 property to track.</p>
           {!properties ? (
-            <Button onClick={loadProperties} loading={busy}>Load properties</Button>
+            <Button variant="gradient" onClick={loadProperties} loading={busy}>Load properties</Button>
           ) : properties.length === 0 ? (
             <>
               <p>
@@ -234,14 +236,14 @@ export default function AiTraffic() {
                 for the account you expect to use, or try connecting again and pick a
                 different Google account.
               </p>
-              <Button onClick={beginOAuth} loading={busy}>Try a different Google account</Button>
+              <Button variant="gradient" onClick={beginOAuth} loading={busy}>Try a different Google account</Button>
             </>
           ) : (
-            <ul className="au-ga4-proplist">
+            <ul className="sp-ga4-proplist">
               {properties.map((p) => (
                 <li key={p.property_id}>
                   <button type="button" disabled={busy} onClick={() => pickProperty(p.property_id)}>
-                    {p.property_name} <span className="au-ga4-prop-account">{p.account_name}</span>
+                    {p.property_name} <span className="sp-ga4-prop-account">{p.account_name}</span>
                   </button>
                 </li>
               ))}
@@ -251,25 +253,25 @@ export default function AiTraffic() {
       )}
 
       {status?.status === "error" && (
-        <Cell className="au-ga4-card">
+        <Cell className="sp-ga4-card">
           <p>{errorMessage(status.last_sync_error_code)}</p>
-          {canManage && <Button onClick={beginOAuth} loading={busy}>Reconnect</Button>}
+          {canManage && <Button variant="gradient" onClick={beginOAuth} loading={busy}>Reconnect</Button>}
         </Cell>
       )}
 
       {status?.status === "active" && (
         <>
-          <Cell className="au-ga4-card au-ga4-toolbar">
+          <Cell className="sp-ga4-card sp-ga4-toolbar">
             <div>
               <strong>{status.ga4_property_name}</strong>
-              <div className="au-ga4-synced">
+              <div className="sp-ga4-synced">
                 {status.last_synced_at
                   ? `Last synced ${fmtDate(status.last_synced_at)}`
                   : "Not synced yet"}
               </div>
             </div>
             {canManage && (
-              <div className="au-ga4-actions">
+              <div className="sp-ga4-actions">
                 <Button variant="ghost" onClick={syncNow} loading={busy}>
                   <RefreshCw size={14} /> Sync now
                 </Button>
@@ -281,13 +283,13 @@ export default function AiTraffic() {
           </Cell>
 
           {!traffic?.synced ? (
-            <Cell className="au-ga4-card">
+            <Cell className="sp-ga4-card">
               <p>Sync pending — the first sync can take a few minutes after connecting.</p>
             </Cell>
           ) : (
-            <Cell className="au-ga4-card">
+            <Cell className="sp-ga4-card">
               <h2>Sessions by source</h2>
-              <ul className="au-ga4-sources">
+              <ul className="sp-ga4-sources">
                 {AI_ORDER.map((key) => (
                   <li key={key}>
                     <span>{AI_LABELS[key]}</span>
@@ -298,7 +300,7 @@ export default function AiTraffic() {
             </Cell>
           )}
 
-          <Cell className="au-ga4-card au-ga4-note">
+          <Cell className="sp-ga4-card sp-ga4-note">
             <Info size={16} />
             <p>
               Counts only traffic Google Analytics can identify by referrer. Some AI
@@ -312,7 +314,7 @@ export default function AiTraffic() {
       )}
 
       {status?.status === "not_connected" && !canManage && (
-        <Cell className="au-ga4-card">
+        <Cell className="sp-ga4-card">
           <p>Google Analytics isn't connected yet. Ask an organization owner or admin to connect it.</p>
         </Cell>
       )}

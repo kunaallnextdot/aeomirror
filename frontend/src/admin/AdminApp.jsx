@@ -31,9 +31,10 @@ const NAV = [
   { id: "audit", label: "Audit Logs", icon: ScrollText },
   { id: "settings", label: "Settings", icon: Settings2 },
 ];
-const AXIS = { fill: "var(--txt-dim)", fontSize: 10 };
-const TT = { contentStyle: { background: "var(--panel-2)", border: "1px solid var(--line)", borderRadius: 8, fontSize: 12 }, labelStyle: { color: "var(--txt-mid)" }, itemStyle: { color: "var(--txt)" } };
-const PIE = ["#43C08A", "#E6A94A", "#E5615B", "#34D3E0", "#8A97A3"];
+const AXIS = { fill: "var(--sp-muted)", fontSize: 10 };
+const TT = { contentStyle: { background: "var(--sp-t-grey)", border: "1px solid var(--sp-line)", borderRadius: 8, fontSize: 12 }, labelStyle: { color: "var(--sp-ink-2)" }, itemStyle: { color: "var(--sp-ink)" } };
+// pass/warn/fail distribution — no red/amber/green, same mapping used everywhere else.
+const PIE = ["var(--sp-blue-d)", "var(--sp-lav-d)", "var(--sp-violet-d)", "var(--sp-cyan-d)", "var(--sp-muted)"];
 
 export default function AdminApp() {
   const { user } = useAuth();
@@ -88,13 +89,13 @@ function DashboardView() {
       {loading ? <Loading /> : error ? <ErrorBox message={error} onRetry={reload} /> : (
         <div className="ad-stats">
           <AdminStat label="Total Users" value={data.total_users} />
-          <AdminStat label="Active Users" value={data.active_users} tone="var(--good)" />
+          <AdminStat label="Active Users" value={data.active_users} tone="var(--sp-blue-d)" />
           <AdminStat label="Organizations" value={data.organizations} />
           <AdminStat label="Total Websites" value={data.total_websites} />
           <AdminStat label="Total Scans" value={data.total_scans} />
           <AdminStat label="Today's Scans" value={data.todays_scans} />
-          <AdminStat label="Running Monitors" value={data.running_monitors} tone="var(--accent)" />
-          <AdminStat label="Failed Jobs" value={data.failed_jobs} tone={data.failed_jobs ? "var(--bad)" : undefined} />
+          <AdminStat label="Running Monitors" value={data.running_monitors} tone="var(--sp-cyan-d)" />
+          <AdminStat label="Failed Jobs" value={data.failed_jobs} tone={data.failed_jobs ? "var(--sp-violet-d)" : undefined} />
           <AdminStat label="Average AI Score" value={data.average_ai_score ?? "—"} />
           <AdminStat label="API Requests" value={data.api_requests} />
           <AdminStat label="System Health" value={<Badge tone={statusTone(data.system_health)}>{data.system_health}</Badge>} />
@@ -132,7 +133,7 @@ function UsersView() {
                   <td>{u.organization?.name || "—"}</td>
                   <td>{u.role}</td>
                   <td><Badge tone={statusTone(u.status)}>{u.status}</Badge></td>
-                  <td>{u.email_verified ? <CheckCircle2 size={14} color="var(--good)" /> : "—"}</td>
+                  <td>{u.email_verified ? <CheckCircle2 size={14} color="var(--sp-blue-d)" /> : "—"}</td>
                   <td><div className="ad-actions">
                     {u.status === "active"
                       ? <button className="ad-ic" title="Suspend" disabled={busy === u.id} onClick={() => act(u.id, admin.suspendUser)}><Ban size={13} /></button>
@@ -390,11 +391,11 @@ function AnalyticsView() {
         <div className="ad-panel-h">Scans per day (14d)</div>
         <div className="ad-chart"><ResponsiveContainer width="100%" height="100%">
           <AreaChart data={data.daily_series} margin={{ top: 6, right: 10, bottom: 0, left: -18 }}>
-            <defs><linearGradient id="ag" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="var(--accent)" stopOpacity={0.35} /><stop offset="100%" stopColor="var(--accent)" stopOpacity={0} /></linearGradient></defs>
-            <CartesianGrid stroke="var(--line)" vertical={false} />
+            <defs><linearGradient id="ag" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="var(--sp-cyan-d)" stopOpacity={0.35} /><stop offset="100%" stopColor="var(--sp-cyan-d)" stopOpacity={0} /></linearGradient></defs>
+            <CartesianGrid stroke="var(--sp-line)" vertical={false} />
             <XAxis dataKey="date" tick={AXIS} axisLine={false} tickLine={false} tickFormatter={(d) => d.slice(5)} />
             <YAxis allowDecimals={false} tick={AXIS} axisLine={false} tickLine={false} />
-            <Tooltip {...TT} /><Area type="monotone" dataKey="scans" stroke="var(--accent)" strokeWidth={2} fill="url(#ag)" />
+            <Tooltip {...TT} /><Area type="monotone" dataKey="scans" stroke="var(--sp-cyan-d)" strokeWidth={2} fill="url(#ag)" />
           </AreaChart>
         </ResponsiveContainer></div>
       </div>
@@ -412,7 +413,7 @@ function AnalyticsView() {
             <BarChart data={(data.top_issue_categories || []).slice(0, 6)} layout="vertical" margin={{ top: 4, right: 12, bottom: 0, left: 10 }}>
               <XAxis type="number" allowDecimals={false} tick={AXIS} axisLine={false} tickLine={false} />
               <YAxis type="category" dataKey="label" width={100} tick={AXIS} axisLine={false} tickLine={false} />
-              <Tooltip {...TT} cursor={{ fill: "var(--panel-2)" }} /><Bar dataKey="fail_count" fill="var(--bad)" radius={[0, 4, 4, 0]} barSize={13} />
+              <Tooltip {...TT} cursor={{ fill: "var(--sp-t-grey)" }} /><Bar dataKey="fail_count" fill="var(--sp-violet-d)" radius={[0, 4, 4, 0]} barSize={13} />
             </BarChart>
           </ResponsiveContainer></div>
         </div>

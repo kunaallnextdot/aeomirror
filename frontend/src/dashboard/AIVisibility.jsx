@@ -1,9 +1,16 @@
-/* Phase 3 — AI Visibility dashboard (Aurora). A first-class, negative-first framing over
-   the existing Answer Tracking run: coverage overview, provider breakdown, where AI doesn't
-   mention you, competitor landscape, grounded content gaps, and the AEO Opportunity Finder.
-   All data comes from GET /prompt-runs/:id/visibility (gated server-side); this component
-   only renders it — it never computes findings or calls an LLM. Additive: renders nothing
-   until the run's analysis is ready, so it never breaks the page. */
+/* Phase 3 — AI Visibility dashboard. MIGRATED to Spectrum. A first-class, negative-first
+   framing over the existing Answer Tracking run: coverage overview, provider breakdown,
+   where AI doesn't mention you, competitor landscape, grounded content gaps, and the AEO
+   Opportunity Finder. All data comes from GET /prompt-runs/:id/visibility (gated
+   server-side); this component only renders it — it never computes findings or calls an
+   LLM. Additive: renders nothing until the run's analysis is ready, so it never breaks
+   the page. Its `sp-av-*`/`sp-panel-h`/`sp-sub`/`sp-dim` classNames are defined in
+   AnswerTracking.spectrum.css/shared/spectrum.css, which this component relies on
+   transitively — same pattern as before (the Aurora equivalents lived only in
+   AnswerTracking.aurora.css too). Safe because both places this ever renders
+   (AIVisibilityPanel on AnswerTracking itself, and ReportAIVisibility on the authed
+   /app/report — gated `!readOnly`, so never on the public /r/:token share) share
+   AppRoot's one lazy chunk, which statically imports AnswerTracking.jsx too. */
 import React, { useEffect, useState } from "react";
 import {
   Eye, EyeOff, Quote, Trophy, Lightbulb, Lock, AlertTriangle,
@@ -11,12 +18,12 @@ import {
 } from "lucide-react";
 import { getPromptRunVisibility, getReportAIVisibility, ScanError } from "../api.js";
 import { useUpgrade } from "./UpgradeModal.jsx";
-import { Cell, Button } from "./aurora.jsx";
+import { Cell, Button } from "../shared/spectrum.jsx";
 
 const pct = (v) => (v == null ? "—" : `${v}%`);
 const PRI_COLOR = {
-  Critical: "var(--au-peach-d)", High: "var(--au-peach-d)",
-  Medium: "var(--au-lemon-d)", Low: "var(--au-muted)",
+  Critical: "var(--sp-violet-d)", High: "var(--sp-violet-d)",
+  Medium: "var(--sp-lav-d)", Low: "var(--sp-muted)",
 };
 
 // Answer Tracking page: the run's AI Visibility (mounted only once a run exists).
@@ -64,12 +71,12 @@ export function AIVisibilityEmpty({ reason }) {
     ? "No Answer Tracking runs yet for this site. Run Answer Tracking to unlock AI Visibility."
     : "Set up a monitor and run Answer Tracking for this site to see how AI assistants mention it.";
   return (
-    <Cell solid className="au-av">
-      <div className="au-panel-h">AI Visibility <span className="au-sub">how AI assistants see your brand</span></div>
-      <div className="au-av-empty">
+    <Cell solid className="sp-av">
+      <div className="sp-panel-h">AI Visibility <span className="sp-sub">how AI assistants see your brand</span></div>
+      <div className="sp-av-empty">
         <Eye size={20} />
-        <div className="au-av-empty-t">No data yet</div>
-        <div className="au-av-empty-s">{msg}</div>
+        <div className="sp-av-empty-t">No data yet</div>
+        <div className="sp-av-empty-s">{msg}</div>
       </div>
     </Cell>
   );
@@ -86,51 +93,51 @@ export function AIVisibilityView({ data: v, openUpgrade = () => {} }) {
   const trend = v.trend;
 
   return (
-    <Cell solid className="au-av">
-      <div className="au-panel-h">AI Visibility <span className="au-sub">how AI assistants see your brand</span></div>
+    <Cell solid className="sp-av">
+      <div className="sp-panel-h">AI Visibility <span className="sp-sub">how AI assistants see your brand</span></div>
 
       {/* Overall answerability verdict (deterministic; evidence-backed) */}
       {ans.verdict && (
-        <div className={`au-av-verdict v-${ans.verdict}`}>
-          <span className="au-av-verdict-label">{ans.verdict_label}</span>
-          <span className="au-av-verdict-ev">{ans.evidence}</span>
+        <div className={`sp-av-verdict v-${ans.verdict}`}>
+          <span className="sp-av-verdict-label">{ans.verdict_label}</span>
+          <span className="sp-av-verdict-ev">{ans.evidence}</span>
         </div>
       )}
 
       {/* 1. Negative-first overview */}
-      <div className="au-av-lede">
+      <div className="sp-av-lede">
         You appear in <b>{pct(vis.mention_rate)}</b> of relevant AI answers.
-        {vis.missed_rate != null && <> You're missing from <b className="au-av-miss">{pct(vis.missed_rate)}</b>.</>}
+        {vis.missed_rate != null && <> You're missing from <b className="sp-av-miss">{pct(vis.missed_rate)}</b>.</>}
         {trend && trend.direction && trend.direction !== "insufficient_history" && (
           <TrendBadge trend={trend} />
         )}
       </div>
       {/* Scoping note (Phase H): this measures the org's own tracked prompt set —
           never a general claim about how AI treats the brand broadly. */}
-      <div className="au-av-scope">Based on your tracked questions and provider results.</div>
+      <div className="sp-av-scope">Based on your tracked questions and provider results.</div>
       {trend?.config_changed && (
-        <div className="au-av-note"><AlertTriangle size={12} /> Trend affected by a model/search configuration change — recent runs may not be directly comparable.</div>
+        <div className="sp-av-note"><AlertTriangle size={12} /> Trend affected by a model/search configuration change — recent runs may not be directly comparable.</div>
       )}
 
-      <div className="au-av-metrics">
+      <div className="sp-av-metrics">
         <Metric label="Mention rate" value={pct(vis.mention_rate)} sub={`${vis.analyzed_count} answers analyzed`} />
         <Metric label="Brand citations" value={vis.citation_count} sub="answers citing your URLs" />
         {vis.average_position != null && <Metric label="Avg. position" value={`#${vis.average_position}`} />}
         <Metric label="Competitor mentions" value={vis.competitor_mentions} sub="rival recommendations" />
       </div>
       {vis.excluded_extraction_failures > 0 && (
-        <div className="au-av-note"><AlertTriangle size={12} /> {vis.excluded_extraction_failures} sample(s) excluded — extraction failed (not counted as “not mentioned”).</div>
+        <div className="sp-av-note"><AlertTriangle size={12} /> {vis.excluded_extraction_failures} sample(s) excluded — extraction failed (not counted as “not mentioned”).</div>
       )}
 
       {/* 2. Provider breakdown */}
       {(vis.per_provider || []).length > 0 && (
-        <div className="au-av-block">
-          <div className="au-av-h">Provider breakdown</div>
+        <div className="sp-av-block">
+          <div className="sp-av-h">Provider breakdown</div>
           {vis.per_provider.map((p) => (
-            <div key={p.provider} className="au-av-bar">
-              <span className="au-av-bar-l">{p.provider}</span>
-              <span className="au-av-bar-track"><span className="au-av-bar-fill" style={{ width: `${p.mention_rate || 0}%` }} /></span>
-              <span className="au-av-bar-v">{pct(p.mention_rate)} <span className="au-dim">· {p.samples}</span></span>
+            <div key={p.provider} className="sp-av-bar">
+              <span className="sp-av-bar-l">{p.provider}</span>
+              <span className="sp-av-bar-track"><span className="sp-av-bar-fill" style={{ width: `${p.mention_rate || 0}%` }} /></span>
+              <span className="sp-av-bar-v">{pct(p.mention_rate)} <span className="sp-dim">· {p.samples}</span></span>
             </div>
           ))}
           {vis.locked_provider_count > 0 && (
@@ -142,12 +149,12 @@ export function AIVisibilityView({ data: v, openUpgrade = () => {} }) {
 
       {/* 3. Where AI doesn't mention you (negative-first) */}
       {notVisible.length > 0 && (
-        <div className="au-av-block">
-          <div className="au-av-h"><EyeOff size={13} /> Where AI doesn't mention you</div>
+        <div className="sp-av-block">
+          <div className="sp-av-h"><EyeOff size={13} /> Where AI doesn't mention you</div>
           {notVisible.map((p) => (
-            <div key={p.prompt_id} className="au-av-gap">
-              <div className="au-av-gap-q">{p.prompt}</div>
-              <div className="au-av-gap-meta">
+            <div key={p.prompt_id} className="sp-av-gap">
+              <div className="sp-av-gap-q">{p.prompt}</div>
+              <div className="sp-av-gap-meta">
                 0% across {p.samples} sample{p.samples === 1 ? "" : "s"}
                 {(p.recommended_entities || []).length > 0 && <> · AI recommended: {p.recommended_entities.slice(0, 3).join(", ")}</>}
               </div>
@@ -158,15 +165,15 @@ export function AIVisibilityView({ data: v, openUpgrade = () => {} }) {
 
       {/* 4. Competitor landscape */}
       {(ci.brand || (ci.competitors || []).length > 0) && (
-        <div className="au-av-block">
-          <div className="au-av-h"><Trophy size={13} /> AI competitor landscape</div>
-          <div className="au-av-tablewrap">
-            <table className="au-av-table">
+        <div className="sp-av-block">
+          <div className="sp-av-h"><Trophy size={13} /> AI competitor landscape</div>
+          <div className="sp-av-tablewrap">
+            <table className="sp-av-table">
               <thead><tr><th>Rank</th><th>Brand</th><th>Appears</th><th>Avg pos</th><th>Trend</th></tr></thead>
               <tbody>
                 {ci.brand && (
-                  <tr className="au-av-you">
-                    <td>#{ci.brand.rank ?? "—"}</td><td>{ci.brand.name} <span className="au-av-youtag">you</span></td>
+                  <tr className="sp-av-you">
+                    <td>#{ci.brand.rank ?? "—"}</td><td>{ci.brand.name} <span className="sp-av-youtag">you</span></td>
                     <td>{pct(ci.brand.appearance_rate)}</td><td>{ci.brand.average_position != null ? `#${ci.brand.average_position}` : "—"}</td>
                     <td><RankDelta d={ci.brand.rank_delta} /></td>
                   </tr>
@@ -174,7 +181,7 @@ export function AIVisibilityView({ data: v, openUpgrade = () => {} }) {
                 {(ci.competitors || []).map((c) => (
                   <tr key={c.name}>
                     <td>#{c.rank ?? "—"}</td>
-                    <td>{c.name}{c.tracked && <span className="au-av-tracked" title="A competitor you configured">tracked</span>}</td>
+                    <td>{c.name}{c.tracked && <span className="sp-av-tracked" title="A competitor you configured">tracked</span>}</td>
                     <td>{pct(c.appearance_rate)}</td>
                     <td>{c.average_position != null ? `#${c.average_position}` : "—"}</td>
                     <td><RankDelta d={c.rank_delta} /></td>
@@ -189,10 +196,10 @@ export function AIVisibilityView({ data: v, openUpgrade = () => {} }) {
           )}
           {/* Head-to-head — evidence-backed, never "competitor won" */}
           {(ci.head_to_head || []).length > 0 && (
-            <div className="au-av-h2h">
-              <div className="au-av-h2h-h">Head-to-head</div>
+            <div className="sp-av-h2h">
+              <div className="sp-av-h2h-h">Head-to-head</div>
               {ci.head_to_head.map((h) => (
-                <div key={h.competitor} className="au-av-h2h-row">
+                <div key={h.competitor} className="sp-av-h2h-row">
                   <span>{h.statement}</span>
                 </div>
               ))}
@@ -207,18 +214,18 @@ export function AIVisibilityView({ data: v, openUpgrade = () => {} }) {
 
       {/* 5. Content gaps (grounded only) */}
       {gaps.length > 0 && (
-        <div className="au-av-block">
-          <div className="au-av-h"><Quote size={13} /> Content gaps</div>
+        <div className="sp-av-block">
+          <div className="sp-av-h"><Quote size={13} /> Content gaps</div>
           {gaps.map((g) => (
-            <div key={g.prompt_id} className="au-av-cg">
-              <div className="au-av-cg-q">{g.prompt}</div>
+            <div key={g.prompt_id} className="sp-av-cg">
+              <div className="sp-av-cg-q">{g.prompt}</div>
               {g.insufficient_evidence ? (
-                <div className="au-av-cg-none">Insufficient evidence to diagnose this gap.</div>
+                <div className="sp-av-cg-none">Insufficient evidence to diagnose this gap.</div>
               ) : (
                 <>
-                  {g.why && <div className="au-av-cg-why"><b>Why you're missing:</b> {g.why}</div>}
+                  {g.why && <div className="sp-av-cg-why"><b>Why you're missing:</b> {g.why}</div>}
                   {(g.actions || []).length > 0 && (
-                    <ul className="au-av-cg-actions">{g.actions.map((a, i) => <li key={i}>{a}</li>)}</ul>
+                    <ul className="sp-av-cg-actions">{g.actions.map((a, i) => <li key={i}>{a}</li>)}</ul>
                   )}
                 </>
               )}
@@ -239,8 +246,8 @@ export function AIVisibilityView({ data: v, openUpgrade = () => {} }) {
           renders as the primary card, with the rest tucked behind a "show evidence"
           toggle instead of repeating the same root cause as separate cards. */}
       {(opps.items || []).length > 0 && (
-        <div className="au-av-block">
-          <div className="au-av-h"><Lightbulb size={13} /> AEO Opportunity Finder <span className="au-sub">ranked by Opportunity Impact</span></div>
+        <div className="sp-av-block">
+          <div className="sp-av-h"><Lightbulb size={13} /> AEO Opportunity Finder <span className="sp-sub">ranked by Opportunity Impact</span></div>
           {(() => {
             const groupsById = Object.fromEntries((opps.groups || []).map((g) => [g.root_cause_id, g]));
             const itemsById = Object.fromEntries(opps.items.map((o) => [o.id, o]));
@@ -264,10 +271,10 @@ export function AIVisibilityView({ data: v, openUpgrade = () => {} }) {
 
       {/* 7. Unlock */}
       {!unlocked && (
-        <div className="au-av-unlock">
-          <div className="au-av-unlock-t"><Lock size={14} /> Unlock complete AI Visibility</div>
-          <div className="au-av-unlock-s">Full provider &amp; prompt analysis, every content gap, the complete competitor leaderboard with head-to-head, and the full Opportunity Finder.</div>
-          <Button variant="accent" onClick={() => openUpgrade("ai_visibility")}>Upgrade to Pro</Button>
+        <div className="sp-av-unlock">
+          <div className="sp-av-unlock-t"><Lock size={14} /> Unlock complete AI Visibility</div>
+          <div className="sp-av-unlock-s">Full provider &amp; prompt analysis, every content gap, the complete competitor leaderboard with head-to-head, and the full Opportunity Finder.</div>
+          <Button variant="gradient" onClick={() => openUpgrade("ai_visibility")}>Upgrade to Pro</Button>
         </div>
       )}
     </Cell>
@@ -276,10 +283,10 @@ export function AIVisibilityView({ data: v, openUpgrade = () => {} }) {
 
 function Metric({ label, value, sub }) {
   return (
-    <div className="au-av-metric">
-      <div className="au-av-metric-v">{value}</div>
-      <div className="au-av-metric-l">{label}</div>
-      {sub && <div className="au-av-metric-s">{sub}</div>}
+    <div className="sp-av-metric">
+      <div className="sp-av-metric-v">{value}</div>
+      <div className="sp-av-metric-l">{label}</div>
+      {sub && <div className="sp-av-metric-s">{sub}</div>}
     </div>
   );
 }
@@ -291,26 +298,26 @@ function Metric({ label, value, sub }) {
 function OpportunityCard({ o, group, supporting }) {
   const [expanded, setExpanded] = useState(false);
   return (
-    <div className="au-av-opp">
-      <span className="au-av-opp-pri" style={{ background: PRI_COLOR[o.priority] || "var(--au-muted)" }}>{o.priority}</span>
-      <div className="au-av-opp-main">
-        {group && <div className="au-av-opp-root">Root cause: {group.label}</div>}
-        <div className="au-av-opp-t">{o.title}</div>
-        {o.description && <div className="au-av-opp-d">{o.description}</div>}
-        {o.recommended_action && <div className="au-av-opp-a"><b>Action:</b> {o.recommended_action}</div>}
+    <div className="sp-av-opp">
+      <span className="sp-av-opp-pri" style={{ background: PRI_COLOR[o.priority] || "var(--sp-muted)" }}>{o.priority}</span>
+      <div className="sp-av-opp-main">
+        {group && <div className="sp-av-opp-root">Root cause: {group.label}</div>}
+        <div className="sp-av-opp-t">{o.title}</div>
+        {o.description && <div className="sp-av-opp-d">{o.description}</div>}
+        {o.recommended_action && <div className="sp-av-opp-a"><b>Action:</b> {o.recommended_action}</div>}
         {(o.affected_prompts || []).length > 0 && (
-          <div className="au-av-opp-refs">{o.affected_prompts.slice(0, 2).map((p) => p.prompt).filter(Boolean).join(" · ")}</div>
+          <div className="sp-av-opp-refs">{o.affected_prompts.slice(0, 2).map((p) => p.prompt).filter(Boolean).join(" · ")}</div>
         )}
         {(o.affected_urls || []).length > 0 && (
-          <div className="au-av-opp-refs"><MapPin size={11} /> {o.affected_urls.join(", ")}</div>
+          <div className="sp-av-opp-refs"><MapPin size={11} /> {o.affected_urls.join(", ")}</div>
         )}
         {supporting.length > 0 && (
           <>
-            <button type="button" className="au-av-opp-toggle" onClick={() => setExpanded((e) => !e)}>
+            <button type="button" className="sp-av-opp-toggle" onClick={() => setExpanded((e) => !e)}>
               {expanded ? "Hide" : "Show"} {supporting.length} supporting evidence item{supporting.length === 1 ? "" : "s"}
             </button>
             {expanded && (
-              <ul className="au-av-opp-evidence">
+              <ul className="sp-av-opp-evidence">
                 {supporting.map((s) => (
                   <li key={s.id}>{s.title}{s.description ? ` — ${s.description}` : ""}</li>
                 ))}
@@ -319,15 +326,15 @@ function OpportunityCard({ o, group, supporting }) {
           </>
         )}
       </div>
-      <span className="au-av-opp-impact" title="Opportunity Impact (0–100)">{o.impact ?? "—"}</span>
+      <span className="sp-av-opp-impact" title="Opportunity Impact (0–100)">{o.impact ?? "—"}</span>
     </div>
   );
 }
 
 function LockRow({ label, onClick }) {
   return (
-    <button type="button" className="au-av-lockrow" onClick={onClick}>
-      <Lock size={12} /> <span>{label}</span> <span className="au-av-lockrow-cta">Unlock</span>
+    <button type="button" className="sp-av-lockrow" onClick={onClick}>
+      <Lock size={12} /> <span>{label}</span> <span className="sp-av-lockrow-cta">Unlock</span>
     </button>
   );
 }
@@ -340,12 +347,12 @@ function TrendBadge({ trend }) {
     unknown: { icon: <Minus size={12} />, cls: "flat", label: "—" },
   };
   const t = map[trend.direction] || map.unknown;
-  return <span className={`au-av-trend ${t.cls}`}>{t.icon} {t.label}{trend.delta != null ? ` ${trend.delta > 0 ? "+" : ""}${trend.delta}` : ""}</span>;
+  return <span className={`sp-av-trend ${t.cls}`}>{t.icon} {t.label}{trend.delta != null ? ` ${trend.delta > 0 ? "+" : ""}${trend.delta}` : ""}</span>;
 }
 
 function RankDelta({ d }) {
-  if (d == null) return <span className="au-dim">—</span>;
-  if (d > 0) return <span className="au-av-delta up"><TrendingUp size={11} /> {d}</span>;
-  if (d < 0) return <span className="au-av-delta down"><TrendingDown size={11} /> {Math.abs(d)}</span>;
-  return <span className="au-dim"><Minus size={11} /></span>;
+  if (d == null) return <span className="sp-dim">—</span>;
+  if (d > 0) return <span className="sp-av-delta up"><TrendingUp size={11} /> {d}</span>;
+  if (d < 0) return <span className="sp-av-delta down"><TrendingDown size={11} /> {Math.abs(d)}</span>;
+  return <span className="sp-dim"><Minus size={11} /></span>;
 }

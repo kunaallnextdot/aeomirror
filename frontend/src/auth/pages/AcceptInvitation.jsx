@@ -1,9 +1,9 @@
 import React, { useEffect, useState } from "react";
 import { Loader2 } from "lucide-react";
 import {
-  AuAuthShell, AuField, AuTextInput, AuPasswordInput, AuPasswordStrength,
-  AuAlert, AuSubmitButton, AuRoleBadge,
-} from "../../dashboard/aurora.jsx";
+  SpAuthShell, SpField, SpTextInput, SpPasswordInput, SpPasswordStrength,
+  SpAlert, SpSubmitButton, SpRoleBadge,
+} from "../../shared/spectrum.jsx";
 import { passwordStrength } from "../ui.jsx";
 import { apiJson } from "../client.js";
 import { useAuth } from "../AuthContext.jsx";
@@ -48,48 +48,48 @@ export default function AcceptInvitation() {
 
   if (loadErr) {
     return (
-      <AuAuthShell title="Team invitation"
-        footer={<button className="au-authlink" onClick={() => navigate("/login")}>Go to sign in</button>}>
-        <AuAlert>{loadErr}</AuAlert>
-      </AuAuthShell>
+      <SpAuthShell title="Team invitation"
+        footer={<button className="sp-authlink" onClick={() => navigate("/login")}>Go to sign in</button>}>
+        <SpAlert>{loadErr}</SpAlert>
+      </SpAuthShell>
     );
   }
   if (!info) {
     return (
-      <AuAuthShell title="Team invitation">
-        <div className="au-alert au-alert-info"><Loader2 size={15} className="au-spin" /> <span>Loading your invitation…</span></div>
-      </AuAuthShell>
+      <SpAuthShell title="Team invitation">
+        <div className="sp-alert sp-alert-info"><Loader2 size={15} className="sp-spin-icon" /> <span>Loading your invitation…</span></div>
+      </SpAuthShell>
     );
   }
 
   return (
-    <AuAuthShell
+    <SpAuthShell
       title={`Join ${info.organization_name}`}
-      subtitle={<span>You've been invited as <AuRoleBadge role={info.role} /> · <b>{info.email}</b></span>}
-      footer={<button className="au-authlink" onClick={() => navigate("/login")}>Use a different account</button>}
+      subtitle={<span>You've been invited as <SpRoleBadge role={info.role} /> · <b>{info.email}</b></span>}
+      footer={<button className="sp-authlink" onClick={() => navigate("/login")}>Use a different account</button>}
     >
-      <form className="au-form" onSubmit={submit}>
-        {err && <AuAlert>{err}</AuAlert>}
+      <form className="sp-form" onSubmit={submit}>
+        {err && <SpAlert>{err}</SpAlert>}
         {requiresSignup ? (
           <>
-            <AuField label="Your name">
-              <AuTextInput value={name} onChange={(e) => setName(e.target.value)} required autoFocus
+            <SpField label="Your name">
+              <SpTextInput value={name} onChange={(e) => setName(e.target.value)} required autoFocus
                          placeholder="Ada Lovelace" autoComplete="name" />
-            </AuField>
-            <AuField label="Create a password">
-              <AuPasswordInput value={password} onChange={(e) => setPassword(e.target.value)}
+            </SpField>
+            <SpField label="Create a password">
+              <SpPasswordInput value={password} onChange={(e) => setPassword(e.target.value)}
                              required autoComplete="new-password" />
-            </AuField>
-            <AuPasswordStrength value={password} />
+            </SpField>
+            <SpPasswordStrength value={password} />
           </>
         ) : (
-          <AuField label="Your password" hint="Enter your existing AEOMirror password to accept.">
-            <AuPasswordInput value={password} onChange={(e) => setPassword(e.target.value)}
+          <SpField label="Your password" hint="Enter your existing AEOMirror password to accept.">
+            <SpPasswordInput value={password} onChange={(e) => setPassword(e.target.value)}
                            required autoFocus autoComplete="current-password" />
-          </AuField>
+          </SpField>
         )}
-        <AuSubmitButton busy={busy}>Accept invitation</AuSubmitButton>
+        <SpSubmitButton busy={busy}>Accept invitation</SpSubmitButton>
       </form>
-    </AuAuthShell>
+    </SpAuthShell>
   );
 }

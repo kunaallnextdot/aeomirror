@@ -126,7 +126,7 @@ describe("ReportView Technical SEO & Indexability section", () => {
     // for that issue — the server already sent it as part of the free preview), but
     // it must have no corresponding URL-TABLE row (that table only has "broken" in
     // the free tier) — i.e. it's evidence for an issue, never full per-URL detail.
-    const tableUrls = Array.from(document.querySelectorAll(".au-tseo-url")).map((n) => n.textContent);
+    const tableUrls = Array.from(document.querySelectorAll(".sp-tseo-url")).map((n) => n.textContent);
     expect(tableUrls).toEqual(["https://example.com/broken"]);
   });
 
@@ -195,8 +195,8 @@ describe("ReportView Technical SEO & Indexability section", () => {
     expect(screen.getByText(/not reached during this scan's crawl/)).toBeTruthy();
     expect(screen.getByText("https://example.com/deep-page")).toBeTruthy();
     // it must never be classified as one of the "issues" (severity-badged problems)
-    const coverage = screen.getByText("Scan coverage — not an indexability error").closest(".au-tseo-coverage");
-    expect(coverage.querySelector(".au-tseo-badge")).toBeNull();
+    const coverage = screen.getByText("Scan coverage — not an indexability error").closest(".sp-tseo-coverage");
+    expect(coverage.querySelector(".sp-tseo-badge")).toBeNull();
   });
 
   it("Phase C: a technical issue already covered by an existing recommendation shows as supporting evidence, with a jump-link, never a duplicate action", async () => {

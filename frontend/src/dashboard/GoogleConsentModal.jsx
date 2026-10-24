@@ -22,23 +22,23 @@ export default function GoogleConsentModal({ onCancel, onConfirm, busy, error, o
   }, [onCancel, busy]);
 
   return (
-    <div className="au-gcm-overlay" onClick={() => !busy && onCancel()}>
+    <div className="sp-gcm-overlay" onClick={() => !busy && onCancel()}>
       <div
-        className="au-gcm-modal" role="dialog" aria-modal="true"
-        aria-labelledby="au-gcm-title" aria-describedby="au-gcm-sub"
+        className="sp-gcm-modal" role="dialog" aria-modal="true"
+        aria-labelledby="sp-gcm-title" aria-describedby="sp-gcm-sub"
         ref={dialogRef} tabIndex={-1} onClick={(e) => e.stopPropagation()}
       >
-        <button className="au-gcm-x" onClick={onCancel} aria-label="Close" disabled={busy}>
+        <button className="sp-gcm-x" onClick={onCancel} aria-label="Close" disabled={busy}>
           <X size={16} />
         </button>
 
-        <h2 id="au-gcm-title" className="au-gcm-title">Connect Google Analytics</h2>
-        <p id="au-gcm-sub" className="au-gcm-sub">
+        <h2 id="sp-gcm-title" className="sp-gcm-title">Connect Google Analytics</h2>
+        <p id="sp-gcm-sub" className="sp-gcm-sub">
           Understand how AEOMirror accesses your Google Analytics data to help you
           measure traffic from AI assistants.
         </p>
 
-        <section className="au-gcm-section">
+        <section className="sp-gcm-section">
           <h3><Check size={14} /> What you'll get</h3>
           <ul>
             <li>Discover the GA4 properties available to your connected Google account.</li>
@@ -49,7 +49,7 @@ export default function GoogleConsentModal({ onCancel, onConfirm, busy, error, o
           </ul>
         </section>
 
-        <section className="au-gcm-section">
+        <section className="sp-gcm-section">
           <h3><Eye size={14} /> What data will AEOMirror access?</h3>
           <ul>
             <li>Read-only access to Google Analytics data covered by the requested permission.</li>
@@ -60,13 +60,13 @@ export default function GoogleConsentModal({ onCancel, onConfirm, busy, error, o
             <li>Connecting does not guarantee every AI assistant referral can be
               identified — see the note on the AI Traffic page for why.</li>
           </ul>
-          <div className="au-gcm-scope">
+          <div className="sp-gcm-scope">
             <code>{SCOPE}</code>
             <span>View your Google Analytics data.</span>
           </div>
         </section>
 
-        <section className="au-gcm-section">
+        <section className="sp-gcm-section">
           <h3><ShieldCheck size={14} /> Your control and privacy</h3>
           <ul>
             <li>You choose whether to continue — nothing is connected until you approve
@@ -83,25 +83,25 @@ export default function GoogleConsentModal({ onCancel, onConfirm, busy, error, o
           </ul>
         </section>
 
-        <label className="au-gcm-checkbox">
+        <label className="sp-gcm-checkbox">
           <input type="checkbox" checked={agreed}
                 onChange={(e) => setAgreed(e.target.checked)} disabled={busy} />
           I have read the information above and want to continue to Google.
         </label>
 
         {error && (
-          <div className="au-gcm-err">
+          <div className="sp-gcm-err">
             <AlertTriangle size={14} /> <span>{error}</span>
             {onRetry && <button type="button" onClick={onRetry}>Retry</button>}
           </div>
         )}
 
-        <div className="au-gcm-actions">
-          <button type="button" className="au-btn au-ghost" onClick={onCancel} disabled={busy}>
+        <div className="sp-gcm-actions">
+          <button type="button" className="sp-btn sp-ghost" onClick={onCancel} disabled={busy}>
             Cancel
           </button>
           <button
-            type="button" className="au-btn au-accent" onClick={onConfirm}
+            type="button" className="sp-btn sp-gradient" onClick={onConfirm}
             disabled={busy || !agreed} aria-busy={busy || undefined}
           >
             {busy ? "Redirecting…" : "Agree & Continue to Google"}

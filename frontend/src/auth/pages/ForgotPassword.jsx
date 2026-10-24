@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { AuAuthShell, AuField, AuTextInput, AuAlert, AuSubmitButton } from "../../dashboard/aurora.jsx";
+import { SpAuthShell, SpField, SpTextInput, SpAlert, SpSubmitButton } from "../../shared/spectrum.jsx";
 import { forgotPassword } from "../api.js";
 import { navigate } from "../router.jsx";
 
@@ -21,23 +21,23 @@ export default function ForgotPassword() {
   };
 
   return (
-    <AuAuthShell
+    <SpAuthShell
       title="Reset your password"
       subtitle="Enter your email and we'll send you a link to set a new password."
-      footer={<button className="au-authlink" onClick={() => navigate("/login")}>Back to sign in</button>}
+      footer={<button className="sp-authlink" onClick={() => navigate("/login")}>Back to sign in</button>}
     >
       {sent ? (
-        <AuAlert kind="ok">If an account exists for that email, a reset link is on its way. Check your inbox.</AuAlert>
+        <SpAlert kind="ok">If an account exists for that email, a reset link is on its way. Check your inbox.</SpAlert>
       ) : (
-        <form className="au-form" onSubmit={submit}>
-          {err && <AuAlert>{err}</AuAlert>}
-          <AuField label="Email">
-            <AuTextInput type="email" value={email} onChange={(e) => setEmail(e.target.value)}
+        <form className="sp-form" onSubmit={submit}>
+          {err && <SpAlert>{err}</SpAlert>}
+          <SpField label="Email">
+            <SpTextInput type="email" value={email} onChange={(e) => setEmail(e.target.value)}
                        required autoFocus placeholder="you@company.com" autoComplete="email" />
-          </AuField>
-          <AuSubmitButton busy={busy}>Send reset link</AuSubmitButton>
+          </SpField>
+          <SpSubmitButton busy={busy}>Send reset link</SpSubmitButton>
         </form>
       )}
-    </AuAuthShell>
+    </SpAuthShell>
   );
 }

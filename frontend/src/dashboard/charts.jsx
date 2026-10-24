@@ -3,7 +3,11 @@
 
    Aurora migration: each chart accepts an optional `aurora` prop. Default (false) is the
    UNCHANGED dark theme (still used by un-migrated MonitorDetail/Compare); `aurora` swaps to
-   the light Aurora palette. Data/logic unchanged — theming only. */
+   the light Aurora palette. Data/logic unchanged — theming only.
+
+   Spectrum migration: each chart ALSO accepts an optional `spectrum` prop, independent of
+   `aurora` (both may be in flight from different screens at once). `spectrum` swaps to the
+   light Spectrum (`--sp-*`) palette. Same rule: data/logic unchanged, theming only. */
 import React from "react";
 import {
   Area, AreaChart, Bar, BarChart, CartesianGrid, Cell, LabelList, ResponsiveContainer,
@@ -12,9 +16,23 @@ import {
 import { scoreColor } from "./ui.jsx";
 
 const auScoreColor = (v) => (v >= 75 ? "var(--au-mint-d)" : v >= 45 ? "var(--au-lemon-d)" : "var(--au-peach-d)");
+const spScoreColor = (v) => (v >= 75 ? "var(--sp-blue-d)" : v >= 45 ? "var(--sp-lav-d)" : "var(--sp-violet-d)");
 
-// Theme bundle keyed by the `aurora` flag. Dark values are the pre-migration constants.
-function theme(aurora) {
+// Theme bundle keyed by the `aurora`/`spectrum` flags. Dark values are the pre-migration
+// constants. `spectrum` is checked first since it's the newest/active migration target;
+// `aurora` keeps working unchanged for screens still mid-Aurora-migration.
+function theme(aurora, spectrum) {
+  if (spectrum) return {
+    axis: { fill: "var(--sp-muted)", fontSize: 10, fontFamily: "'DM Mono', monospace" },
+    tooltip: {
+      contentStyle: { background: "var(--sp-solid)", border: "1px solid var(--sp-line)", borderRadius: 12,
+                      fontSize: 12, boxShadow: "var(--sp-sh-s)", color: "var(--sp-ink)" },
+      labelStyle: { color: "var(--sp-muted)" }, itemStyle: { color: "var(--sp-ink)" },
+    },
+    grid: "var(--sp-line)", accent: "var(--sp-primary)", bad: "var(--sp-violet-d)",
+    cursor: "rgba(11,16,36,.05)", panel: "var(--sp-solid)", label: "var(--sp-muted)",
+    score: spScoreColor, klass: true,
+  };
   if (aurora) return {
     axis: { fill: "var(--au-muted)", fontSize: 10, fontFamily: "'DM Mono', monospace" },
     tooltip: {
@@ -51,12 +69,14 @@ function sameCalendarDay(iso) {
   catch { return iso; }
 }
 
-export function ScoreHistoryChart({ trend = [], aurora = false }) {
-  const t = theme(aurora);
+export function ScoreHistoryChart({ trend = [], aurora = false, spectrum = false }) {
+  const t = theme(aurora, spectrum);
+  const chartClass = spectrum ? "sp-chart" : t.klass ? "au-chart" : "d-chart";
+  const gid = spectrum ? "dg-sp" : aurora ? "dg-au" : "dg";
   // Keep the raw timestamp so the axis can show a date across multiple days, or a
   // time-of-day when every scan landed on the same calendar day (avoids "Jul 27" ×N).
   const data = trend.map((tp, i) => ({ i, ts: tp.scan_time, score: tp.overall_score }));
-  if (!data.length) return <ChartEmpty label="No score history yet" aurora={aurora} />;
+  if (!data.length) return <ChartEmpty label="No score history yet" aurora={aurora} spectrum={spectrum} />;
   const singleDay = new Set(data.map((d) => sameCalendarDay(d.ts))).size <= 1;
   const fmtTick = (i) => (singleDay ? shortTime(data[i]?.ts) : shortDate(data[i]?.ts));
   const fmtLabel = (i) => {
@@ -65,11 +85,11 @@ export function ScoreHistoryChart({ trend = [], aurora = false }) {
   };
   const curve = data.length < 10 ? "linear" : "monotone";
   return (
-    <div className={t.klass ? "au-chart" : "d-chart"}>
+    <div className={chartClass}>
       <ResponsiveContainer width="100%" height="100%">
         <AreaChart data={data} margin={{ top: 6, right: 8, bottom: 0, left: -20 }}>
           <defs>
-            <linearGradient id={aurora ? "dg-au" : "dg"} x1="0" y1="0" x2="0" y2="1">
+            <linearGradient id={gid} x1="0" y1="0" x2="0" y2="1">
               <stop offset="0%" stopColor={t.accent} stopOpacity={0.35} />
               <stop offset="100%" stopColor={t.accent} stopOpacity={0} />
             </linearGradient>
@@ -78,7 +98,7 @@ export function ScoreHistoryChart({ trend = [], aurora = false }) {
           <XAxis dataKey="i" type="category" tickFormatter={fmtTick} tick={t.axis} axisLine={false} tickLine={false} />
           <YAxis domain={[0, 100]} tick={t.axis} axisLine={false} tickLine={false} />
           <Tooltip {...t.tooltip} labelFormatter={fmtLabel} />
-          <Area type={curve} dataKey="score" stroke={t.accent} strokeWidth={2} fill={`url(#${aurora ? "dg-au" : "dg"})`}
+          <Area type={curve} dataKey="score" stroke={t.accent} strokeWidth={2} fill={`url(#${gid})`}
                 dot={{ r: 3, fill: t.accent, strokeWidth: 0 }}
                 activeDot={{ r: 5, fill: t.accent, stroke: t.panel, strokeWidth: 2 }} />
         </AreaChart>
@@ -87,12 +107,13 @@ export function ScoreHistoryChart({ trend = [], aurora = false }) {
   );
 }
 
-export function ScoreDistributionChart({ distribution = [], aurora = false }) {
-  const t = theme(aurora);
-  if (!distribution.some((d) => d.count > 0)) return <ChartEmpty label="No distribution yet" aurora={aurora} />;
+export function ScoreDistributionChart({ distribution = [], aurora = false, spectrum = false }) {
+  const t = theme(aurora, spectrum);
+  const chartClass = spectrum ? "sp-chart" : t.klass ? "au-chart" : "d-chart";
+  if (!distribution.some((d) => d.count > 0)) return <ChartEmpty label="No distribution yet" aurora={aurora} spectrum={spectrum} />;
   const mid = { "0-20": 10, "20-40": 30, "40-60": 50, "60-80": 70, "80-100": 90 };
   return (
-    <div className={t.klass ? "au-chart" : "d-chart"}>
+    <div className={chartClass}>
       <ResponsiveContainer width="100%" height="100%">
         <BarChart data={distribution} margin={{ top: 6, right: 8, bottom: 0, left: -20 }}>
           <CartesianGrid stroke={t.grid} vertical={false} />
@@ -108,12 +129,13 @@ export function ScoreDistributionChart({ distribution = [], aurora = false }) {
   );
 }
 
-export function TopIssuesChart({ categories = [], aurora = false }) {
-  const t = theme(aurora);
+export function TopIssuesChart({ categories = [], aurora = false, spectrum = false }) {
+  const t = theme(aurora, spectrum);
+  const chartClass = spectrum ? "sp-chart" : t.klass ? "au-chart" : "d-chart";
   const data = categories.map((c) => ({ label: c.label, count: c.fail_count }));
-  if (!data.length) return <ChartEmpty label="No failing signals — nice!" aurora={aurora} />;
+  if (!data.length) return <ChartEmpty label="No failing signals — nice!" aurora={aurora} spectrum={spectrum} />;
   return (
-    <div className={t.klass ? "au-chart" : "d-chart"}>
+    <div className={chartClass}>
       <ResponsiveContainer width="100%" height="100%">
         <BarChart data={data} layout="vertical" margin={{ top: 4, right: 26, bottom: 0, left: 8 }}>
           <XAxis type="number" hide allowDecimals={false} domain={[0, "dataMax"]} />
@@ -121,7 +143,7 @@ export function TopIssuesChart({ categories = [], aurora = false }) {
           <Tooltip {...t.tooltip} cursor={{ fill: t.cursor }} />
           <Bar dataKey="count" fill={t.bad} radius={[0, 4, 4, 0]} barSize={14}>
             <LabelList dataKey="count" position="right" fill={t.label} fontSize={11}
-                       fontFamily={aurora ? "'DM Mono', monospace" : "'IBM Plex Mono', monospace"} />
+                       fontFamily={aurora || spectrum ? "'DM Mono', monospace" : "'IBM Plex Mono', monospace"} />
           </Bar>
         </BarChart>
       </ResponsiveContainer>
@@ -130,8 +152,21 @@ export function TopIssuesChart({ categories = [], aurora = false }) {
 }
 
 /* Most common failures — ranked recurring issue messages (a list, not a bar chart). */
-export function CommonFailuresChart({ failures = [], aurora = false }) {
-  if (!failures.length) return <ChartEmpty label="No recurring failures 🎉" aurora={aurora} />;
+export function CommonFailuresChart({ failures = [], aurora = false, spectrum = false }) {
+  if (!failures.length) return <ChartEmpty label="No recurring failures 🎉" aurora={aurora} spectrum={spectrum} />;
+  if (spectrum) {
+    return (
+      <div className="sp-fails">
+        {failures.map((f, i) => (
+          <div key={i} className="sp-fail-row">
+            <span className="sp-fail-rank">{i + 1}</span>
+            <span className="sp-fail-txt">{f.issue}</span>
+            <span className="sp-fail-pill">{f.count}×</span>
+          </div>
+        ))}
+      </div>
+    );
+  }
   if (aurora) {
     return (
       <div className="au-fails">
@@ -158,7 +193,8 @@ export function CommonFailuresChart({ failures = [], aurora = false }) {
   );
 }
 
-function ChartEmpty({ label, aurora = false }) {
+function ChartEmpty({ label, aurora = false, spectrum = false }) {
+  if (spectrum) return <div className="sp-chart-empty">{label}</div>;
   if (aurora) return <div className="au-chart-empty">{label}</div>;
   return <div className="d-chart" style={{ display: "grid", placeItems: "center", color: "var(--txt-dim)", fontSize: 12.5 }}>{label}</div>;
 }

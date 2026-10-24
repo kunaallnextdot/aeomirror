@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import {
-  AuAuthShell, AuField, AuPasswordInput, AuPasswordStrength, AuAlert, AuSubmitButton,
-} from "../../dashboard/aurora.jsx";
+  SpAuthShell, SpField, SpPasswordInput, SpPasswordStrength, SpAlert, SpSubmitButton,
+} from "../../shared/spectrum.jsx";
 import { passwordStrength } from "../ui.jsx";
 import { resetPassword } from "../api.js";
 import { navigate, queryParam } from "../router.jsx";
@@ -30,41 +30,41 @@ export default function ResetPassword() {
 
   if (!token) {
     return (
-      <AuAuthShell title="Reset your password"
-        footer={<button className="au-authlink" onClick={() => navigate("/forgot-password")}>Request a new link</button>}>
-        <AuAlert>This reset link is missing its token. Please use the link from your email.</AuAlert>
-      </AuAuthShell>
+      <SpAuthShell title="Reset your password"
+        footer={<button className="sp-authlink" onClick={() => navigate("/forgot-password")}>Request a new link</button>}>
+        <SpAlert>This reset link is missing its token. Please use the link from your email.</SpAlert>
+      </SpAuthShell>
     );
   }
 
   return (
-    <AuAuthShell
+    <SpAuthShell
       title="Set a new password"
       subtitle="Choose a new password for your account."
-      footer={<button className="au-authlink" onClick={() => navigate("/login")}>Back to sign in</button>}
+      footer={<button className="sp-authlink" onClick={() => navigate("/login")}>Back to sign in</button>}
     >
       {done ? (
         <>
-          <AuAlert kind="ok">Your password has been reset. You can now sign in.</AuAlert>
-          <button className="au-btn au-accent au-block" style={{ marginTop: 16 }} onClick={() => navigate("/login")}>
+          <SpAlert kind="ok">Your password has been reset. You can now sign in.</SpAlert>
+          <button className="sp-btn sp-gradient sp-block" style={{ marginTop: 16 }} onClick={() => navigate("/login")}>
             Go to sign in
           </button>
         </>
       ) : (
-        <form className="au-form" onSubmit={submit}>
-          {err && <AuAlert>{err}</AuAlert>}
-          <AuField label="New password">
-            <AuPasswordInput value={password} onChange={(e) => setPassword(e.target.value)}
+        <form className="sp-form" onSubmit={submit}>
+          {err && <SpAlert>{err}</SpAlert>}
+          <SpField label="New password">
+            <SpPasswordInput value={password} onChange={(e) => setPassword(e.target.value)}
                            required autoFocus autoComplete="new-password" />
-          </AuField>
-          <AuPasswordStrength value={password} />
-          <AuField label="Confirm new password">
-            <AuPasswordInput value={confirm} onChange={(e) => setConfirm(e.target.value)}
+          </SpField>
+          <SpPasswordStrength value={password} />
+          <SpField label="Confirm new password">
+            <SpPasswordInput value={confirm} onChange={(e) => setConfirm(e.target.value)}
                            required autoComplete="new-password" />
-          </AuField>
-          <AuSubmitButton busy={busy}>Reset password</AuSubmitButton>
+          </SpField>
+          <SpSubmitButton busy={busy}>Reset password</SpSubmitButton>
         </form>
       )}
-    </AuAuthShell>
+    </SpAuthShell>
   );
 }

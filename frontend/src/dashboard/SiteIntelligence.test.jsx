@@ -8,7 +8,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 vi.mock("../api.js", () => ({
   listCrawlJobs: vi.fn(), getCrawlJob: vi.fn(), createCrawlJob: vi.fn(), cancelCrawlJob: vi.fn(),
   listCrawlTemplates: vi.fn(), listUrlFindings: vi.fn(), updateFindingStatus: vi.fn(),
-  bulkUpdateFindingStatus: vi.fn(), recrawlFinding: vi.fn(),
+  bulkUpdateFindingStatus: vi.fn(), recrawlFinding: vi.fn(), getSiteProfile: vi.fn(),
   ScanError: class ScanError extends Error {
     constructor(message, code) { super(message); this.code = code; }
   },
@@ -19,7 +19,7 @@ vi.mock("./UpgradeModal.jsx", () => ({
 
 import {
   listCrawlJobs, getCrawlJob, createCrawlJob, listCrawlTemplates, listUrlFindings,
-  updateFindingStatus, bulkUpdateFindingStatus,
+  updateFindingStatus, bulkUpdateFindingStatus, getSiteProfile,
 } from "../api.js";
 import SiteIntelligence from "./SiteIntelligence.jsx";
 
@@ -28,6 +28,7 @@ const MONITOR_ID = "m1";
 beforeEach(() => {
   vi.clearAllMocks();
   listCrawlTemplates.mockResolvedValue({ templates: [] });
+  getSiteProfile.mockResolvedValue({ available: false });
 });
 
 describe("SiteIntelligence", () => {
@@ -136,5 +137,29 @@ describe("SiteIntelligence", () => {
     listCrawlJobs.mockRejectedValue(new (await import("../api.js")).ScanError("Could not reach the server.", "network"));
     render(<SiteIntelligence monitorId={MONITOR_ID} onBack={() => {}} />);
     await waitFor(() => screen.getByText("Could not reach the server."));
+  });
+
+  it("shows the inferred site profile, clearly labeled with confidence, never silently", async () => {
+    listCrawlJobs.mockResolvedValue({ jobs: [{
+      id: "j1", phase: "completed", discovered_count: 5, crawled_count: 5, analyzed_count: 5,
+      failed_count: 0, skipped_count: 0, ai_calls_total: 1, ai_calls_cached: 0,
+      created_at: "2026-10-01T00:00:00Z", started_at: "2026-10-01T00:00:00Z",
+      finished_at: "2026-10-01T00:05:00Z", error: null,
+    }] });
+    listUrlFindings.mockResolvedValue({ total: 0, page: 1, page_size: 25, is_pro: true, locked_count: 0, findings: [] });
+    getSiteProfile.mockResolvedValue({
+      available: true, pages_analyzed: 5,
+      page_type_distribution: { product: 4, other: 1 },
+      business_type: { label: "E-commerce / online retail", confidence: "medium",
+                       basis: "4 of 5 crawled pages were classified as 'product' pages." },
+      entity: { detected_name: "Acme Inc", pages_with_entity_data: 2, consistent: false,
+               distinct_names_found: ["Acme Inc", "Acme LLC"], distinct_logos_found: [],
+               confidence: "low", basis: "2 of 5 crawled pages carry entity schema." },
+    });
+    render(<SiteIntelligence monitorId={MONITOR_ID} onBack={() => {}} />);
+    await waitFor(() => screen.getByText("About this site"));
+    screen.getByText("E-commerce / online retail");
+    screen.getByText(/medium confidence/i);
+    screen.getByText(/inconsistent entity data/i);
   });
 });

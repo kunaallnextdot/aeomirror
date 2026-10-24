@@ -1,0 +1,77 @@
+/* Spectrum styling for Site Intelligence (/app/monitoring/:id/intelligence). `sp-si-*`
+   classes, reusing existing design tokens — no new palette. Token-for-token port of
+   SiteIntelligence.aurora.css; the Aurora original is left intact. No red/amber/green —
+   danger (was peach) -> violet, warning/attention (was lemon) -> lav, positive (was
+   mint) -> blue, info/neutral (was sky) -> cyan, matching the rest of the Spectrum
+   migration's semantic hue mapping. */
+
+.sp-si-toolbar{margin-bottom:10px}
+.sp-si-head h1{display:flex;align-items:center;gap:9px;font-family:var(--sp-font-heading);
+  font-size:20px;font-weight:700;color:var(--sp-ink);margin:0}
+.sp-si-sub{font-size:13px;color:var(--sp-muted);margin:6px 0 18px;max-width:680px;line-height:1.6}
+.sp-si-sub-sm{font-size:12.5px;color:var(--sp-muted);margin:0 0 14px;line-height:1.6}
+
+.sp-si-banner{display:flex;align-items:center;gap:8px;padding:10px 14px;border-radius:var(--sp-r-m);
+  font-size:13px;margin-bottom:14px}
+.sp-si-banner.err{background:var(--sp-t-violet);color:var(--sp-violet-d)}
+
+.sp-si-card{background:var(--sp-solid);border:1px solid var(--sp-line);border-radius:var(--sp-r-m);
+  padding:18px;box-shadow:var(--sp-sh-s);margin-bottom:14px}
+.sp-si-card h2{display:flex;align-items:center;gap:8px;font-family:var(--sp-font-heading);
+  font-size:15px;font-weight:700;color:var(--sp-ink);margin:0 0 10px}
+.sp-si-card p{font-size:13.5px;color:var(--sp-ink-2);line-height:1.6;margin:0 0 10px}
+
+/* ---- job status ---- */
+.sp-si-job-top{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:8px}
+.sp-si-job-top h2{margin:0}
+.sp-si-spin{animation:sp-si-spin 1.2s linear infinite}
+@keyframes sp-si-spin{to{transform:rotate(360deg)}}
+.sp-si-job-error{color:var(--sp-violet-d);font-size:13px}
+.sp-si-job-stats{display:flex;flex-wrap:wrap;gap:14px;font-size:13px;color:var(--sp-ink-2);margin:8px 0}
+
+/* ---- site profile ---- */
+.sp-si-profile-row{display:flex;flex-wrap:wrap;gap:24px;margin-bottom:10px}
+.sp-si-profile-label{font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--sp-muted)}
+.sp-si-profile-value{font-size:15px;font-weight:600;color:var(--sp-ink);margin:3px 0}
+.sp-si-profile-conf{font-size:11.5px;color:var(--sp-primary)}
+.sp-si-profile-basis{font-size:12.5px;color:var(--sp-muted);margin:4px 0}
+.sp-si-profile-warn{font-size:12.5px;color:var(--sp-violet-d);background:var(--sp-t-violet);
+  border-radius:var(--sp-r-s);padding:8px 12px;margin:6px 0 0}
+
+/* ---- templates / url table ---- */
+.sp-si-table{width:100%;border-collapse:collapse;font-size:13px}
+.sp-si-table th{text-align:left;color:var(--sp-muted);font-size:11px;text-transform:uppercase;
+  letter-spacing:.04em;padding:8px 6px;border-bottom:1px solid var(--sp-line)}
+.sp-si-table td{padding:8px 6px;border-bottom:1px solid var(--sp-line-2);color:var(--sp-ink);word-break:break-all}
+
+/* ---- bulk actions ---- */
+.sp-si-bulk{display:flex;align-items:center;gap:10px;margin-bottom:12px;flex-wrap:wrap}
+.sp-si-bulk select{border:1px solid var(--sp-line);border-radius:var(--sp-r-s);padding:7px 10px;
+  background:var(--sp-solid);color:var(--sp-ink);font-size:13px;font-family:inherit}
+
+/* ---- findings ---- */
+.sp-si-findings{display:flex;flex-direction:column;gap:12px}
+.sp-si-finding{border:1px solid var(--sp-line);border-radius:var(--sp-r-s);padding:12px}
+.sp-si-finding.pri-critical{border-color:var(--sp-violet-d)}
+.sp-si-finding-top{display:flex;align-items:center;gap:9px;flex-wrap:wrap;margin-bottom:6px}
+.sp-si-finding-top strong{font-size:13.5px;color:var(--sp-ink)}
+.sp-si-pri{font-size:10.5px;font-weight:600;padding:3px 9px;border-radius:var(--sp-r-pill);flex:none}
+.sp-si-pri.pri-critical{background:var(--sp-t-violet);color:var(--sp-violet-d)}
+.sp-si-pri.pri-high{background:var(--sp-t-violet);color:var(--sp-violet-d)}
+.sp-si-pri.pri-medium{background:var(--sp-t-lav);color:var(--sp-lav-d)}
+.sp-si-pri.pri-low{background:var(--sp-t-cyan);color:var(--sp-cyan-d)}
+.sp-si-affected{font-size:11px;color:var(--sp-muted);background:var(--sp-t-grey);border-radius:var(--sp-r-pill);
+  padding:2px 8px}
+.sp-si-finding-url{display:block;font-size:12px;color:var(--sp-primary);text-decoration:none;
+  word-break:break-all;margin-bottom:6px}
+.sp-si-finding-url:hover{text-decoration:underline}
+.sp-si-finding-why,.sp-si-finding-fix{font-size:13px;color:var(--sp-ink-2);margin:4px 0}
+.sp-si-finding-meta{font-size:11.5px;color:var(--sp-muted);margin:6px 0 0}
+.sp-si-finding-limits{font-size:11.5px;color:var(--sp-muted);margin:2px 0 0;font-style:italic}
+.sp-si-finding-actions{display:flex;align-items:center;gap:8px;margin-top:10px;flex-wrap:wrap}
+.sp-si-finding-actions select{border:1px solid var(--sp-line);border-radius:var(--sp-r-s);padding:6px 9px;
+  background:var(--sp-solid);color:var(--sp-ink);font-size:12.5px;font-family:inherit}
+
+.sp-si-locked-banner{display:flex;align-items:center;gap:8px;width:100%;margin-top:12px;
+  background:var(--sp-t-lav);border:1px solid var(--sp-lav-d);border-radius:var(--sp-r-s);
+  padding:10px 14px;font-size:12.5px;color:var(--sp-lav-d);cursor:pointer;font-family:inherit}

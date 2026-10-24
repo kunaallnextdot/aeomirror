@@ -1,26 +1,27 @@
 import React, { useState, useEffect, useRef, Suspense } from "react";
 import {
-  Search, Lock, ArrowRight, Radar, LayoutDashboard, ScanLine, MessageSquareText,
+  Search, Lock, ArrowRight, LayoutDashboard, ScanLine, MessageSquareText,
   Users, Wrench, FileText, Settings, RefreshCw, AlertTriangle, ChevronDown, Download,
   ExternalLink, Sparkles, Globe, Mail, LifeBuoy
 } from "lucide-react";
+import Logo from "./shared/Logo.jsx";
 import { scanUrl, getScanById, bulkScanUrls, bulkScanFile, billing, downloadReport, ScanError } from "./api";
 import { UpgradeProvider, useUpgrade } from "./dashboard/UpgradeModal.jsx";
 import { setPendingScan, takePendingScan, freeScanUsed, markFreeScanUsed } from "./auth/pendingScan.js";
 import { useAuth } from "./auth/AuthContext.jsx";
-import { Routes, Route, useParams } from "react-router-dom";
+import { Routes, Route, useParams, Link } from "react-router-dom";
 import { navigate, RouterBridge } from "./auth/router.jsx";
 import { RequireAdmin } from "./app/guards.jsx";
 import { RouteErrorBoundary } from "./app/RouteErrorBoundary.jsx";
-import { AuAvatar } from "./dashboard/aurora.jsx";
+import { Shell } from "./shared/spectrum.jsx";
 import "./App.aurora.css";
+import "./App.spectrum.css";
 import Login from "./auth/pages/Login.jsx";
 import Register from "./auth/pages/Register.jsx";
 import ForgotPassword from "./auth/pages/ForgotPassword.jsx";
 import ResetPassword from "./auth/pages/ResetPassword.jsx";
 import VerifyEmail from "./auth/pages/VerifyEmail.jsx";
 import AcceptInvitation from "./auth/pages/AcceptInvitation.jsx";
-import { Loader2 } from "lucide-react";
 
 // Code-split the heavy authenticated bundles (charts, admin) so the public
 // marketing + auth pages stay small and fast to load.
@@ -34,6 +35,7 @@ const PublicReport = React.lazy(() => import("./dashboard/PublicReport.jsx"));
 // build-time constant) puts the dynamic import in a dead branch for production, so Rollup emits
 // NO aurora-uikit / aurora chunk in prod at all. See aurora-uikit.jsx for removal steps.
 const UiKit = import.meta.env.DEV ? React.lazy(() => import("./dashboard/aurora-uikit.jsx")) : null;
+const SpectrumUiKit = import.meta.env.DEV ? React.lazy(() => import("./shared/spectrum-uikit.jsx")) : null;
 const SUPPORT_EMAIL = "aeomirror.support@gmail.com";
 
 /* localStorage key holding only the id of the most recent successful scan.
@@ -96,6 +98,11 @@ const STATUS_LABEL = { pass: "PASS", warn: "WARN", fail: "FAIL" };
 /* Aurora equivalents (Phase 13a) — same thresholds/mapping, `--au-*` tokens. */
 function auBandColor(v) { return v >= 75 ? "var(--au-mint-d)" : v >= 45 ? "var(--au-lemon-d)" : "var(--au-peach-d)"; }
 const AU_STATUS_COLOR = { pass: "var(--au-mint-d)", warn: "var(--au-lemon-d)", fail: "var(--au-peach-d)" };
+/* Spectrum equivalents (migration Phase 5) — same thresholds/mapping, `--sp-*` tokens.
+   No red/amber/green: pass -> healthy (blue), warn -> attention (lav), fail -> needs-work
+   (violet), the same semantic reuse as Phase 3/4's status pills. */
+function spBandColor(v) { return v >= 75 ? "var(--sp-blue-d)" : v >= 45 ? "var(--sp-lav-d)" : "var(--sp-violet-d)"; }
+const SP_STATUS_COLOR = { pass: "var(--sp-blue-d)", warn: "var(--sp-lav-d)", fail: "var(--sp-violet-d)" };
 
 /* ---------- gauge ---------- */
 function polar(cx, cy, r, deg) { const a = (deg - 180) * Math.PI / 180; return [cx + r * Math.cos(a), cy + r * Math.sin(a)]; }
@@ -107,31 +114,31 @@ function arc(cx, cy, r, s, e) {
 function Gauge({ value, size = 200, label = "AI Readiness Score" }) {
   const cx = size / 2, cy = size / 2, r = size / 2 - 16;
   const va = 180 * (value / 100);
-  const col = auBandColor(value);
+  const col = spBandColor(value);
   // Horizontal padding in the viewBox so the end tick labels (0 and 100) never
   // clip against the SVG edge. Only 0 and 100 are shown to keep the dial clean.
   const PAD = 12;
   return (
-    <div className="au-gauge" style={{ width: size }}>
+    <div className="sp-gauge" style={{ width: size }} role="img" aria-label={`${label}: ${value} out of 100`}>
       <svg width={size} height={size / 2 + 30}
-           viewBox={`${-PAD} 0 ${size + PAD * 2} ${size / 2 + 30}`}>
-        <path d={arc(cx, cy, r, 0, 180)} className="au-gauge-track" />
-        <path d={arc(cx, cy, r, 0, Math.max(0.1, va))} style={{ stroke: col }} className="au-gauge-val" />
+           viewBox={`${-PAD} 0 ${size + PAD * 2} ${size / 2 + 30}`} aria-hidden="true">
+        <path d={arc(cx, cy, r, 0, 180)} className="sp-gauge-track" />
+        <path d={arc(cx, cy, r, 0, Math.max(0.1, va))} style={{ stroke: col }} className="sp-gauge-val" />
         {[0, 100].map((t) => {
           const [x, y] = polar(cx, cy, r, 180 * (t / 100));
           // Anchor the ends inward (0 = start, 100 = end) and drop them just below
           // the arc so both stay fully inside the padded viewBox.
           return (
             <text key={t} x={x} y={y + 15} textAnchor={t === 0 ? "start" : "end"}
-                  className="au-gauge-tick">{t}</text>
+                  className="sp-gauge-tick">{t}</text>
           );
         })}
       </svg>
-      <div className="au-gauge-center">
-        <div className="au-gauge-num" style={{ color: col }}>{value}</div>
-        <div className="au-gauge-den">/ 100</div>
+      <div className="sp-gauge-center">
+        <div className="sp-gauge-num" style={{ color: col }}>{value}</div>
+        <div className="sp-gauge-den">/ 100</div>
       </div>
-      <div className="au-gauge-label">{label}</div>
+      <div className="sp-gauge-label">{label}</div>
     </div>
   );
 }
@@ -150,32 +157,33 @@ const CRAWLER_META = {
 };
 function CrawlerStrip({ crawlers }) {
   return (
-    <div className="au-strip">
-      <div className="au-strip-head">
+    <div className="sp-strip">
+      <div className="sp-strip-head">
         <span>AI crawler visibility</span>
-        <span className="au-strip-sub">can each engine reach this site</span>
+        <span className="sp-strip-sub">can each engine reach this site</span>
       </div>
-      <div className="au-strip-rows">
+      <div className="sp-strip-rows">
         {crawlers.map((c) => {
           const m = CRAWLER_META[c.id];
           const ok = c.status === "pass";
           const warn = c.status === "warn";
+          const statusText = ok ? "Reachable" : warn ? "Undeclared" : "Blocked";
           return (
-            <div key={c.id} className="au-strip-row">
-              <div className="au-strip-bars">
+            <div key={c.id} className="sp-strip-row">
+              <div className="sp-strip-bars" aria-hidden="true">
                 {[0, 1, 2].map((i) => (
-                  <span key={i} className="au-bar" style={{
+                  <span key={i} className="sp-bar" style={{
                     height: 8 + i * 5,
-                    background: ok ? "var(--au-mint-d)" : warn && i < 2 ? "var(--au-lemon-d)" : (!ok && !warn && i < 1) ? "var(--au-peach-d)" : "var(--au-line)"
+                    background: ok ? "var(--sp-blue-d)" : warn && i < 2 ? "var(--sp-lav-d)" : (!ok && !warn && i < 1) ? "var(--sp-violet-d)" : "var(--sp-line)"
                   }} />
                 ))}
               </div>
-              <div className="au-strip-name">
-                <div className="au-strip-n">{m.name}</div>
-                <div className="au-strip-s">{m.sub}</div>
+              <div className="sp-strip-name">
+                <div className="sp-strip-n">{m.name}</div>
+                <div className="sp-strip-s">{m.sub}</div>
               </div>
-              <div className="au-strip-status" style={{ color: AU_STATUS_COLOR[c.status] }}>
-                {ok ? "Reachable" : warn ? "Undeclared" : "Blocked"}
+              <div className="sp-strip-status" style={{ color: SP_STATUS_COLOR[c.status] }}>
+                {statusText}
               </div>
             </div>
           );
@@ -191,16 +199,16 @@ function CrawlerStrip({ crawlers }) {
    totals diverged from the headline). */
 function SignalBars({ sections = [] }) {
   return (
-    <div className="au-fam">
+    <div className="sp-fam">
       {sections.map((s) => {
         const v = Math.max(0, Math.min(100, s.score ?? 0));
         return (
-          <div key={s.id} className="au-fam-row">
-            <div className="au-fam-label">{s.label}</div>
-            <div className="au-fam-track">
-              <div className="au-fam-fill" style={{ width: `${v}%`, background: auBandColor(v) }} />
+          <div key={s.id} className="sp-fam-row">
+            <div className="sp-fam-label">{s.label}</div>
+            <div className="sp-fam-track">
+              <div className="sp-fam-fill" style={{ width: `${v}%`, background: spBandColor(v) }} />
             </div>
-            <div className="au-fam-num" style={{ color: auBandColor(v) }}>{s.score}<span className="au-fam-den">/100</span></div>
+            <div className="sp-fam-num" style={{ color: spBandColor(v) }}>{s.score}<span className="sp-fam-den">/100</span></div>
           </div>
         );
       })}
@@ -220,17 +228,17 @@ function IssueList({ issues, locked = false, max = 5 }) {
 
   if (locked) {
     return (
-      <div className="au-issues">
+      <div className="sp-issues">
         {list.map((c, i) => (
-          <div key={i} className="au-issue">
-            <span className="au-issue-chip" style={{ color: AU_STATUS_COLOR[c.status], borderColor: AU_STATUS_COLOR[c.status] }}>
+          <div key={i} className="sp-issue">
+            <span className="sp-issue-chip" style={{ color: SP_STATUS_COLOR[c.status], borderColor: SP_STATUS_COLOR[c.status] }}>
               {STATUS_LABEL[c.status]}
             </span>
-            <div className="au-issue-body">
-              <div className="au-issue-label">{c.label} <span className="au-issue-fam">{c.family}</span></div>
-              <div className="au-issue-fix"><Lock size={11} /> {c.fix || c.fix_hint}</div>
+            <div className="sp-issue-body">
+              <div className="sp-issue-label">{c.label} <span className="sp-issue-fam">{c.family}</span></div>
+              <div className="sp-issue-fix"><Lock size={11} /> {c.fix || c.fix_hint}</div>
             </div>
-            <button className="au-issue-btn locked"><Lock size={12} /> Fix</button>
+            <button className="sp-issue-btn locked"><Lock size={12} /> Fix</button>
           </div>
         ))}
       </div>
@@ -238,28 +246,28 @@ function IssueList({ issues, locked = false, max = 5 }) {
   }
 
   return (
-    <div className="au-issues">
+    <div className="sp-issues">
       {list.map((c, i) => {
         const isOpen = !!open[i];
         const fix = c.fix || c.fix_hint;
         return (
-          <div key={i} className={`au-issue expandable${isOpen ? " open" : ""}`}>
-            <button className="au-issue-main" onClick={() => toggle(i)} aria-expanded={isOpen}>
-              <span className="au-issue-chip" style={{ color: AU_STATUS_COLOR[c.status], borderColor: AU_STATUS_COLOR[c.status] }}>
+          <div key={i} className={`sp-issue expandable${isOpen ? " open" : ""}`}>
+            <button className="sp-issue-main" onClick={() => toggle(i)} aria-expanded={isOpen}>
+              <span className="sp-issue-chip" style={{ color: SP_STATUS_COLOR[c.status], borderColor: SP_STATUS_COLOR[c.status] }}>
                 {STATUS_LABEL[c.status]}
               </span>
-              <div className="au-issue-body">
-                <div className="au-issue-label">{c.label} <span className="au-issue-fam">{c.family}</span></div>
-                <div className="au-issue-fix"><Wrench size={11} /> {isOpen ? "How to fix ↓" : "See the fix"}</div>
+              <div className="sp-issue-body">
+                <div className="sp-issue-label">{c.label} <span className="sp-issue-fam">{c.family}</span></div>
+                <div className="sp-issue-fix"><Wrench size={11} /> {isOpen ? "How to fix ↓" : "See the fix"}</div>
               </div>
-              <ChevronDown size={15} className="au-issue-chev" style={{ transform: isOpen ? "rotate(180deg)" : "none" }} />
+              <ChevronDown size={15} className="sp-issue-chev" style={{ transform: isOpen ? "rotate(180deg)" : "none" }} />
             </button>
             {isOpen && (
-              <div className="au-issue-detail">
-                {c.detail && <p className="au-issue-detail-finding">{c.detail}</p>}
+              <div className="sp-issue-detail">
+                {c.detail && <p className="sp-issue-detail-finding">{c.detail}</p>}
                 {fix && (
-                  <div className="au-issue-detail-fix">
-                    <div className="au-issue-detail-h"><Wrench size={11} /> Recommended fix</div>
+                  <div className="sp-issue-detail-fix">
+                    <div className="sp-issue-detail-h"><Wrench size={11} /> Recommended fix</div>
                     <p>{fix}</p>
                   </div>
                 )}
@@ -361,9 +369,9 @@ function FreeScanner({ compact, onFull, onScanComplete }) {
   };
 
   return (
-    <div className={compact ? "au-scanner compact" : "au-scanner"}>
+    <div className={compact ? "sp-scanner compact" : "sp-scanner"}>
       {isAuthenticated && (
-        <div className="au-scan-mode" role="group" aria-label="Scan type">
+        <div className="sp-scan-mode" role="group" aria-label="Scan type">
           <button type="button" className={tab === "single" ? "on" : ""} onClick={() => setTab("single")}>Single page</button>
           <button type="button" className={tab === "bulk" ? "on" : ""} onClick={() => setTab("bulk")}>Bulk — up to 50 URLs</button>
         </div>
@@ -371,8 +379,8 @@ function FreeScanner({ compact, onFull, onScanComplete }) {
 
       {tab === "single" ? (
         <>
-          <div className="au-scan-input">
-            <Globe size={16} className="au-scan-globe" />
+          <div className="sp-scan-input">
+            <Globe size={16} className="sp-scan-globe" />
             <input
               value={url}
               onChange={(e) => setUrl(e.target.value)}
@@ -380,92 +388,92 @@ function FreeScanner({ compact, onFull, onScanComplete }) {
               placeholder="Paste any website URL"
               spellCheck={false}
             />
-            <button className="au-scan-go" onClick={() => run()} disabled={state === "scanning"}>
+            <button className="sp-scan-go" onClick={() => run()} disabled={state === "scanning"}>
               {state === "scanning" ? <><ScanLine size={15} className="au-spin" /> Scanning</> : <>Scan free <ArrowRight size={15} /></>}
             </button>
           </div>
-          <div className="au-scan-hint">Checks crawler access, indexability, schema, content structure, internal linking, performance and freshness across 10 signals. Free account — 1 scan a month, plus a one-time 50-URL bulk trial.</div>
+          <div className="sp-scan-hint">Checks crawler access, indexability, schema, content structure, internal linking, performance and freshness across 10 signals. Free account — 1 scan a month, plus a one-time 50-URL bulk trial.</div>
         </>
       ) : (
         <BulkScanPanel onGate={setGate402} />
       )}
 
       {error && (
-        <div className="au-scan-error" role="alert">
-          <AlertTriangle size={14} /> <span>{error}</span>
+        <div className="sp-scan-error" role="alert">
+          <AlertTriangle size={14} aria-hidden="true" /> <span>{error}</span>
         </div>
       )}
 
       {gate402 && (
-        <div className="au-scan-error au-scan-gate" role="alert">
-          <AlertTriangle size={14} /> <span>{gate402}</span>
-          <button className="au-scan-gate-up" onClick={() => navigate("/app")}>Upgrade to Pro <ArrowRight size={13} /></button>
+        <div className="sp-scan-error sp-scan-gate" role="alert">
+          <AlertTriangle size={14} aria-hidden="true" /> <span>{gate402}</span>
+          <button className="sp-scan-gate-up" onClick={() => navigate("/app")}>Upgrade to Pro <ArrowRight size={13} /></button>
         </div>
       )}
 
       {state === "scanning" && (
-        <div className="au-scan-progress">
-          <div className="au-scan-line" />
-          <div className="au-scan-steps">
+        <div className="sp-scan-progress" role="status" aria-live="polite">
+          <div className="sp-scan-line" />
+          <div className="sp-scan-steps">
             <span>fetch</span><span>render</span><span>parse robots.txt</span><span>read schema</span><span>score</span>
           </div>
         </div>
       )}
 
       {state === "done" && report && (
-        <div className="au-report">
-          <div className="au-report-top">
-            <div className="au-report-domain">
-              <div className="au-report-label">RESULT</div>
-              <div className="au-report-url">{report.domain}</div>
-              <span className="au-report-badge" style={{ color: auBandColor(headline), borderColor: auBandColor(headline) }}>
+        <div className="sp-report">
+          <div className="sp-report-top">
+            <div className="sp-report-domain">
+              <div className="sp-report-label">RESULT</div>
+              <div className="sp-report-url">{report.domain}</div>
+              <span className="sp-report-badge" style={{ color: spBandColor(headline), borderColor: spBandColor(headline) }}>
                 {band(headline) === "good" ? "AI ready" : band(headline) === "warn" ? "Needs work" : "At risk"}
               </span>
             </div>
             <Gauge value={headline} size={168} />
           </div>
 
-          <div className="au-report-grid">
-            <div className="au-mkt-panel">
-              <div className="au-mkt-panel-h">Score by signal <span className="au-mkt-panel-sub">10 checks</span></div>
+          <div className="sp-report-grid">
+            <div className="sp-mkt-panel">
+              <div className="sp-mkt-panel-h">Score by signal <span className="sp-mkt-panel-sub">10 checks</span></div>
               <SignalBars sections={report.sections} />
             </div>
             <CrawlerStrip crawlers={report.crawlers} />
           </div>
 
-          <div className="au-mkt-panel">
-            <div className="au-mkt-panel-h">Top issues
-              {!isAuthenticated && <span className="au-mkt-panel-sub">fixes unlock with a free account</span>}
+          <div className="sp-mkt-panel">
+            <div className="sp-mkt-panel-h">Top issues
+              {!isAuthenticated && <span className="sp-mkt-panel-sub">fixes unlock with a free account</span>}
             </div>
             <IssueList issues={report.issues} locked={!isAuthenticated} max={5} />
           </div>
 
           {!isAuthenticated ? (
-            <div className="au-report-cta">
+            <div className="sp-report-cta">
               <div>
-                <div className="au-cta-title">Unlock the full report and the fixes</div>
-                <div className="au-cta-sub">Generated schema, llms.txt, an FAQ block, and a re-scan that proves the score moved.</div>
+                <div className="sp-cta-title">Unlock the full report and the fixes</div>
+                <div className="sp-cta-sub">Generated schema, llms.txt, an FAQ block, and a re-scan that proves the score moved.</div>
               </div>
-              <button className="au-cta-btn" onClick={onFull}>Create free account <ArrowRight size={15} /></button>
+              <button className="sp-cta-btn" onClick={onFull}>Create free account <ArrowRight size={15} /></button>
             </div>
           ) : (
-            <div className="au-report-cta">
+            <div className="sp-report-cta">
               <div>
-                <div className="au-cta-title">Your full report is ready</div>
-                <div className="au-cta-sub">
+                <div className="sp-cta-title">Your full report is ready</div>
+                <div className="sp-cta-sub">
                   {isPro
                     ? "Open the full breakdown in your dashboard, or download the PDF to share."
                     : "Open the full breakdown in your dashboard — every signal, fix and evidence detail."}
                 </div>
               </div>
-              <div className="au-report-cta-actions">
-                <button className="au-cta-btn" onClick={viewFullReport}>View full report <ArrowRight size={15} /></button>
+              <div className="sp-report-cta-actions">
+                <button className="sp-cta-btn" onClick={viewFullReport}>View full report <ArrowRight size={15} /></button>
                 {isPro ? (
-                  <button className="au-cta-link" onClick={downloadPdf} disabled={pdfBusy}>
+                  <button className="sp-cta-link" onClick={downloadPdf} disabled={pdfBusy}>
                     <Download size={14} /> {pdfBusy ? "Preparing…" : "Download PDF"}
                   </button>
                 ) : (
-                  <button className="au-cta-link" onClick={() => openUpgrade("report", { scanId: report.scan_id })}>
+                  <button className="sp-cta-link" onClick={() => openUpgrade("report", { scanId: report.scan_id })}>
                     <Sparkles size={14} /> Unlock exports &amp; AI-written report
                   </button>
                 )}
@@ -550,15 +558,15 @@ function BulkScanPanel({ onGate }) {
   };
 
   return (
-    <div className="au-bulk">
+    <div className="sp-bulk">
       {!trial.isPro && trial.available && (
-        <div className="au-bulk-badge"><Sparkles size={12} /> 1 free bulk trial</div>
+        <div className="sp-bulk-badge"><Sparkles size={12} /> 1 free bulk trial</div>
       )}
-      <textarea className="au-bulk-text" rows={5} spellCheck={false}
+      <textarea className="sp-bulk-text" rows={5} spellCheck={false}
                 placeholder={"One URL per line…\nhttps://example.com/\nhttps://example.com/pricing"}
                 value={text} onChange={(e) => setText(e.target.value)} />
       <div
-        className={`au-bulk-drop${dragOver ? " over" : ""}`}
+        className={`sp-bulk-drop${dragOver ? " over" : ""}`}
         onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
         onDragLeave={() => setDragOver(false)}
         onDrop={onDrop}
@@ -567,39 +575,39 @@ function BulkScanPanel({ onGate }) {
       >
         <FileText size={15} />
         <span>{file ? file.name : "Drop a .csv, .xlsx, .txt or .json here, or click to browse"}</span>
-        {file && <button className="au-bulk-clear" onClick={(e) => { e.stopPropagation(); setFile(null); if (fileRef.current) fileRef.current.value = ""; }}>Clear</button>}
+        {file && <button className="sp-bulk-clear" onClick={(e) => { e.stopPropagation(); setFile(null); if (fileRef.current) fileRef.current.value = ""; }}>Clear</button>}
         <input ref={fileRef} type="file" accept={BULK_ACCEPT} hidden
                onChange={(e) => chooseFile(e.target.files?.[0] || null)} />
       </div>
 
-      <div className="au-bulk-foot">
-        <span className={`au-bulk-count${over ? " over" : ""}`}>
+      <div className="sp-bulk-foot">
+        <span className={`sp-bulk-count${over ? " over" : ""}`}>
           {file ? "URLs read from file" : `${count} / ${BULK_MAX} URLs`}{over ? " · extras skipped" : ""}
         </span>
-        <button className="au-scan-go" onClick={submit} disabled={busy}>
+        <button className="sp-scan-go" onClick={submit} disabled={busy}>
           {busy ? <><ScanLine size={15} className="au-spin" /> Starting…</>
             : <>Scan {file ? "file" : `${Math.min(count, BULK_MAX)} URL${count === 1 ? "" : "s"}`} <ArrowRight size={15} /></>}
         </button>
       </div>
 
-      {err && <div className="au-scan-error" role="alert"><AlertTriangle size={14} /> <span>{err}</span></div>}
+      {err && <div className="sp-scan-error" role="alert"><AlertTriangle size={14} aria-hidden="true" /> <span>{err}</span></div>}
       {skipped?.length > 0 && <SkippedList skipped={skipped} />}
-      <div className="au-scan-hint">Bulk scans run in the background — we'll take you to a live progress view.</div>
+      <div className="sp-scan-hint">Bulk scans run in the background — we'll take you to a live progress view.</div>
     </div>
   );
 }
 
 function SkippedList({ skipped }) {
   return (
-    <div className="au-bulk-skipped">
-      <div className="au-bulk-skipped-h">{skipped.length} URL{skipped.length === 1 ? "" : "s"} skipped</div>
+    <div className="sp-bulk-skipped">
+      <div className="sp-bulk-skipped-h">{skipped.length} URL{skipped.length === 1 ? "" : "s"} skipped</div>
       {skipped.slice(0, 8).map((s, i) => (
-        <div key={i} className="au-bulk-skipped-row">
-          <span className="au-bulk-skipped-url">{s.url}</span>
-          <span className="au-bulk-skipped-reason">{SKIP_LABEL[s.reason] || s.reason}</span>
+        <div key={i} className="sp-bulk-skipped-row">
+          <span className="sp-bulk-skipped-url">{s.url}</span>
+          <span className="sp-bulk-skipped-reason">{SKIP_LABEL[s.reason] || s.reason}</span>
         </div>
       ))}
-      {skipped.length > 8 && <div style={{ fontSize: 11.5, marginTop: 4, color: "var(--au-muted)" }}>+{skipped.length - 8} more</div>}
+      {skipped.length > 8 && <div style={{ fontSize: 11.5, marginTop: 4, color: "var(--sp-muted)" }}>+{skipped.length - 8} more</div>}
     </div>
   );
 }
@@ -607,49 +615,62 @@ function SkippedList({ skipped }) {
 /* ============================= MARKETING VIEW ============================= */
 function Marketing({ onFull, onScanComplete }) {
   return (
-    <div className="au-mkt">
-      <div className="au-mkt-hero">
-        <div className="au-eyebrow"><Radar size={13} /> AEOMIRROR / AI VISIBILITY SCANNER</div>
-        <h1>Is AI recommending you,<br />or your competitor?</h1>
-        <p className="au-mkt-lede">
-          Search rankings no longer predict AI answers. AEOMirror scans any site and shows exactly what
-          ChatGPT, Claude, Gemini and Perplexity can reach, read, and cite. Then it hands you the fixes.
-        </p>
-        <FreeScanner onFull={onFull} onScanComplete={onScanComplete} />
-      </div>
+    <Shell>
+      <div className="sp-mkt">
+        <div className="sp-mkt-hero">
+          <div className="sp-eyebrow"><Logo variant="icon" size={13} /> AEOMIRROR / AI VISIBILITY SCANNER</div>
+          <h1>Is AI recommending you,<br />or your competitor?</h1>
+          <p className="sp-mkt-lede">
+            Search rankings no longer predict AI answers. AEOMirror scans any site and shows exactly what
+            ChatGPT, Claude, Gemini and Perplexity can reach, read, and cite. Then it hands you the fixes.
+          </p>
+          <FreeScanner onFull={onFull} onScanComplete={onScanComplete} />
+        </div>
 
-      <div className="au-mkt-strip">
-        <div className="au-mkt-stat"><div className="au-big">10</div><div>signals scored — free scan, no AI cost</div></div>
-        <div className="au-mkt-stat"><div className="au-big">4</div><div>AI crawlers checked per scan</div></div>
-        <div className="au-mkt-stat"><div className="au-big">AI</div><div>written reports & content insights on Pro</div></div>
+        <div className="sp-mkt-strip">
+          <div className="sp-mkt-stat"><div className="sp-stat-big">10</div><div>signals scored — free scan, no AI cost</div></div>
+          <div className="sp-mkt-stat"><div className="sp-stat-big">4</div><div>AI crawlers checked per scan</div></div>
+          <div className="sp-mkt-stat"><div className="sp-stat-big">AI</div><div>written reports & content insights on Pro</div></div>
+        </div>
       </div>
-    </div>
+    </Shell>
   );
 }
 
 /* Legacy AppShell + mock screens removed in Phase 4 (replaced by ./dashboard/Dashboard.jsx). */
 
 /* ============================= AUTH-AWARE MARKETING HEADER ============================= */
-function TopBar() {
+/* Avatar: image-or-initial, same logic as aurora.jsx's AuAvatar (not imported — that
+   component also carries the dark .au-acct-avatar skin; this inlines the identical
+   fallback logic onto the Spectrum gradient-fill .sp-avatar instead). */
+export function TopBar() {
   const { ready, isAuthenticated, user } = useAuth();
+  const avatarSize = 30;
   return (
-    <div className="au-topbar">
-      <div className="au-topbar-brand" onClick={() => navigate("/")} style={{ cursor: "pointer" }}><Radar size={17} /> AEOMirror</div>
-      <div className="au-topbar-actions">
-        <button className="au-tb-btn au-tb-link" onClick={() => navigate("/contact")}>Contact</button>
+    <div className="sp-topbar">
+      <Link to="/" className="sp-topbar-brand" aria-label="Go to AEOMirror homepage"><Logo variant="lockup" size={17} /></Link>
+      <div className="sp-topbar-actions">
+        <button className="sp-tb-btn sp-tb-link" onClick={() => navigate("/contact")}>Contact</button>
         {!ready ? null : isAuthenticated ? (
           <>
-            <button className="au-tb-btn au-tb-primary" onClick={() => navigate("/app")}>
+            <button className="sp-tb-btn sp-tb-primary" onClick={() => navigate("/app")}>
               <LayoutDashboard size={15} /> Dashboard
             </button>
-            <button className="au-tb-avatar" onClick={() => navigate("/app")} title={user?.name}>
-              <AuAvatar user={user} size={30} />
+            <button className="sp-tb-avatar" onClick={() => navigate("/app")} title={user?.name}>
+              {user?.avatar ? (
+                <img className="sp-tb-avatar-img" src={user.avatar} alt=""
+                     style={{ width: avatarSize, height: avatarSize }} />
+              ) : (
+                <span className="sp-avatar" style={{ width: avatarSize, height: avatarSize, fontSize: Math.round(avatarSize * 0.4) }}>
+                  {(user?.name || user?.email || "?").trim().charAt(0).toUpperCase()}
+                </span>
+              )}
             </button>
           </>
         ) : (
           <>
-            <button className="au-tb-btn" onClick={() => navigate("/login")}>Log in</button>
-            <button className="au-tb-btn au-tb-primary" onClick={() => navigate("/register")}>Sign up free</button>
+            <button className="sp-tb-btn" onClick={() => navigate("/login")}>Log in</button>
+            <button className="sp-tb-btn sp-tb-primary" onClick={() => navigate("/register")}>Sign up free</button>
           </>
         )}
       </div>
@@ -660,9 +681,9 @@ function TopBar() {
 function MarketingRoot() {
   const { isAuthenticated } = useAuth();
   const body = (
-    <div className="au-site">
+    <div className="sp-site">
       <TopBar />
-      <div className="au-site-content">
+      <div className="sp-site-content">
         <Marketing onFull={() => navigate(isAuthenticated ? "/app" : "/register")} onScanComplete={() => {}} />
       </div>
       <SiteFooter />
@@ -676,12 +697,13 @@ function MarketingRoot() {
 
 /* Public /contact page shell: same marketing chrome (top bar + footer). */
 function ContactRoot() {
-  // 13a: chrome (TopBar/SiteFooter) is Aurora on the light au-site ground; the Contact
-  // page body itself is migrated in 13b (renders dark until then — a known, bounded gap).
+  // Chrome (TopBar/SiteFooter) is now Spectrum on the light sp-site ground; the Contact
+  // page body itself stays on its own styling until its own migration phase (a known,
+  // bounded gap — same shape as the Aurora pass before it).
   return (
-    <div className="au-site">
+    <div className="sp-site">
       <TopBar />
-      <div className="au-site-content">
+      <div className="sp-site-content">
         <Suspense fallback={<FullScreenLoader />}><Contact /></Suspense>
       </div>
       <SiteFooter />
@@ -692,9 +714,9 @@ function ContactRoot() {
 /* Public /privacy and /terms page shells: same marketing chrome as /contact. */
 function PrivacyRoot() {
   return (
-    <div className="au-site">
+    <div className="sp-site">
       <TopBar />
-      <div className="au-site-content">
+      <div className="sp-site-content">
         <Suspense fallback={<FullScreenLoader />}><PrivacyPolicy /></Suspense>
       </div>
       <SiteFooter />
@@ -703,9 +725,9 @@ function PrivacyRoot() {
 }
 function TermsRoot() {
   return (
-    <div className="au-site">
+    <div className="sp-site">
       <TopBar />
-      <div className="au-site-content">
+      <div className="sp-site-content">
         <Suspense fallback={<FullScreenLoader />}><TermsOfService /></Suspense>
       </div>
       <SiteFooter />
@@ -714,27 +736,27 @@ function TermsRoot() {
 }
 
 /* Website footer with a Contact/Support section. */
-function SiteFooter() {
+export function SiteFooter() {
   return (
-    <footer className="au-site-footer">
-      <div className="au-footer-inner">
-        <div className="au-footer-brand">
-          <div className="au-footer-logo"><Radar size={16} /> AEOMirror</div>
-          <p className="au-footer-tag">See what AI can reach, read and cite on any site — then fix it.</p>
+    <footer className="sp-site-footer">
+      <div className="sp-footer-inner">
+        <div className="sp-footer-brand">
+          <Link to="/" aria-label="Go to AEOMirror homepage"><Logo variant="lockup" size={16} /></Link>
+          <p className="sp-footer-tag">See what AI can reach, read and cite on any site — then fix it.</p>
         </div>
-        <div className="au-footer-help">
-          <div className="au-footer-help-h"><LifeBuoy size={15} /> Need help?</div>
-          <a className="au-footer-mail" href={`mailto:${SUPPORT_EMAIL}`}>
+        <div className="sp-footer-help">
+          <div className="sp-footer-help-h"><LifeBuoy size={15} /> Need help?</div>
+          <a className="sp-footer-mail" href={`mailto:${SUPPORT_EMAIL}`}>
             <Mail size={13} /> {SUPPORT_EMAIL}
           </a>
-          <button className="au-footer-cta" onClick={() => navigate("/contact")}>
+          <button className="sp-footer-cta" onClick={() => navigate("/contact")}>
             Contact us <ArrowRight size={14} />
           </button>
         </div>
       </div>
-      <div className="au-footer-bottom">
+      <div className="sp-footer-bottom">
         © {new Date().getFullYear()} AEOMirror. All rights reserved.
-        <span className="au-footer-legal">
+        <span className="sp-footer-legal">
           <button onClick={() => navigate("/privacy")}>Privacy Policy</button>
           <button onClick={() => navigate("/terms")}>Terms of Service</button>
         </span>
@@ -747,7 +769,7 @@ function FullScreenLoader() {
   return (
     <div style={{ minHeight: "100vh", display: "grid", placeItems: "center", color: "var(--txt-mid)" }}>
       <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-        <Loader2 size={18} className="spin-slow" /> Loading…
+        <Logo variant="icon" size={20} className="spin-slow" /> Loading…
       </div>
     </div>
   );
@@ -808,6 +830,14 @@ function AppRouter() {
         } />
       )}
 
+      {/* DEV-only Spectrum primitive review surface (absent from production builds).
+          Separate path from /ui-kit (Aurora's) — see spectrum-uikit.jsx header for why. */}
+      {import.meta.env.DEV && (
+        <Route path="/ui-kit-spectrum" element={
+          <Suspense fallback={<FullScreenLoader />}><SpectrumUiKit /></Suspense>
+        } />
+      )}
+
       {/* unknown top-level path: keep the current behaviour (marketing home) */}
       <Route path="*" element={<MarketingRoot />} />
     </Routes>
@@ -831,7 +861,57 @@ export default function App() {
 const CSS = `
 @import url('https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@500;600;700;800&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@500;600&display=swap');
 
-html,body{margin:0;padding:0;background:#0B0F14}
+/* ---- Spectrum design tokens (Phase 1: foundation install, ADDITIVE) ----------
+   Single source of truth for the Spectrum migration. Namespaced sp- so nothing
+   on .root (dark tokens or --au-*) is touched. True :root (not .root) so these
+   are visible to html/body too, not just the .root subtree — see the base
+   application below. NOTHING besides that base application consumes these yet;
+   screens are repointed one phase at a time, same discipline as design/token-map.md. */
+:root{
+  /* brand ramp — lifted from the logo gradient (cyan -> blue -> indigo) */
+  --sp-cyan:#00A8FF;   --sp-cyan-d:#0070C9;
+  --sp-blue:#1B5CF5;   --sp-blue-d:#1243C9;
+  --sp-indigo:#2A14DC; --sp-indigo-d:#1E0BA6;
+  --sp-violet:#6B4BE8; --sp-violet-d:#4C2FC4;
+  --sp-lav:#BFA9F5;    --sp-lav-d:#7B5CE0;
+  /* tints — pale wash of each ramp stop (surfaces, chips, fills) */
+  --sp-t-cyan:#E0F3FF; --sp-t-blue:#E6EDFE; --sp-t-indigo:#E7E3FD;
+  --sp-t-violet:#EFEAFE; --sp-t-lav:#F2EDFE; --sp-t-grey:#EDF1F7;
+  /* text / surface */
+  --sp-ink:#0B1024; --sp-ink-2:#333C5C; --sp-muted:#6F7B99;
+  --sp-glass:rgba(255,255,255,.74); --sp-solid:#FFFFFF;
+  --sp-line:rgba(11,16,36,.08); --sp-line-2:rgba(11,16,36,.05);
+  --sp-page:#F6F8FD; --sp-panel:#FAFBFE;
+  /* semantic */
+  --sp-primary:#1B5CF5; --sp-pop:#00A8FF;
+  --sp-grad:linear-gradient(135deg,#00A8FF 0%,#1B5CF5 48%,#2A14DC 100%);
+  --sp-grad-soft:linear-gradient(140deg,#E0F3FF 0%,#E6EDFE 52%,#EFEAFE 100%);
+  /* positive/attention/gap/neutral — deliberately monochrome-blue; NO red/amber/green.
+     See design/token-map.md-style note: first real need for a danger colour stops here. */
+  --sp-positive:var(--sp-blue-d);     --sp-positive-bg:var(--sp-t-blue);
+  --sp-attention:var(--sp-lav-d);     --sp-attention-bg:var(--sp-t-lav);
+  --sp-gap:var(--sp-violet-d);        --sp-gap-bg:var(--sp-t-violet);
+  --sp-neutral:var(--sp-muted);       --sp-neutral-bg:var(--sp-t-grey);
+  /* radius */
+  --sp-r-s:14px; --sp-r-m:22px; --sp-r-l:30px; --sp-r-pill:999px;
+  /* shadow */
+  --sp-sh-s:0 2px 8px rgba(11,16,36,.05);
+  --sp-sh:0 4px 14px rgba(11,16,36,.05), 0 20px 50px rgba(27,92,245,.08);
+  --sp-sh-l:0 8px 24px rgba(11,16,36,.07), 0 34px 80px rgba(27,92,245,.14);
+  /* type — faces only; applied per screen (plus the base flip below), never retrofit onto
+     components in this phase */
+  --sp-font-heading:'Outfit',system-ui,sans-serif;
+  --sp-font-body:'Plus Jakarta Sans',system-ui,sans-serif;
+  --sp-font-numeric:'DM Mono',ui-monospace,monospace;
+  /* motion */
+  --sp-ease:cubic-bezier(.2,.9,.28,1);
+  --sp-dur-bars:1050ms; --sp-dur-rings:1400ms; --sp-dur-radar:1100ms;
+}
+/* Spectrum reveal keyframe (unused until a component opts in; .66s with ~60ms stagger
+   between siblings, per spec). Mirrors the existing (also still-unused) au-reveal. */
+@keyframes sp-reveal{from{opacity:0;transform:translateY(20px) scale(.985)}to{opacity:1;transform:none}}
+
+html,body{margin:0;padding:0;background:var(--sp-page)}
 
 .root{
   --bg:#0B0F14; --panel:#111922; --panel-2:#16202B; --line:#1E2833; --line-2:#2B3947;
@@ -880,8 +960,8 @@ html,body{margin:0;padding:0;background:#0B0F14}
   --au-font-numeric:'DM Mono',ui-monospace,monospace;
   /* motion */
   --au-ease:cubic-bezier(.2,.9,.28,1);
-  background:var(--bg); color:var(--txt);
-  font-family:'Inter',system-ui,sans-serif; min-height:100vh; font-size:14px;
+  background:var(--sp-page); color:var(--sp-ink);
+  font-family:var(--sp-font-body); min-height:100vh; font-size:15px; line-height:1.5;
 }
 /* Aurora reveal keyframe (unused until a screen opts in via animation on .aurora-screen
    elements; stagger with per-element animation-delay of ~60ms). */
@@ -891,8 +971,8 @@ html,body{margin:0;padding:0;background:#0B0F14}
 @media(prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:.01ms!important;
   animation-iteration-count:1!important;transition-duration:.01ms!important}}
 .root *{box-sizing:border-box}
-.mono{font-family:'IBM Plex Mono',monospace}
-h1,h2,h3,.brand,.topbar-title,.gauge-num,.cta-title{font-family:'Hanken Grotesk',sans-serif}
+.mono{font-family:var(--sp-font-numeric)}
+h1,h2,h3,.brand,.topbar-title,.gauge-num,.cta-title{font-family:var(--sp-font-heading)}
 
 
 /* app-wide spinner (used by <Loader2 className="spin-slow"> in the loaders, guards,

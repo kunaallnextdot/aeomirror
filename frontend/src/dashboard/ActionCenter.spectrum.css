@@ -1,0 +1,71 @@
+/* Action Center (/app/action-center) — screen-scoped `sp-ac-*`. Token-for-token port of
+   ActionCenter.aurora.css onto `--sp-*`; the Aurora original is left intact.
+
+   A few elements this screen borrows directly (not via <RecommendationCard>) from other
+   now-migrated screens reuse their REAL shared classes instead of a local duplicate:
+   .sp-sd-bh/.sp-sd-ul/.sp-sd-lockbanner (ScanDetails.spectrum.css) and .sp-rep-pri/
+   .sp-rep-ai-why/.sp-rep-ai-why-h (ReportView.spectrum.css). <RecommendationCard> is
+   also fully Spectrum-classed now, so this file no longer imports any Aurora CSS.
+
+   No red/amber/green: positive -> blue, danger -> violet, warning/attention -> lav,
+   info/neutral -> cyan, matching the rest of the Spectrum migration. */
+.sp-ac-eyebrow{display:flex;align-items:center;gap:6px;font-family:var(--sp-font-numeric);
+  font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--sp-primary);
+  font-weight:700;margin-bottom:6px}
+.sp-ac-headline{font-family:var(--sp-font-heading);font-size:19px;font-weight:700;
+  color:var(--sp-ink);letter-spacing:-.01em}
+.sp-ac-clean{display:flex;align-items:center;gap:8px;margin-top:10px;color:var(--sp-blue-d);
+  font-size:13px}
+.sp-ac-counts{display:flex;gap:22px;margin-top:14px;flex-wrap:wrap}
+.sp-ac-count{text-align:center}
+.sp-ac-count-n{font-family:var(--sp-font-numeric);font-size:26px;font-weight:700;line-height:1}
+.sp-ac-count-l{font-size:11px;color:var(--sp-muted);margin-top:4px;text-transform:uppercase;
+  letter-spacing:.04em}
+
+.sp-ac-list{display:flex;flex-direction:column;gap:8px}
+.sp-ac-card{border:1px solid var(--sp-line);border-radius:var(--sp-r-m);
+  background:var(--sp-page);overflow:hidden}
+.sp-ac-card-h{display:flex;align-items:center;gap:11px;width:100%;background:none;border:0;
+  cursor:pointer;padding:12px 14px;text-align:left;font-family:inherit}
+.sp-ac-card-h:hover{background:rgba(11,16,36,.02)}
+.sp-ac-card-h:focus-visible{outline:2px solid var(--sp-primary);outline-offset:-2px}
+.sp-ac-card-t{flex:1;min-width:0;font-size:13.5px;font-weight:600;color:var(--sp-ink)}
+.sp-ac-card-src{font-size:11px;color:var(--sp-muted);white-space:nowrap}
+.sp-ac-chev{color:var(--sp-muted);flex:none;transition:transform .2s}
+
+.sp-ac-preview{padding:0 14px 14px;display:flex;flex-direction:column;gap:7px}
+.sp-ac-problem{font-size:13px;line-height:1.5;color:var(--sp-ink-2);margin:0}
+.sp-ac-ev-preview,.sp-ac-fix-preview{font-size:12px;color:var(--sp-ink-2);line-height:1.5}
+.sp-ac-fix-preview{color:var(--sp-primary);font-weight:500}
+.sp-ac-overlap{font-size:11.5px;color:var(--sp-lav-d);background:var(--sp-t-lav);
+  border-radius:var(--sp-r-s);padding:5px 9px;margin-top:2px;display:inline-block}
+.sp-ac-actions{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-top:4px}
+.sp-ac-openlink{display:inline-flex;align-items:center;gap:5px;font-size:12px;
+  font-weight:600;color:var(--sp-primary);text-decoration:none}
+.sp-ac-openlink:hover{text-decoration:underline}
+
+.sp-ac-ev-full{margin-top:4px}
+.sp-ac-ev-full .sp-sd-ul li{font-size:12.5px;word-break:break-word}
+
+.sp-ac-viewall{display:block;margin:12px auto 2px;background:none;border:0;cursor:pointer;
+  font:inherit;font-size:12.5px;font-weight:600;color:var(--sp-primary)}
+.sp-ac-viewall:hover{text-decoration:underline}
+.sp-ac-viewall:focus-visible{outline:2px solid var(--sp-primary);outline-offset:2px;border-radius:4px}
+
+/* Phase K: verified-fixed items are demoted out of the active list, not deleted — a
+   quieter, collapsed-by-default section so history stays available without competing
+   with genuinely open problems for attention. */
+.sp-ac-verified-toggle{display:flex;align-items:center;gap:8px;width:100%;background:none;
+  border:0;cursor:pointer;font:inherit;font-size:13px;font-weight:600;color:var(--sp-ink);
+  padding:2px 0;text-align:left}
+.sp-ac-verified-toggle:hover{opacity:.85}
+.sp-ac-verified-toggle:focus-visible{outline:2px solid var(--sp-primary);outline-offset:2px;border-radius:4px}
+.sp-ac-verified-sub{font-size:11.5px;font-weight:400;color:var(--sp-muted)}
+.sp-ac-card-verified{opacity:.7}
+.sp-ac-card-verified .sp-ac-card-h{background:var(--sp-t-blue)}
+
+@media(max-width:480px){
+  .sp-ac-card-h{flex-wrap:wrap}
+  .sp-ac-card-src{flex-basis:100%;order:3}
+  .sp-ac-actions{flex-direction:column;align-items:flex-start}
+}

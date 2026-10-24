@@ -1,13 +1,14 @@
-/* Public shared-report page (/r/:token) — MIGRATED to Aurora. Rendered WITHOUT the dashboard
+/* Public shared-report page (/r/:token) — MIGRATED to Spectrum. Rendered WITHOUT the dashboard
    shell; works signed-out. useNoIndex (robots noindex) + data fetch are UNCHANGED — only the
    chrome + loading/error skin changed. Copy is verbatim. Renders ReportView in read-only mode
-   (ReportView is already Aurora). */
+   (ReportView itself is still on its own pre-Spectrum styling until its own migration pass —
+   a bounded, known gap, same shape as every prior "chrome now, body later" split). */
 import React, { useEffect, useState } from "react";
-import { Radar, AlertTriangle } from "lucide-react";
+import { AlertTriangle } from "lucide-react";
+import Logo from "../shared/Logo.jsx";
 import { getPublicReport, ScanError } from "../api.js";
 import ReportView from "./ReportView.jsx";
-import { Shell, Cell, Skeleton } from "./aurora.jsx";
-import "./aurora.css";
+import { Shell, Cell, Skeleton } from "../shared/spectrum.jsx";
 
 function useNoIndex() {
   useEffect(() => {
@@ -34,21 +35,21 @@ export default function PublicReport({ token }) {
   }, [token]);
 
   return (
-    <div className="au-pub">
-      <header className="au-pub-bar">
-        <a className="au-pub-brand" href="/"><Radar size={16} /> Scanned with <b>&nbsp;AEOMirror</b></a>
+    <div className="sp-pub">
+      <header className="sp-pub-bar">
+        <a className="sp-pub-brand" href="/">Scanned with <Logo variant="lockup" size={16} /></a>
       </header>
 
-      <main className="au-pub-main">
+      <main className="sp-pub-main">
         {error ? (
-          <div className="aurora-screen"><Shell><Cell solid><div className="au-card-center">
-            <div className="au-ill au-ill-bad"><AlertTriangle size={24} /></div>
-            <div className="au-card-t">Report unavailable</div>
-            <div className="au-card-s">{error}</div>
-            <a className="au-btn au-accent" href="/">Go to AEOMirror</a>
+          <div className="spectrum-screen"><Shell><Cell solid><div className="sp-card-center">
+            <div className="sp-ill sp-ill-bad"><AlertTriangle size={24} /></div>
+            <div className="sp-card-t">Report unavailable</div>
+            <div className="sp-card-s">{error}</div>
+            <a className="sp-btn sp-gradient" href="/">Go to AEOMirror</a>
           </div></Cell></Shell></div>
         ) : !report ? (
-          <div className="aurora-screen"><Shell><div className="au-stack">
+          <div className="spectrum-screen"><Shell><div className="sp-stack">
             <Cell solid><div style={{ display: "grid", gap: 10 }}><Skeleton w="45%" h={22} /><Skeleton w="70%" h={12} /></div></Cell>
             <Cell solid><div style={{ display: "flex", flexDirection: "column", gap: 8 }}>{Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} h={44} />)}</div></Cell>
           </div></Shell></div>
@@ -57,7 +58,7 @@ export default function PublicReport({ token }) {
         )}
       </main>
 
-      <footer className="au-pub-foot">
+      <footer className="sp-pub-foot">
         <a href="/">Get your own free AI-visibility report at <b>AEOMirror</b> →</a>
       </footer>
     </div>

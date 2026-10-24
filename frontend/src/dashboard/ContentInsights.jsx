@@ -1,26 +1,31 @@
 /* AI Content Insights (Feature B). Pro users analyze a page's writing (tone / clarity
    / structure meters, specific suggestions, a before/after rewrite); Free users see a
    lock that opens the upgrade modal. <InsightsBody> is the read-only renderer reused by
-   ReportView to surface insights that already exist for a scan. */
+   ReportView to surface insights that already exist for a scan.
+
+   Spectrum migration: this is an embedded CARD (rendered inside ScanDetails/ReportView),
+   not a route-level screen, so — same as SharePanel's sp-share-* classes — it carries no
+   `.spectrum-screen`/`<Shell>` wrapper of its own; it just uses the shared `sp-panel` card
+   plus the screen-specific `sp-ci-*` rules in ContentInsights.spectrum.css for shapes the
+   shared classes don't cover. */
 import React, { useCallback, useEffect, useState } from "react";
 import { Sparkles, Lock, Wand2, AlertTriangle, Check } from "lucide-react";
 import { analyzeContent, getContentInsights, ScanError } from "../api.js";
 import { useUpgrade } from "./UpgradeModal.jsx";
-
-/* Score colour on the light Aurora card (deep tokens, readable) — same thresholds as the
-   app's auScoreColor; the shared dark scoreColor() was near-invisible on white. */
-const ciScore = (v) => (v >= 75 ? "var(--au-mint-d)" : v >= 45 ? "var(--au-lemon-d)" : "var(--au-peach-d)");
+import { spectrumRingColor } from "../shared/spectrum.jsx";
+import "./ContentInsights.spectrum.css";
 
 function Meter({ label, meter }) {
   const s = meter?.score_0_100 ?? 0;
+  const color = spectrumRingColor(s);
   return (
-    <div className="ci-meter">
-      <div className="ci-meter-top">
-        <span className="ci-meter-l">{label}</span>
-        <span className="ci-meter-n d-mono" style={{ color: ciScore(s) }}>{s}</span>
+    <div className="sp-ci-meter">
+      <div className="sp-ci-meter-top">
+        <span className="sp-ci-meter-l">{label}</span>
+        <span className="sp-ci-meter-n sp-mono" style={{ color }}>{s}</span>
       </div>
-      <div className="ci-meter-track"><div style={{ width: `${s}%`, background: ciScore(s) }} /></div>
-      {meter?.assessment && <div className="ci-meter-a">{meter.assessment}</div>}
+      <div className="sp-ci-meter-track"><div style={{ width: `${s}%`, background: color }} /></div>
+      {meter?.assessment && <div className="sp-ci-meter-a">{meter.assessment}</div>}
     </div>
   );
 }
@@ -35,13 +40,13 @@ function FixBlock({ label, meter, className }) {
   const implementation = meter?.implementation || "";
   if (fixes.length === 0) return null;
   return (
-    <div className={`ci-block ${className}`}>
-      <div className="ci-h">{label} — what to fix</div>
-      <ol className="ci-ol">{fixes.map((f, i) => <li key={i}>{f}</li>)}</ol>
+    <div className={`sp-ci-block ${className}`}>
+      <div className="sp-ci-h">{label} — what to fix</div>
+      <ol className="sp-ci-ol">{fixes.map((f, i) => <li key={i}>{f}</li>)}</ol>
       {implementation && (
         <>
-          <div className="ci-h" style={{ marginTop: 8 }}>Implementation</div>
-          <pre className="au-code">{implementation}</pre>
+          <div className="sp-ci-h" style={{ marginTop: 8 }}>Implementation</div>
+          <pre className="sp-code">{implementation}</pre>
         </>
       )}
     </div>
@@ -52,29 +57,29 @@ export function InsightsBody({ data }) {
   if (!data) return null;
   const rw = data.rewrite_example || {};
   return (
-    <div className="ci-body">
-      <div className="ci-meters">
+    <div className="sp-ci-body">
+      <div className="sp-ci-meters">
         <Meter label="Tone" meter={data.tone} />
         <Meter label="Clarity" meter={data.clarity} />
         <Meter label="Structure" meter={data.structure} />
       </div>
 
-      <FixBlock label="Tone" meter={data.tone} className="ci-tone-fix" />
-      <FixBlock label="Clarity" meter={data.clarity} className="ci-clarity-fix" />
-      <FixBlock label="Structure" meter={data.structure} className="ci-structure-fix" />
+      <FixBlock label="Tone" meter={data.tone} className="sp-ci-fix-tone" />
+      <FixBlock label="Clarity" meter={data.clarity} className="sp-ci-fix-clarity" />
+      <FixBlock label="Structure" meter={data.structure} className="sp-ci-fix-structure" />
 
       {(data.suggestions || []).length > 0 && (
-        <div className="ci-block">
-          <div className="ci-h">Suggestions</div>
-          <ul className="ci-ul">{data.suggestions.map((s, i) => <li key={i}><Check size={12} /> <span>{s}</span></li>)}</ul>
+        <div className="sp-ci-block">
+          <div className="sp-ci-h">Suggestions</div>
+          <ul className="sp-ci-ul">{data.suggestions.map((s, i) => <li key={i}><Check size={12} /> <span>{s}</span></li>)}</ul>
         </div>
       )}
       {(rw.before || rw.after) && (
-        <div className="ci-block">
-          <div className="ci-h">Rewrite example</div>
-          <div className="ci-ba">
-            <div className="ci-ba-col"><div className="ci-ba-l">Before</div><p>{rw.before}</p></div>
-            <div className="ci-ba-col ci-ba-after"><div className="ci-ba-l">After</div><p>{rw.after}</p></div>
+        <div className="sp-ci-block">
+          <div className="sp-ci-h">Rewrite example</div>
+          <div className="sp-ci-ba">
+            <div className="sp-ci-ba-col"><div className="sp-ci-ba-l">Before</div><p>{rw.before}</p></div>
+            <div className="sp-ci-ba-col sp-ci-ba-after"><div className="sp-ci-ba-l">After</div><p>{rw.after}</p></div>
           </div>
         </div>
       )}
@@ -114,39 +119,39 @@ export function ContentInsightsCard({ scanId, pageUrl }) {
   }, [scanId, pageUrl, openUpgrade]);
 
   return (
-    <div className="au-panel ci-card" style={{ marginTop: 16 }}>
-      <div className="au-panel-h">
-        <Sparkles size={14} style={{ color: "var(--au-primary)" }} /> Content Insights
-        <span className="au-sub">AI tone, clarity &amp; structure</span>
+    <div className="sp-panel" style={{ marginTop: 16 }}>
+      <div className="sp-panel-h">
+        <Sparkles size={14} style={{ color: "var(--sp-primary)" }} /> Content Insights
+        <span className="sp-sub">AI tone, clarity &amp; structure</span>
       </div>
 
       {locked ? (
-        <div className="ci-lock">
-          <div className="ci-lock-t"><Lock size={13} /> AI content analysis is a Pro feature</div>
-          <div className="ci-lock-s">Tone, clarity and structure scores with concrete rewrite suggestions for this page.</div>
-          <button className="au-btn au-accent" onClick={() => openUpgrade("ai_content")}>
+        <div className="sp-ci-lock">
+          <div className="sp-ci-lock-t"><Lock size={13} /> AI content analysis is a Pro feature</div>
+          <div className="sp-ci-lock-s">Tone, clarity and structure scores with concrete rewrite suggestions for this page.</div>
+          <button className="sp-btn sp-gradient" onClick={() => openUpgrade("ai_content")}>
             <Lock size={14} /> Unlock Content Insights
           </button>
         </div>
       ) : data ? (
         <>
           <InsightsBody data={data} />
-          <button className="au-iconbtn" style={{ marginTop: 10 }} disabled={loading} onClick={run}>
+          <button className="sp-iconbtn" style={{ marginTop: 10 }} disabled={loading} onClick={run}>
             <Wand2 size={13} className={loading ? "spin-slow" : ""} /> {loading ? "Analyzing…" : "Re-analyze"}
           </button>
-          {loading && <div className="au-dim" style={{ fontSize: 12, marginTop: 8 }}>This can take up to a minute.</div>}
-          {err && <div className="ci-err"><AlertTriangle size={13} /> {err}</div>}
+          {loading && <div className="sp-dim" style={{ fontSize: 12, marginTop: 8 }}>This can take up to a minute.</div>}
+          {err && <div className="sp-ci-err"><AlertTriangle size={13} /> {err}</div>}
         </>
       ) : (
-        <div className="ci-empty">
-          <div className="au-dim" style={{ fontSize: 13, marginBottom: 12 }}>
+        <div className="sp-ci-empty">
+          <div className="sp-dim" style={{ fontSize: 13, marginBottom: 12 }}>
             Analyze this page's writing with AI — tone, clarity and structure, plus concrete rewrite suggestions.
           </div>
-          <button className="au-btn au-accent" disabled={loading} onClick={run}>
+          <button className="sp-btn sp-gradient" disabled={loading} onClick={run}>
             <Wand2 size={14} className={loading ? "spin-slow" : ""} /> {loading ? "Analyzing…" : "Analyze content"}
           </button>
-          {loading && <div className="au-dim" style={{ fontSize: 12, marginTop: 8 }}>This can take up to a minute.</div>}
-          {err && <div className="ci-err"><AlertTriangle size={13} /> {err}</div>}
+          {loading && <div className="sp-dim" style={{ fontSize: 12, marginTop: 8 }}>This can take up to a minute.</div>}
+          {err && <div className="sp-ci-err"><AlertTriangle size={13} /> {err}</div>}
         </div>
       )}
     </div>

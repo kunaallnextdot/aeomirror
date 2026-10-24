@@ -28,7 +28,7 @@ describe("ScansTable — billable vs. monitor-triggered scans", () => {
     expect(screen.getByText(/2 scans · 1 counted toward your monthly scan quota/)).toBeTruthy();
     // "Monitor" appears twice by design: once in the explanatory banner's own copy,
     // once as the actual row tag — scope to scan b's own row to confirm the real tag.
-    const rows = document.querySelectorAll(".au-sc-table tbody tr");
+    const rows = document.querySelectorAll(".sp-sc-table tbody tr");
     const bRow = Array.from(rows).find((r) => r.textContent.includes("example.com/b"));
     expect(bRow.textContent).toContain("Monitor");
     const aRow = Array.from(rows).find((r) => r.textContent.includes("example.com/a"));

@@ -2,8 +2,8 @@
 import { describe, it, expect } from "vitest";
 import {
   normalizeRecommendation, normalizeContentCluster, normalizeThinContent,
-  normalizeTechnicalIssues, normalizeAnswerSimulation, buildActionItems,
-  CONTENT_CLUSTER_TYPE_CAVEAT,
+  normalizeTechnicalIssues, normalizeAnswerSimulation, normalizeUrlIntelligenceFindings,
+  buildActionItems, CONTENT_CLUSTER_TYPE_CAVEAT,
 } from "./actionSources.js";
 
 const REC = (id, overrides = {}) => ({
@@ -194,5 +194,73 @@ describe("actionSources — buildActionItems (cross-source dedup/priority/counts
 
   it("no sources available -> empty list, never a fabricated finding", () => {
     expect(buildActionItems({ recommendations: [], technicalSeo: null, contentIntelligence: null, answerSimulation: null, scanId: "s1" })).toEqual([]);
+  });
+});
+
+describe("actionSources — normalizeUrlIntelligenceFindings", () => {
+  const SUMMARY = (overrides = {}) => ({
+    available: true, monitor_id: "mon1",
+    findings: [{
+      id: "f1", url: "https://acme.example/pricing", template_id: "t1", affected_url_count: 3,
+      page_type: "pricing", finding_title: "Missing structured data", category: "structured_data",
+      why_it_matters: "AI assistants rely on structured data.", recommended_fix: "Add Product schema.",
+      priority: "high", confidence: "high", status: "open", verification_status: null,
+    }],
+    ...overrides,
+  });
+
+  it("maps a real finding into an ActionItem linking to Site Intelligence, never the generic report", () => {
+    const [item] = normalizeUrlIntelligenceFindings(SUMMARY(), "s1");
+    expect(item.source).toBe("Site Crawl Intelligence");
+    expect(item.priority).toBe("High");
+    expect(item.confidence).toBe("high");
+    expect(item.destination).toEqual({ to: "/app/monitoring/mon1/intelligence", label: "Open Site Intelligence" });
+    expect(item.why).toMatch(/3 page/);
+  });
+
+  it("unavailable (no monitor/no completed crawl) -> empty, never fabricated", () => {
+    expect(normalizeUrlIntelligenceFindings({ available: false, reason: "no_monitor" }, "s1")).toEqual([]);
+    expect(normalizeUrlIntelligenceFindings(null, "s1")).toEqual([]);
+  });
+
+  it("a finding already verified by recrawl is marked `verified`, its own verification concept", () => {
+    const summary = SUMMARY();
+    summary.findings[0].verification_status = "verified";
+    const [item] = normalizeUrlIntelligenceFindings(summary, "s1");
+    expect(item.verified).toBe(true);
+  });
+});
+
+describe("actionSources — buildActionItems includes url_intelligence and flags cross-source overlaps", () => {
+  it("url_intelligence findings appear in the unified list", () => {
+    const items = buildActionItems({
+      recommendations: [], technicalSeo: null, contentIntelligence: null, answerSimulation: null,
+      urlIntelligence: { available: true, monitor_id: "mon1", findings: [{
+        id: "f1", url: "https://acme.example/a", affected_url_count: 1, priority: "medium",
+        confidence: "medium", status: "open", finding_title: "Thin content", category: "other",
+      }] },
+      scanId: "s1",
+    });
+    expect(items.map((i) => i.source)).toContain("Site Crawl Intelligence");
+  });
+
+  it("two different sources flagging the SAME affected URL are cross-linked, never silently hidden", () => {
+    const items = buildActionItems({
+      recommendations: [], contentIntelligence: null, answerSimulation: null,
+      technicalSeo: { available: true, issues: [
+        { code: "ERROR_4XX", severity: "High", affected_urls: ["https://acme.example/a"], label: "1 URL returns 4xx" },
+      ] },
+      urlIntelligence: { available: true, monitor_id: "mon1", findings: [{
+        id: "f1", url: "https://acme.example/a", affected_url_count: 1, priority: "high",
+        confidence: "high", status: "open", finding_title: "Thin content", category: "other",
+      }] },
+      scanId: "s1",
+    });
+    const tech = items.find((i) => i.id === "tech:ERROR_4XX");
+    const urlIntel = items.find((i) => i.kind === "url_intelligence");
+    expect(tech.overlapsWith?.map((o) => o.source)).toContain("Site Crawl Intelligence");
+    expect(urlIntel.overlapsWith?.map((o) => o.source)).toContain("Technical SEO");
+    // Both items are still present (overlap is a flag, never a suppression).
+    expect(items.length).toBe(2);
   });
 });

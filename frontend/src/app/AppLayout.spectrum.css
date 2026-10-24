@@ -1,0 +1,92 @@
+/* Spectrum shell (migration Phase 7) — the authenticated /app chrome: glass sidebar +
+   sticky glass topbar on the light Spectrum ground. Token-for-token port of
+   AppLayout.aurora.css's `.au-dash*` rules onto `--sp-*`; the Aurora originals are LEFT
+   INTACT (still referenced by the shared dark leftovers the Aurora pass itself never
+   retired). Every class is `sp-`-prefixed.
+
+   Same scroll model as the Aurora shell: sidebar sticky/viewport-height, footer in
+   normal document flow pushed down by `.sp-dash-content{flex:1 0 auto}`. */
+.sp-dash{display:grid;grid-template-columns:240px 1fr;min-height:100vh;
+  background:var(--sp-page);
+  color:var(--sp-ink);font-family:var(--sp-font-body);font-size:15px;line-height:1.5}
+.sp-dash-side{border-right:1px solid var(--sp-line);background:rgba(255,255,255,.68);backdrop-filter:blur(18px) saturate(1.1);
+  display:flex;flex-direction:column;padding:18px 12px;gap:16px;position:sticky;top:0;height:100vh;overflow-y:auto}
+.sp-dash-brand{display:flex;align-items:center;padding:2px 8px}
+.sp-dash-nav{display:flex;flex-direction:column;gap:2px;margin-top:4px}
+.sp-dash-nav .sp-dash-nav-item{display:flex;align-items:center;gap:11px;background:transparent;border:none;
+  color:var(--sp-ink-2);padding:9px 11px;border-radius:var(--sp-r-s);cursor:pointer;font-size:13.5px;font-weight:500;
+  text-align:left;width:100%;text-decoration:none;transition:background .15s,color .15s;font-family:inherit}
+.sp-dash-nav .sp-dash-nav-item:hover{background:rgba(11,16,36,.05);color:var(--sp-ink)}
+.sp-dash-nav .sp-dash-nav-item.on{background:var(--sp-t-blue);color:var(--sp-primary);font-weight:600}
+.sp-dash-nav .sp-dash-nav-item span{flex:1}
+.sp-dash-nav .sp-dash-nav-item:focus{outline:none}
+.sp-dash-nav .sp-dash-nav-item:focus-visible{outline:2px solid var(--sp-primary);outline-offset:2px}
+.sp-dash-side-foot{margin-top:auto;display:flex;flex-direction:column;gap:8px}
+.sp-dash-newscan{display:flex;align-items:center;justify-content:center;gap:8px;background:var(--sp-grad);color:#fff;
+  border:none;padding:10px;border-radius:var(--sp-r-s);font-weight:600;cursor:pointer;font-size:13px;
+  font-family:inherit;transition:transform .16s,box-shadow .16s}
+.sp-dash-newscan:hover{transform:translateY(-1px);box-shadow:0 8px 18px rgba(27,92,245,.26)}
+.sp-dash-newscan:focus-visible{outline:2px solid var(--sp-primary);outline-offset:2px}
+.sp-dash-exit{display:flex;align-items:center;gap:8px;background:transparent;border:1px solid var(--sp-line);
+  color:var(--sp-ink-2);padding:9px 11px;border-radius:var(--sp-r-s);cursor:pointer;font-size:12.5px;font-family:inherit;transition:border-color .15s,color .15s}
+.sp-dash-exit:hover{border-color:var(--sp-primary);color:var(--sp-primary)}
+.sp-dash-exit:focus-visible{outline:2px solid var(--sp-primary);outline-offset:2px}
+
+.sp-dash-main{display:flex;flex-direction:column;min-width:0}
+.sp-dash-top{display:flex;justify-content:space-between;align-items:center;gap:16px;padding:18px 26px;
+  border-bottom:1px solid var(--sp-line);position:sticky;top:0;background:rgba(255,255,255,.68);
+  backdrop-filter:blur(18px) saturate(1.1);z-index:10}
+.sp-dash-top-title{font-family:var(--sp-font-heading);font-size:19px;font-weight:700;letter-spacing:-.02em;color:var(--sp-ink)}
+.sp-dash-top-sub{font-size:12px;color:var(--sp-muted);margin-top:2px}
+.sp-dash-content{padding:22px 26px 40px;flex:1 0 auto;animation:sp-dfade .25s ease}
+@keyframes sp-dfade{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
+
+/* App-shell footer — plain flow, same single page scroll as the sidebar. */
+.sp-dash-footer{border-top:1px solid var(--sp-line);padding:22px 26px 18px;flex:none}
+.sp-dash-footer-top{display:flex;flex-wrap:wrap;gap:32px;justify-content:space-between}
+.sp-dash-footer-brand{flex:1 1 200px;min-width:180px}
+.sp-dash-footer-tag{font-size:11.5px;color:var(--sp-muted);margin:7px 0 0;line-height:1.5;max-width:240px}
+.sp-dash-footer-col{display:flex;flex-direction:column;gap:7px;min-width:120px}
+.sp-dash-footer-col-h{font-family:var(--sp-font-numeric);font-size:10px;letter-spacing:.06em;
+  text-transform:uppercase;color:var(--sp-muted);margin-bottom:2px}
+.sp-dash-footer-link{display:flex;align-items:center;gap:5px;font-size:12px;color:var(--sp-ink-2);
+  text-decoration:none}
+.sp-dash-footer-link:hover{color:var(--sp-primary)}
+.sp-dash-footer-link:focus-visible{outline:2px solid var(--sp-primary);outline-offset:2px}
+.sp-dash-footer-bottom{margin-top:18px;padding-top:14px;border-top:1px solid var(--sp-line-2);
+  font-size:11px;color:var(--sp-muted)}
+@media(max-width:640px){
+  .sp-dash-footer{padding:18px 14px 16px}
+  .sp-dash-footer-top{gap:20px}
+}
+
+/* sidebar footer user block */
+.sp-dash-user{display:flex;align-items:center;gap:10px;padding:9px 8px;border-top:1px solid var(--sp-line);margin-top:6px}
+.sp-dash-user-id{flex:1;min-width:0}
+.sp-dash-user-name{font-size:12.5px;font-weight:600;color:var(--sp-ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sp-dash-user-role{font-size:10.5px;color:var(--sp-muted);text-transform:capitalize}
+
+/* sidebar scan-usage meter — no red/amber/green: at-limit -> violet, near-limit -> lav */
+.sp-side-meter{margin-bottom:10px;padding:10px 11px;border:1px solid var(--sp-line);border-radius:10px;background:var(--sp-solid)}
+.sp-side-meter-top{display:flex;justify-content:space-between;align-items:baseline;font-size:11.5px;margin-bottom:7px}
+.sp-side-meter-lbl{color:var(--sp-ink-2);font-weight:500}
+.sp-side-meter-n{font-family:var(--sp-font-numeric);color:var(--sp-ink)}
+.sp-side-meter-bar{height:5px;background:var(--sp-line);border-radius:4px;overflow:hidden}
+.sp-side-meter-bar>div{height:100%;border-radius:4px;transition:width .5s ease}
+.sp-side-meter-up{display:inline-flex;align-items:center;gap:4px;margin-top:7px;background:none;border:none;padding:0;
+  cursor:pointer;color:var(--sp-primary);font-family:var(--sp-font-numeric);font-size:11.5px}
+.sp-side-meter-up:hover{text-decoration:underline}
+.sp-side-meter-up:focus-visible{outline:2px solid var(--sp-primary);outline-offset:2px}
+
+/* mobile: single column, sidebar becomes a horizontal wrapping bar at the top */
+@media(max-width:900px){
+  .sp-dash{grid-template-columns:1fr}
+  .sp-dash-side{position:static;height:auto;overflow-y:visible;flex-direction:row;flex-wrap:wrap;align-items:center;
+    border-right:none;border-bottom:1px solid var(--sp-line)}
+  .sp-dash-nav{flex-direction:row;flex-wrap:wrap}
+  .sp-dash-side-foot{margin:0}
+}
+@media(max-width:640px){
+  .sp-dash-content{padding:16px 14px 48px}
+  .sp-dash-top{padding:14px 16px}
+}

@@ -88,6 +88,9 @@
   letter-spacing:.05em;text-transform:uppercase;color:var(--au-muted);margin-bottom:4px}
 .au-rep-meta-row{display:flex;gap:16px;flex-wrap:wrap;font-size:12px;color:var(--au-muted)}
 .au-rep-meta-row span{display:inline-flex;align-items:center;gap:5px}
+.au-rep-affected-url{font-size:12px;color:var(--au-muted);margin-top:8px;word-break:break-all}
+.au-rep-affected-url a{color:var(--au-primary);text-decoration:none;font-weight:500}
+.au-rep-affected-url a:hover{text-decoration:underline}
 .au-rep-fx-h{font-family:var(--au-font-numeric);font-size:10px;letter-spacing:.06em;text-transform:uppercase;
   color:var(--au-muted);margin-top:4px}
 /* Fix-first hierarchy (DiagnosisCard): the actionable fix reads as the visually

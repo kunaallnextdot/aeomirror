@@ -1,0 +1,89 @@
+/* Spectrum styling for AI Business Impact (/app/business-impact). `sp-bi-*`
+   classes, reusing existing design tokens — no new palette. Port of
+   BusinessImpact.aurora.css's `au-bi-*` rules. */
+
+.sp-bi-head h1{display:flex;align-items:center;gap:9px;font-family:var(--sp-font-heading);
+  font-size:20px;font-weight:700;color:var(--sp-ink);margin:0}
+.sp-bi-sub{font-size:13px;color:var(--sp-muted);margin:6px 0 18px;max-width:680px;line-height:1.6}
+.sp-bi-sub-sm{font-size:12.5px;color:var(--sp-muted);margin:0 0 14px;line-height:1.6}
+
+.sp-bi-toolbar{display:flex;align-items:center;justify-content:space-between;gap:12px;
+  flex-wrap:wrap;margin-bottom:16px}
+.sp-bi-select{border:1px solid var(--sp-line);border-radius:var(--sp-r-s);padding:8px 12px;
+  background:var(--sp-solid);color:var(--sp-ink);font-size:13.5px;font-family:inherit}
+.sp-bi-ranges{display:flex;gap:4px;background:var(--sp-t-grey);border:1px solid var(--sp-line);
+  border-radius:var(--sp-r-pill);padding:3px}
+.sp-bi-ranges button{border:none;background:none;padding:6px 12px;border-radius:var(--sp-r-pill);
+  font-size:12.5px;color:var(--sp-muted);cursor:pointer;font-family:inherit}
+.sp-bi-ranges button.on{background:var(--sp-primary);color:#fff}
+
+.sp-bi-banner{padding:10px 14px;border-radius:var(--sp-r-m);font-size:13px;margin-bottom:14px}
+.sp-bi-banner.err{background:var(--sp-t-violet);color:var(--sp-violet-d)}
+
+.sp-bi-card{background:var(--sp-solid);border:1px solid var(--sp-line);border-radius:var(--sp-r-m);
+  padding:18px;box-shadow:var(--sp-sh-s);margin-bottom:14px}
+.sp-bi-card h2{display:flex;align-items:center;gap:8px;font-family:var(--sp-font-heading);
+  font-size:15px;font-weight:700;color:var(--sp-ink);margin:0 0 10px}
+.sp-bi-card h3{font-size:13.5px;font-weight:700;color:var(--sp-ink);margin:0 0 6px}
+.sp-bi-card p{font-size:13.5px;color:var(--sp-ink-2);line-height:1.6;margin:0 0 10px}
+
+/* ---- setup wizard ---- */
+.sp-bi-snippet{display:flex;align-items:center;gap:10px;background:var(--sp-t-grey);
+  border:1px solid var(--sp-line);border-radius:var(--sp-r-s);padding:12px;margin-bottom:14px}
+.sp-bi-snippet code{flex:1;font-family:var(--sp-font-numeric);font-size:12px;color:var(--sp-ink);
+  word-break:break-all}
+.sp-bi-snippet button{display:inline-flex;align-items:center;gap:6px;background:var(--sp-primary);
+  color:#fff;border:none;padding:8px 12px;border-radius:var(--sp-r-s);font-size:12.5px;
+  font-weight:600;cursor:pointer;flex:none}
+.sp-bi-setup-explain{margin:0 0 14px;padding-left:18px;font-size:13px;color:var(--sp-muted);line-height:1.6}
+.sp-bi-setup-explain li{margin-bottom:6px}
+.sp-bi-setup-divider{border-top:1px solid var(--sp-line);margin:18px 0}
+.sp-bi-setup-note{font-size:12.5px;color:var(--sp-blue-d)}
+.sp-bi-apikey{margin-top:12px;background:var(--sp-t-lav);border:1px solid var(--sp-lav-d);
+  border-radius:var(--sp-r-s);padding:12px}
+.sp-bi-apikey code{display:block;font-family:var(--sp-font-numeric);font-size:12px;color:var(--sp-ink);
+  word-break:break-all;margin-bottom:6px}
+.sp-bi-apikey p{font-size:11.5px;color:var(--sp-lav-d);margin:0}
+
+/* ---- summary cards ---- */
+.sp-bi-cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:12px;margin-bottom:14px}
+.sp-bi-stat{padding:14px}
+.sp-bi-stat-top{display:flex;align-items:center;justify-content:space-between;gap:6px;
+  font-size:11.5px;color:var(--sp-muted);text-transform:uppercase;letter-spacing:.04em;margin-bottom:8px}
+.sp-bi-tip{cursor:help;color:var(--sp-muted);display:inline-flex}
+.sp-bi-stat-v{font-family:var(--sp-font-numeric);font-size:22px;font-weight:500;color:var(--sp-ink)}
+.sp-bi-stat-locked{display:inline-flex;align-items:center;gap:5px;background:var(--sp-t-grey);
+  border:1px solid var(--sp-line);border-radius:var(--sp-r-pill);padding:5px 10px;font-size:11.5px;
+  color:var(--sp-muted);cursor:pointer}
+
+/* ---- charts ---- */
+.sp-bi-chart{height:260px;margin-bottom:10px}
+.sp-bi-legend{display:flex;flex-wrap:wrap;gap:12px}
+.sp-bi-legend span{display:inline-flex;align-items:center;gap:6px;font-size:11.5px;color:var(--sp-muted)}
+.sp-bi-legend i{width:9px;height:9px;border-radius:2px;display:inline-block}
+
+.sp-bi-table{width:100%;border-collapse:collapse;font-size:13px}
+.sp-bi-table th{text-align:left;color:var(--sp-muted);font-size:11px;text-transform:uppercase;
+  letter-spacing:.04em;padding:8px 6px;border-bottom:1px solid var(--sp-line)}
+.sp-bi-table td{padding:8px 6px;border-bottom:1px solid var(--sp-line-2);color:var(--sp-ink)}
+.sp-bi-table tr.ai td:first-child{font-weight:600}
+
+/* ---- landing pages ---- */
+.sp-bi-pages{display:flex;flex-direction:column;gap:10px}
+.sp-bi-page{border:1px solid var(--sp-line);border-radius:var(--sp-r-s);padding:12px}
+.sp-bi-page.pri-high{border-color:var(--sp-violet-d)}
+.sp-bi-page-top{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}
+.sp-bi-page-top a{color:var(--sp-ink);font-weight:600;font-size:13.5px;text-decoration:none;
+  word-break:break-all}
+.sp-bi-page-top a:hover{color:var(--sp-primary)}
+.sp-bi-pri{font-size:10.5px;font-weight:600;padding:3px 9px;border-radius:var(--sp-r-pill);flex:none}
+.sp-bi-pri.pri-high{background:var(--sp-t-violet);color:var(--sp-violet-d)}
+.sp-bi-pri.pri-medium{background:var(--sp-t-lav);color:var(--sp-lav-d)}
+.sp-bi-pri.pri-low{background:var(--sp-t-cyan);color:var(--sp-cyan-d)}
+.sp-bi-pri.pri-unknown{background:var(--sp-t-grey);color:var(--sp-muted)}
+.sp-bi-page-stats{display:flex;flex-wrap:wrap;gap:12px;font-size:12px;color:var(--sp-muted);margin:8px 0}
+.sp-bi-page-rec{font-size:13px;color:var(--sp-ink-2);margin:6px 0 2px}
+.sp-bi-page-reason{font-size:11.5px;color:var(--sp-muted);margin:0}
+.sp-bi-page-link{display:inline-block;margin-top:6px;font-size:12px;color:var(--sp-primary);
+  text-decoration:none;font-weight:500}
+.sp-bi-page-link:hover{text-decoration:underline}

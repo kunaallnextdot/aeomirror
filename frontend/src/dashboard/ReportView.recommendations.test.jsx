@@ -79,7 +79,7 @@ describe("ReportView recommendations — server-side gating", () => {
     // API response at all (this is what the backend test in test_gating_cleanup.py
     // verifies never leaves the server; here we only confirm the UI renders no more
     // than what it was given).
-    expect(document.querySelectorAll(".au-rep-card").length).toBe(2);
+    expect(document.querySelectorAll(".sp-rep-card").length).toBe(2);
   });
 
   it("paid/unlocked: shows every recommendation with no lock affordance", async () => {
@@ -98,6 +98,38 @@ describe("ReportView recommendations — server-side gating", () => {
     expect(screen.getByText(/3\. Improve internal linking/)).toBeTruthy();
     expect(screen.queryByText(/more fixes found/)).toBeNull();
     expect(screen.queryByText(/Unlock complete diagnosis/i)).toBeNull();
+  });
+
+  it("shows confidence and the affected page URL when the server provides them", async () => {
+    getReport.mockResolvedValue({
+      ...BASE_REPORT,
+      recommendations: [REC("schema", "Add structured data", "schema", {
+        confidence: "high", url: "https://example.com/pricing",
+      })],
+      recommendation_count: 1,
+    });
+    getReportAccess.mockResolvedValue({ unlocked: true });
+
+    render(<MemoryRouter><ReportView scanId="s1" /></MemoryRouter>);
+
+    await waitFor(() => expect(screen.getByText(/1\. Add structured data/)).toBeTruthy());
+    screen.getByText(/confidence:/i);
+    expect(screen.getByRole("link", { name: "https://example.com/pricing" }).getAttribute("href"))
+      .toBe("https://example.com/pricing");
+  });
+
+  it("never shows an affected-page URL when the server didn't provide one (a bulk-scan recommendation)", async () => {
+    getReport.mockResolvedValue({
+      ...BASE_REPORT,
+      recommendations: [REC("schema", "Add structured data", "schema", { url: null })],
+      recommendation_count: 1,
+    });
+    getReportAccess.mockResolvedValue({ unlocked: true });
+
+    render(<MemoryRouter><ReportView scanId="s1" /></MemoryRouter>);
+
+    await waitFor(() => expect(screen.getByText(/1\. Add structured data/)).toBeTruthy());
+    expect(screen.queryByText(/affected page/i)).toBeNull();
   });
 
   it("shows a real Evidence step (the signal's own issue strings + evidence dict) on each expanded recommendation", async () => {

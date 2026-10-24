@@ -21,12 +21,12 @@ describe("PublicReport — global shell/footer structure", () => {
     render(<PublicReport token="tok1" />);
     await waitFor(() => expect(screen.getByTestId("report-body")).toBeTruthy());
 
-    const footers = document.querySelectorAll("footer.au-pub-foot");
+    const footers = document.querySelectorAll("footer.sp-pub-foot");
     expect(footers.length).toBe(1);
 
-    const shell = document.querySelector(".au-pub");
-    const main = shell.querySelector(":scope > main.au-pub-main");
-    const footer = shell.querySelector(":scope > footer.au-pub-foot");
+    const shell = document.querySelector(".sp-pub");
+    const main = shell.querySelector(":scope > main.sp-pub-main");
+    const footer = shell.querySelector(":scope > footer.sp-pub-foot");
     expect(main).toBeTruthy();
     expect(footer).toBeTruthy();
     expect(main.compareDocumentPosition(footer) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();

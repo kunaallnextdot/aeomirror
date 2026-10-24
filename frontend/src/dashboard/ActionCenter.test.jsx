@@ -71,8 +71,8 @@ describe("ActionCenter", () => {
     ]));
     renderAC();
     await waitFor(() => expect(screen.getByText("Your latest scan found 4 problems to fix.")).toBeTruthy());
-    const tiles = Object.fromEntries(Array.from(document.querySelectorAll(".au-ac-count"))
-      .map((el) => [el.querySelector(".au-ac-count-l").textContent, el.querySelector(".au-ac-count-n").textContent]));
+    const tiles = Object.fromEntries(Array.from(document.querySelectorAll(".sp-ac-count"))
+      .map((el) => [el.querySelector(".sp-ac-count-l").textContent, el.querySelector(".sp-ac-count-n").textContent]));
     expect(tiles).toEqual({ Critical: "1", High: "2", Medium: "1" });
     expect(tiles.Low).toBeUndefined();   // zero-count priorities are hidden, not shown as "0"
   });
@@ -84,7 +84,7 @@ describe("ActionCenter", () => {
     ]));
     renderAC();
     await waitFor(() => expect(screen.getByText("Fix first")).toBeTruthy());
-    const titles = Array.from(document.querySelectorAll(".au-ac-card-t")).map((n) => n.textContent);
+    const titles = Array.from(document.querySelectorAll(".sp-ac-card-t")).map((n) => n.textContent);
     expect(titles).toEqual(["Fix first", "Fix second"]);
   });
 
@@ -147,16 +147,16 @@ describe("ActionCenter", () => {
     getReport.mockResolvedValue(REPORT(recs));
     renderAC();
     await waitFor(() => expect(screen.getByText("Fix r0")).toBeTruthy());   // critical item always visible
-    expect(document.querySelectorAll(".au-ac-card").length).toBe(6);
+    expect(document.querySelectorAll(".sp-ac-card").length).toBe(6);
     fireEvent.click(screen.getByText("View all 9 actions"));
-    expect(document.querySelectorAll(".au-ac-card").length).toBe(9);
+    expect(document.querySelectorAll(".sp-ac-card").length).toBe(9);
   });
 
   it("accessibility: card toggle and 'View all' expose aria-expanded / are keyboard-operable buttons", async () => {
     getReport.mockResolvedValue(REPORT([REC("schema")]));
     renderAC();
     await waitFor(() => expect(screen.getByText("Fix schema")).toBeTruthy());
-    const head = screen.getByText("Fix schema").closest(".au-ac-card-h");
+    const head = screen.getByText("Fix schema").closest(".sp-ac-card-h");
     expect(head.getAttribute("aria-expanded")).toBe("false");
     fireEvent.click(head);
     expect(head.getAttribute("aria-expanded")).toBe("true");
@@ -234,7 +234,7 @@ describe("ActionCenter V2 — AI Visibility / Content Intelligence / Technical S
     await waitFor(() => expect(screen.getByText("Potential cannibalization")).toBeTruthy());
     expect(screen.getByText("Content Intelligence")).toBeTruthy();
     fireEvent.click(screen.getByText("See fix"));
-    const card = screen.getByText("Potential cannibalization").closest(".au-ac-card");
+    const card = screen.getByText("Potential cannibalization").closest(".sp-ac-card");
     // the real evidence line appears both as the problem statement (Phase H fix —
     // never the fix-flavored recommendation text) and in the full evidence list
     expect(within(card).getAllByText(/78% \(word-trigram overlap\)/).length).toBeGreaterThanOrEqual(2);
@@ -270,8 +270,8 @@ describe("ActionCenter V2 — AI Visibility / Content Intelligence / Technical S
     renderAC();
     await waitFor(() => expect(screen.getByText("Near-duplicate content")).toBeTruthy());
     fireEvent.click(screen.getByText("See fix"));
-    const card = screen.getByText("Near-duplicate content").closest(".au-ac-card");
-    expect(within(card).queryByText("", { selector: ".au-ac-problem" })).toBeNull();
+    const card = screen.getByText("Near-duplicate content").closest(".sp-ac-card");
+    expect(within(card).queryByText("", { selector: ".sp-ac-problem" })).toBeNull();
     expect(within(card).getByText(/Strong signal/)).toBeTruthy();
   });
 
@@ -287,7 +287,7 @@ describe("ActionCenter V2 — AI Visibility / Content Intelligence / Technical S
     });
     renderAC();
     await waitFor(() => expect(screen.getByText("1 URL returns 5xx")).toBeTruthy());
-    const titles = Array.from(document.querySelectorAll(".au-ac-card-t")).map((n) => n.textContent);
+    const titles = Array.from(document.querySelectorAll(".sp-ac-card-t")).map((n) => n.textContent);
     // Critical (Technical SEO) first, then the two Medium items (Recommendations
     // before AI Visibility per the documented source tie-break)
     expect(titles).toEqual(["1 URL returns 5xx", "Fix content", "2 questions have insufficient supporting evidence"]);
@@ -330,7 +330,7 @@ describe("ActionCenter V2 — AI Visibility / Content Intelligence / Technical S
     expect(screen.queryByText("Fix schema")).toBeNull();
     fireEvent.click(screen.getByText("1 verified fixed"));
     await waitFor(() => expect(screen.getByText("Fix schema")).toBeTruthy());
-    const head = screen.getByText("Fix schema").closest(".au-ac-card-h");
+    const head = screen.getByText("Fix schema").closest(".sp-ac-card-h");
     expect(within(head).getByText("Verified")).toBeTruthy();
   });
 
@@ -340,7 +340,7 @@ describe("ActionCenter V2 — AI Visibility / Content Intelligence / Technical S
     getVerifications.mockResolvedValue({ verifications: [] });   // override the prior test's mock
     renderAC();
     await waitFor(() => expect(screen.getByText("Fix schema")).toBeTruthy());
-    const head = screen.getByText("Fix schema").closest(".au-ac-card-h");
+    const head = screen.getByText("Fix schema").closest(".sp-ac-card-h");
     expect(within(head).queryByText("Verified")).toBeNull();
   });
 
@@ -392,7 +392,7 @@ describe("ActionCenter V2 — AI Visibility / Content Intelligence / Technical S
       // "partially_improved" is not "verified" -> stays an ACTIVE item, badge says so truthfully.
       await waitFor(() => expect(screen.getByText("Fix schema")).toBeTruthy());
       expect(screen.getByText("Your latest scan found 1 problem to fix.")).toBeTruthy();
-      const head = screen.getByText("Fix schema").closest(".au-ac-card-h");
+      const head = screen.getByText("Fix schema").closest(".sp-ac-card-h");
       expect(within(head).getByText("Partially improved")).toBeTruthy();
       expect(within(head).queryByText("Verified")).toBeNull();
     });
@@ -429,7 +429,7 @@ describe("ActionCenter V3 — Schema / Entity / Internal Linking / Crawl Graph",
     await waitFor(() => expect(screen.getByText("Missing FAQPage schema")).toBeTruthy());
     expect(screen.getByText("Schema Intelligence")).toBeTruthy();
     fireEvent.click(screen.getByText("See fix"));
-    const card = screen.getByText("Missing FAQPage schema").closest(".au-ac-card");
+    const card = screen.getByText("Missing FAQPage schema").closest(".sp-ac-card");
     expect(within(card).getByText("Why it matters")).toBeTruthy();
     expect(within(card).getByText(/maps your content directly onto how people ask/)).toBeTruthy();
     const link = within(card).getByText(/Review schema/).closest("a");
@@ -455,7 +455,7 @@ describe("ActionCenter V3 — Schema / Entity / Internal Linking / Crawl Graph",
     renderAC();
     await waitFor(() => expect(screen.getByText("2 entity signals missing")).toBeTruthy());
     expect(screen.getByText("Entity Intelligence")).toBeTruthy();
-    expect(document.querySelectorAll(".au-ac-card-t").length).toBe(1);
+    expect(document.querySelectorAll(".sp-ac-card-t").length).toBe(1);
   });
 
   it("a genuine internal-linking issue from phase4.links appears as an action", async () => {
@@ -498,7 +498,7 @@ describe("ActionCenter V3 — Schema / Entity / Internal Linking / Crawl Graph",
     expect(screen.getByText("Crawl Graph")).toBeTruthy();
     expect(screen.getByText("2 crawled pages have zero inbound internal links")).toBeTruthy();
     fireEvent.click(screen.getByText("See fix"));
-    const card = screen.getByText("Orphan pages detected").closest(".au-ac-card");
+    const card = screen.getByText("Orphan pages detected").closest(".sp-ac-card");
     expect(within(card).queryByText(/Verify after re-scan/)).toBeNull();
   });
 
@@ -531,10 +531,10 @@ describe("ActionCenter V3 — Schema / Entity / Internal Linking / Crawl Graph",
     }] });
     renderAC();
     await waitFor(() => expect(screen.getByText("Missing FAQPage schema")).toBeTruthy());
-    const head = screen.getByText("Missing FAQPage schema").closest(".au-ac-card-h");
+    const head = screen.getByText("Missing FAQPage schema").closest(".sp-ac-card-h");
     expect(within(head).getByText("Partially improved")).toBeTruthy();
     fireEvent.click(screen.getByText("See fix"));
-    const card = screen.getByText("Missing FAQPage schema").closest(".au-ac-card");
+    const card = screen.getByText("Missing FAQPage schema").closest(".sp-ac-card");
     expect(within(card).getByText(/Verify after re-scan/)).toBeTruthy();
   });
 
@@ -555,7 +555,7 @@ describe("ActionCenter V3 — Schema / Entity / Internal Linking / Crawl Graph",
     }));
     renderAC();
     await waitFor(() => expect(screen.getByText("Orphan pages detected")).toBeTruthy());
-    const titles = Array.from(document.querySelectorAll(".au-ac-card-t")).map((n) => n.textContent);
+    const titles = Array.from(document.querySelectorAll(".sp-ac-card-t")).map((n) => n.textContent);
     expect(titles).toEqual(["Orphan pages detected", "Missing FAQPage schema", "Fix a"]);
     expect(getReport.mock.calls.length - reportCallsBefore).toBe(1);
     expect(getReportAnswerSimulation.mock.calls.length - simCallsBefore).toBe(1);
@@ -575,7 +575,7 @@ describe("ActionCenter V3 — Schema / Entity / Internal Linking / Crawl Graph",
     renderAC();
     await waitFor(() => expect(screen.getByText("Fix schema")).toBeTruthy());
     expect(screen.queryByText("Missing FAQPage schema")).toBeNull();
-    expect(document.querySelectorAll(".au-ac-card").length).toBe(1);
+    expect(document.querySelectorAll(".sp-ac-card").length).toBe(1);
   });
 
   it("a real unanswered-question gap from phase4.questions appears as a Low-priority informational action, never offers Verify", async () => {
@@ -595,7 +595,7 @@ describe("ActionCenter V3 — Schema / Entity / Internal Linking / Crawl Graph",
     await waitFor(() => expect(screen.getByText("1 question found with no direct answer captured")).toBeTruthy());
     expect(screen.getByText("Question Opportunities")).toBeTruthy();
     fireEvent.click(screen.getByText("See fix"));
-    const card = screen.getByText("1 question found with no direct answer captured").closest(".au-ac-card");
+    const card = screen.getByText("1 question found with no direct answer captured").closest(".sp-ac-card");
     expect(within(card).getByText(/How much does it cost/)).toBeTruthy();
     expect(within(card).queryByText(/Verify after re-scan/)).toBeNull();
   });
@@ -617,7 +617,7 @@ describe("ActionCenter V3 — Schema / Entity / Internal Linking / Crawl Graph",
     expect(screen.queryByText(/no direct answer captured/)).toBeNull();
   });
 
-  it("the locked-count banner aggregates locked issues across every source Action Center renders, not just locked recommendations", async () => {
+  it("the locked-count banner aggregates locked issues across every source Action Center renders, including url_intelligence", async () => {
     getReportAnswerSimulation.mockResolvedValue({ available: false, reason: "no_monitor" });
     const { getVerifications } = await import("../api.js");
     getVerifications.mockResolvedValue({ verifications: [] });
@@ -625,9 +625,54 @@ describe("ActionCenter V3 — Schema / Entity / Internal Linking / Crawl Graph",
       locked_recommendation_count: 2,
       technical_seo: { available: true, issues: [], locked_issue_count: 3 },
       content_intelligence: { available: true, clusters: [], thin_pages: [], locked_cluster_count: 1 },
+      url_intelligence: { available: true, findings: [], locked_finding_count: 2 },
     }));
     renderAC();
     await waitFor(() => expect(screen.getByText("Fix a")).toBeTruthy());
-    expect(screen.getByText(/6 more problems found/)).toBeTruthy();
+    expect(screen.getByText(/8 more problems found/)).toBeTruthy();
+  });
+
+  it("surfaces real URL Intelligence Engine findings in the SAME unified list — connecting the previously-standalone crawler", async () => {
+    getReportAnswerSimulation.mockResolvedValue({ available: false, reason: "no_monitor" });
+    const { getVerifications } = await import("../api.js");
+    getVerifications.mockResolvedValue({ verifications: [] });
+    getReport.mockResolvedValue(REPORT([], {
+      url_intelligence: {
+        available: true, monitor_id: "mon1", findings: [{
+          id: "f1", url: "https://acme.example/pricing", affected_url_count: 2,
+          page_type: "pricing", finding_title: "Missing structured data", category: "structured_data",
+          why_it_matters: "AI assistants rely on structured data.",
+          recommended_fix: "Add Product schema.", priority: "high", confidence: "high",
+          status: "open", verification_status: null,
+        }],
+      },
+    }));
+    renderAC();
+    await waitFor(() => expect(screen.getAllByText("Missing structured data").length).toBeGreaterThan(0));
+    expect(screen.getByText("Site Crawl Intelligence")).toBeTruthy();
+  });
+
+  it("flags (never hides) an overlap when Technical SEO and URL Intelligence findings share an affected URL", async () => {
+    getReportAnswerSimulation.mockResolvedValue({ available: false, reason: "no_monitor" });
+    const { getVerifications } = await import("../api.js");
+    getVerifications.mockResolvedValue({ verifications: [] });
+    getReport.mockResolvedValue(REPORT([], {
+      technical_seo: { available: true, issues: [
+        { code: "ERROR_4XX", severity: "High", affected_urls: ["https://acme.example/pricing"], label: "1 URL returns 4xx" },
+      ] },
+      url_intelligence: {
+        available: true, monitor_id: "mon1", findings: [{
+          id: "f1", url: "https://acme.example/pricing", affected_url_count: 1,
+          page_type: "pricing", finding_title: "Missing structured data", category: "structured_data",
+          priority: "high", confidence: "high", status: "open", verification_status: null,
+        }],
+      },
+    }));
+    renderAC();
+    await waitFor(() => expect(screen.getAllByText("Missing structured data").length).toBeGreaterThan(0));
+    // Both items (technical_seo AND url_intelligence) cross-reference each other.
+    expect(screen.getAllByText(/also flagged on this page by/i).length).toBe(2);
+    // Neither item is hidden — overlap is informational only.
+    expect(screen.getByText("1 URL returns 4xx")).toBeTruthy();
   });
 });

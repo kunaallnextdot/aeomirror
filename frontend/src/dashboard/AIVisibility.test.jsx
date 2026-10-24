@@ -132,7 +132,7 @@ describe("AIVisibilityView opportunity grouping (redundancy cleanup)", () => {
 
   it("ungrouped opportunities render with no root-cause label or toggle", () => {
     render(<AIVisibilityView data={GROUPED} />);
-    const card = screen.getByText("Not mentioned in AI answers for a tracked query").closest(".au-av-opp");
+    const card = screen.getByText("Not mentioned in AI answers for a tracked query").closest(".sp-av-opp");
     expect(card.textContent).not.toMatch(/Root cause:/);
     expect(card.textContent).not.toMatch(/supporting evidence/);
   });

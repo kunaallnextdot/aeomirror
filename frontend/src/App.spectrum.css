@@ -1,0 +1,242 @@
+/* Spectrum landing (migration Phase 5, screen 1 of 10) — public marketing chrome + hero +
+   single-page free scanner + the signed-in Bulk tab. Token-for-token port of
+   App.aurora.css's structure onto `--sp-*` (same layout/mechanics, new palette); the Aurora
+   version is LEFT INTACT and still used by nothing after this edit swaps the landing JSX
+   onto `sp-` classes — see App.jsx for which. Every class is `sp-`-prefixed.
+
+   No red/amber/green anywhere (Phase 1 constraint). Semantic reuse, consistent with every
+   prior phase: positive/success -> blue (primary), attention/warning -> lav, negative/error
+   -> violet ("needs-work"). This is the SAME mapping Phase 3's EngineCard "no" status and
+   Phase 4's gap chip already used without objection, now extended to the scan-error banner,
+   the quota-gate banner and the bulk-over-limit count — flagged in the handoff report in
+   case a true "this failed" banner should read differently from a generic status tag. */
+
+.sp-site{background:var(--sp-page);color:var(--sp-ink);font-family:var(--sp-font-body);
+  font-size:15px;line-height:1.5;min-height:100vh;display:flex;flex-direction:column}
+.sp-site *{box-sizing:border-box}
+.sp-site-content{flex:1 0 auto}
+
+/* ---------- top bar ---------- */
+.sp-topbar{flex:none;position:sticky;top:0;z-index:40;display:flex;justify-content:space-between;align-items:center;
+  padding:12px 22px;background:rgba(255,255,255,.68);backdrop-filter:blur(18px);border-bottom:1px solid var(--sp-line)}
+.sp-topbar-brand{display:flex;align-items:center;cursor:pointer}
+.sp-topbar-actions{display:flex;align-items:center;gap:10px}
+.sp-tb-btn{display:inline-flex;align-items:center;gap:7px;background:transparent;border:1px solid var(--sp-line);
+  color:var(--sp-ink-2);padding:8px 14px;border-radius:var(--sp-r-s);font-size:13px;font-weight:500;cursor:pointer;
+  font-family:inherit;transition:border-color .15s,color .15s}
+.sp-tb-btn:hover{border-color:var(--sp-primary);color:var(--sp-primary)}
+.sp-tb-btn:focus-visible{outline:2px solid var(--sp-primary);outline-offset:2px}
+.sp-tb-primary{background:var(--sp-grad);color:#fff;border-color:transparent;font-weight:600}
+.sp-tb-primary:hover{color:#fff;border-color:transparent;box-shadow:0 8px 18px rgba(27,92,245,.26)}
+.sp-tb-link{border-color:transparent;color:var(--sp-muted)}
+.sp-tb-link:hover{border-color:transparent;color:var(--sp-ink)}
+.sp-tb-avatar{background:none;border:none;cursor:pointer;padding:0;display:flex}
+.sp-tb-avatar:focus-visible{outline:2px solid var(--sp-primary);outline-offset:2px}
+
+/* ---------- site footer ---------- */
+.sp-site-footer{flex:none;border-top:1px solid var(--sp-line);background:var(--sp-solid);margin-top:40px}
+.sp-footer-inner{max-width:1080px;margin:0 auto;padding:34px 24px 26px;display:flex;justify-content:space-between;gap:32px;flex-wrap:wrap}
+.sp-footer-brand{max-width:360px}
+.sp-footer-tag{color:var(--sp-muted);font-size:13px;line-height:1.55;margin:10px 0 0}
+.sp-footer-help{display:flex;flex-direction:column;gap:10px;align-items:flex-start}
+.sp-footer-help-h{display:flex;align-items:center;gap:8px;font-weight:600;font-size:14px;color:var(--sp-ink);font-family:var(--sp-font-heading)}
+.sp-footer-help-h svg{color:var(--sp-primary)}
+.sp-footer-mail{display:inline-flex;align-items:center;gap:7px;color:var(--sp-muted);text-decoration:none;font-size:13.5px}
+.sp-footer-mail:hover{color:var(--sp-primary)}
+.sp-footer-cta{display:inline-flex;align-items:center;gap:7px;background:var(--sp-grad);color:#fff;border:none;
+  padding:9px 15px;border-radius:var(--sp-r-s);font-weight:600;font-size:13px;cursor:pointer;font-family:inherit}
+.sp-footer-cta:hover{box-shadow:0 8px 18px rgba(27,92,245,.26)}
+.sp-footer-cta:focus-visible,.sp-tb-primary:focus-visible{outline:2px solid var(--sp-primary);outline-offset:2px}
+.sp-footer-bottom{border-top:1px solid var(--sp-line);color:var(--sp-muted);font-size:12px;text-align:center;padding:16px 24px;
+  display:flex;flex-wrap:wrap;align-items:center;justify-content:center;gap:4px 14px}
+.sp-footer-legal{display:inline-flex;gap:14px}
+.sp-footer-legal button{background:none;border:none;padding:0;color:var(--sp-muted);font-size:12px;font-family:inherit;
+  cursor:pointer;text-decoration:none}
+.sp-footer-legal button:hover{color:var(--sp-primary);text-decoration:underline}
+.sp-footer-legal button:focus-visible{outline:2px solid var(--sp-primary);outline-offset:2px}
+
+/* ---------- marketing hero (Shell supplies the ambient cyan/indigo blobs behind this) ---------- */
+.sp-mkt{max-width:1080px;margin:0 auto;padding:56px 24px 80px;position:relative;z-index:0}
+.sp-mkt-hero{position:relative;z-index:1}
+.sp-eyebrow{display:inline-flex;align-items:center;gap:7px;color:var(--sp-primary);font-family:var(--sp-font-numeric);
+  font-size:11px;letter-spacing:.12em;margin-bottom:22px;border:1px solid var(--sp-line);padding:5px 11px;border-radius:var(--sp-r-pill)}
+.sp-mkt-hero h1{font-family:var(--sp-font-heading);font-size:52px;line-height:1.03;font-weight:700;letter-spacing:-.02em;margin:0 0 20px;color:var(--sp-ink)}
+.sp-mkt-lede{color:var(--sp-muted);font-size:16.5px;line-height:1.55;max-width:640px;margin:0 0 34px}
+.sp-mkt-strip{position:relative;z-index:1;display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-top:52px;
+  padding-top:34px;border-top:1px solid var(--sp-line)}
+.sp-mkt-stat{color:var(--sp-muted);font-size:13px}
+.sp-mkt-stat .sp-stat-big{font-family:var(--sp-font-numeric);font-size:30px;color:var(--sp-ink);font-weight:600;margin-bottom:4px}
+
+/* ---------- scanner ---------- */
+.sp-scanner{max-width:720px}
+.sp-scan-input{display:flex;align-items:center;gap:10px;background:var(--sp-solid);
+  border:1px solid var(--sp-line);border-radius:14px;padding:8px 8px 8px 15px;box-shadow:var(--sp-sh-s);
+  transition:border-color .18s,box-shadow .18s}
+.sp-scan-input:focus-within{border-color:var(--sp-primary);box-shadow:0 0 0 3px rgba(27,92,245,.16)}
+.sp-scan-input input:focus-visible{outline:none}
+.sp-scan-globe{color:var(--sp-muted);flex:none;transition:color .18s}
+.sp-scan-input:focus-within .sp-scan-globe{color:var(--sp-primary)}
+.sp-scan-input input{flex:1;background:transparent;border:none;outline:none;color:var(--sp-ink);
+  font-size:15px;font-family:var(--sp-font-numeric);min-width:0}
+.sp-scan-input input::placeholder{color:var(--sp-muted)}
+.sp-scan-go{display:inline-flex;align-items:center;gap:7px;background:var(--sp-grad);color:#fff;
+  border:none;padding:10px 16px;border-radius:var(--sp-r-s);font-weight:600;font-size:13.5px;cursor:pointer;
+  white-space:nowrap;font-family:inherit;transition:transform .16s,box-shadow .16s}
+.sp-scan-go:hover:not(:disabled){transform:translateY(-1px);box-shadow:0 8px 18px rgba(27,92,245,.26)}
+.sp-scan-go:disabled{opacity:.7;cursor:default}
+.sp-scan-go:focus-visible{outline:2px solid var(--sp-primary);outline-offset:2px}
+.sp-scan-hint{color:var(--sp-muted);font-size:12px;margin-top:10px;line-height:1.5}
+.sp-scan-mode{display:inline-flex;gap:3px;margin-top:12px;padding:3px;border-radius:10px;background:rgba(11,16,36,.05)}
+.sp-scan-mode button{background:transparent;border:none;color:var(--sp-muted);padding:6px 13px;border-radius:8px;
+  font-size:12.5px;cursor:pointer;font-family:inherit;white-space:nowrap;transition:color .15s,background .15s}
+.sp-scan-mode button:hover{color:var(--sp-ink)}
+.sp-scan-mode button.on{background:var(--sp-solid);color:var(--sp-ink);font-weight:600;box-shadow:0 1px 3px rgba(11,16,36,.12)}
+.sp-scan-mode button:focus-visible{outline:2px solid var(--sp-primary);outline-offset:2px}
+/* error banner — reuses the "needs-work" violet pair (no red anywhere); aria-label on the
+   icon makes the severity explicit in text, not colour alone */
+.sp-scan-error{display:flex;align-items:center;gap:8px;margin-top:14px;padding:10px 12px;border:1px solid var(--sp-violet-d);
+  border-radius:var(--sp-r-s);background:var(--sp-t-violet);color:var(--sp-violet-d);font-size:12.5px}
+.sp-scan-error svg{flex:none}
+/* quota-gate banner — "attention" lav pair, distinct from the error pair above */
+.sp-scan-gate{border-color:var(--sp-lav-d);background:var(--sp-t-lav);color:var(--sp-lav-d)}
+.sp-scan-gate-up{margin-left:auto;display:inline-flex;align-items:center;gap:5px;background:var(--sp-lav-d);color:#fff;
+  border:none;padding:6px 12px;border-radius:7px;font-weight:600;font-size:12px;cursor:pointer;white-space:nowrap;font-family:inherit}
+.sp-scan-gate-up:focus-visible{outline:2px solid var(--sp-ink);outline-offset:2px}
+.sp-scan-progress{margin-top:22px}
+.sp-scan-line{position:relative;height:3px;border-radius:99px;background:rgba(11,16,36,.06);overflow:hidden}
+.sp-scan-line::after{content:"";position:absolute;top:0;bottom:0;left:0;width:38%;border-radius:99px;
+  background:var(--sp-grad);animation:sp-sweep 1.15s cubic-bezier(.45,0,.25,1) infinite}
+@keyframes sp-sweep{0%{transform:translateX(-105%)}100%{transform:translateX(320%)}}
+.sp-scan-steps{display:flex;gap:18px;margin-top:14px;color:var(--sp-muted);font-size:11px;flex-wrap:wrap;font-family:var(--sp-font-numeric)}
+.sp-scan-steps span{position:relative;padding-left:13px;opacity:.4;animation:sp-step 1.9s ease-in-out infinite}
+.sp-scan-steps span::before{content:"";position:absolute;left:0;top:50%;width:6px;height:6px;margin-top:-3px;
+  border-radius:50%;background:currentColor;transition:.3s}
+.sp-scan-steps span:nth-child(1){animation-delay:0s}
+.sp-scan-steps span:nth-child(2){animation-delay:.18s}
+.sp-scan-steps span:nth-child(3){animation-delay:.36s}
+.sp-scan-steps span:nth-child(4){animation-delay:.54s}
+.sp-scan-steps span:nth-child(5){animation-delay:.72s}
+@keyframes sp-step{0%,100%{opacity:.4;color:var(--sp-muted)}45%{opacity:1;color:var(--sp-primary)}}
+
+/* ---------- report card ---------- */
+.sp-report{margin-top:30px;border:1px solid var(--sp-line);border-radius:var(--sp-r-m);background:var(--sp-solid);padding:22px;box-shadow:var(--sp-sh-s)}
+.sp-report-top{display:flex;justify-content:space-between;align-items:center;gap:20px;flex-wrap:wrap}
+.sp-report-label{font-family:var(--sp-font-numeric);font-size:10px;letter-spacing:.14em;color:var(--sp-muted)}
+.sp-report-url{font-family:var(--sp-font-heading);font-size:22px;font-weight:700;margin:3px 0 8px;color:var(--sp-ink)}
+.sp-report-badge{font-family:var(--sp-font-numeric);font-size:11px;border:1px solid;padding:3px 9px;border-radius:var(--sp-r-pill);font-weight:600}
+.sp-report-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin:22px 0}
+.sp-report-cta{display:flex;justify-content:space-between;align-items:center;gap:16px;margin-top:20px;
+  padding:18px;border:1px solid var(--sp-primary);border-radius:12px;background:var(--sp-t-blue);flex-wrap:wrap}
+.sp-cta-title{font-family:var(--sp-font-heading);font-size:16px;font-weight:700;margin-bottom:4px;color:var(--sp-ink)}
+.sp-cta-sub{color:var(--sp-ink-2);font-size:13px;max-width:420px}
+.sp-cta-btn{display:inline-flex;align-items:center;gap:8px;background:var(--sp-grad);color:#fff;
+  border:none;padding:11px 18px;border-radius:var(--sp-r-s);font-weight:600;cursor:pointer;font-size:13.5px;
+  white-space:nowrap;font-family:inherit;transition:transform .16s,box-shadow .16s}
+.sp-cta-btn:hover{transform:translateY(-1px);box-shadow:0 8px 18px rgba(27,92,245,.26)}
+.sp-cta-btn:focus-visible{outline:2px solid var(--sp-ink);outline-offset:2px}
+.sp-report-cta-actions{display:flex;flex-direction:column;align-items:flex-end;gap:8px}
+.sp-cta-link{display:inline-flex;align-items:center;gap:6px;background:none;border:none;color:var(--sp-primary);
+  cursor:pointer;font-size:12.5px;font-weight:500;padding:0;font-family:inherit}
+.sp-cta-link:hover{text-decoration:underline}
+.sp-cta-link:disabled{opacity:.6;cursor:default;text-decoration:none}
+.sp-cta-link:focus-visible{outline:2px solid var(--sp-primary);outline-offset:2px}
+
+/* ---------- gauge — half-circle score dial (own SVG arc math, unchanged; colour only) ---------- */
+.sp-gauge{position:relative;text-align:center;flex:none}
+.sp-gauge-track{fill:none;stroke:var(--sp-line);stroke-width:12;stroke-linecap:round}
+.sp-gauge-val{fill:none;stroke-width:12;stroke-linecap:round;transition:all .9s cubic-bezier(.2,.7,.2,1)}
+.sp-gauge-tick{fill:var(--sp-muted);font-size:9px;font-family:var(--sp-font-numeric)}
+.sp-gauge-center{position:absolute;top:46%;left:0;right:0;transform:translateY(-50%)}
+.sp-gauge-num{font-family:var(--sp-font-heading);font-size:46px;font-weight:700;line-height:1}
+.sp-gauge-den{color:var(--sp-muted);font-size:12px;font-family:var(--sp-font-numeric);margin-top:2px}
+.sp-gauge-label{color:var(--sp-muted);font-size:12px;margin-top:2px;letter-spacing:.02em}
+
+/* ---------- panels (inside report) ---------- */
+.sp-mkt-panel{border:1px solid var(--sp-line);border-radius:12px;padding:16px;background:var(--sp-glass)}
+.sp-mkt-panel-h{font-size:13px;font-weight:700;margin-bottom:14px;display:flex;gap:8px;align-items:baseline;color:var(--sp-ink);font-family:var(--sp-font-heading)}
+.sp-mkt-panel-sub{color:var(--sp-muted);font-size:11px;font-weight:400;font-family:var(--sp-font-body)}
+
+/* ---------- signal bars ---------- */
+.sp-fam{display:flex;flex-direction:column;gap:11px}
+.sp-fam-row{display:grid;grid-template-columns:120px 1fr 54px;align-items:center;gap:12px}
+.sp-fam-label{font-size:12.5px;color:var(--sp-ink-2)}
+.sp-fam-track{height:7px;background:var(--sp-line);border-radius:4px;overflow:hidden}
+.sp-fam-fill{height:100%;border-radius:4px;transition:width .8s ease}
+.sp-fam-num{font-family:var(--sp-font-numeric);font-size:12px;text-align:right;color:var(--sp-ink)}
+.sp-fam-den{color:var(--sp-muted)}
+
+/* ---------- crawler strip ---------- */
+.sp-strip{border:1px solid var(--sp-line);border-radius:12px;padding:16px;background:var(--sp-glass)}
+.sp-strip-head{display:flex;flex-direction:column;margin-bottom:14px}
+.sp-strip-head>span:first-child{font-size:13px;font-weight:700;color:var(--sp-ink)}
+.sp-strip-sub{color:var(--sp-muted);font-size:11px;margin-top:2px}
+.sp-strip-rows{display:flex;flex-direction:column;gap:10px}
+.sp-strip-row{display:grid;grid-template-columns:34px 1fr auto;align-items:center;gap:12px}
+.sp-strip-bars{display:flex;align-items:flex-end;gap:3px;height:20px}
+.sp-strip-bars .sp-bar{width:4px;border-radius:1px;transition:background .4s}
+.sp-strip-n{font-size:12.5px;font-weight:500;color:var(--sp-ink)}
+.sp-strip-s{font-size:10.5px;color:var(--sp-muted)}
+.sp-strip-status{font-family:var(--sp-font-numeric);font-size:11.5px;font-weight:600}
+
+/* ---------- issues ---------- */
+.sp-issues{display:flex;flex-direction:column;gap:8px}
+.sp-issue{display:flex;align-items:center;gap:12px;padding:11px 12px;border:1px solid var(--sp-line);
+  border-radius:9px;background:var(--sp-solid)}
+.sp-issue-chip{font-family:var(--sp-font-numeric);font-size:9.5px;font-weight:700;border:1px solid;border-radius:5px;
+  padding:2px 6px;flex:none;width:44px;text-align:center}
+.sp-issue-body{flex:1;min-width:0}
+.sp-issue-label{font-size:13px;font-weight:500;color:var(--sp-ink)}
+.sp-issue-fam{color:var(--sp-muted);font-size:10.5px;font-weight:400;margin-left:7px}
+.sp-issue-fix{color:var(--sp-muted);font-size:11.5px;margin-top:3px;display:flex;align-items:center;gap:5px}
+.sp-issue-btn{display:inline-flex;align-items:center;gap:5px;background:var(--sp-glass);color:var(--sp-ink-2);
+  border:1px solid var(--sp-line);padding:6px 11px;border-radius:7px;font-size:12px;cursor:pointer;flex:none;font-weight:500;font-family:inherit}
+.sp-issue-btn.locked{color:var(--sp-muted)}
+.sp-issue.expandable{display:block;padding:0;overflow:hidden}
+.sp-issue-main{width:100%;display:flex;align-items:center;gap:12px;padding:11px 12px;
+  background:transparent;border:none;color:var(--sp-ink);cursor:pointer;text-align:left;font-family:inherit}
+.sp-issue-main:hover,.sp-issue.expandable.open .sp-issue-main{background:var(--sp-glass)}
+.sp-issue-main:focus-visible{outline:2px solid var(--sp-primary);outline-offset:-2px}
+.sp-issue-chev{color:var(--sp-muted);flex:none;transition:transform .2s}
+.sp-issue-detail{padding:2px 12px 13px 12px;border-top:1px solid var(--sp-line);display:flex;flex-direction:column;gap:10px}
+.sp-issue-detail-finding{color:var(--sp-ink-2);font-size:12px;line-height:1.5;margin:10px 0 0}
+.sp-issue-detail-h{font-family:var(--sp-font-numeric);font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;
+  color:var(--sp-muted);display:flex;align-items:center;gap:6px;margin-bottom:5px}
+.sp-issue-detail-h svg{color:var(--sp-primary)}
+.sp-issue-detail-fix p{color:var(--sp-ink-2);font-size:12.5px;line-height:1.5;margin:0}
+.sp-issue-btn:focus-visible{outline:2px solid var(--sp-primary);outline-offset:2px}
+
+/* ---------- bulk scan panel (signed-in Bulk tab) ---------- */
+.sp-bulk{margin-top:14px;text-align:left}
+.sp-bulk-badge{display:inline-flex;align-items:center;gap:5px;margin-bottom:10px;font-size:11.5px;font-weight:600;
+  color:var(--sp-primary);background:var(--sp-t-blue);border:1px solid var(--sp-primary);border-radius:var(--sp-r-pill);padding:3px 10px}
+.sp-bulk-text{width:100%;box-sizing:border-box;background:var(--sp-solid);border:1px solid var(--sp-line);border-radius:10px;
+  color:var(--sp-ink);font-size:13px;font-family:var(--sp-font-numeric);padding:11px 13px;resize:vertical;line-height:1.6;outline:none}
+.sp-bulk-text:focus{border-color:var(--sp-primary);outline:2px solid var(--sp-primary);outline-offset:1px}
+.sp-bulk-drop{display:flex;align-items:center;gap:9px;margin-top:10px;padding:11px 13px;border:1px dashed var(--sp-line);
+  border-radius:10px;color:var(--sp-muted);font-size:12.5px;cursor:pointer;background:var(--sp-solid)}
+.sp-bulk-drop.over{border-color:var(--sp-primary);background:var(--sp-t-blue)}
+.sp-bulk-drop:focus-visible{outline:2px solid var(--sp-primary);outline-offset:2px}
+.sp-bulk-drop svg{flex:none;color:var(--sp-muted)}
+.sp-bulk-drop span{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sp-bulk-clear{background:none;border:none;color:var(--sp-muted);font-size:12px;cursor:pointer;text-decoration:underline;font-family:inherit}
+.sp-bulk-foot{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:12px}
+.sp-bulk-count{font-size:12px;color:var(--sp-muted);font-family:var(--sp-font-numeric)}
+.sp-bulk-count.over{color:var(--sp-lav-d)}
+.sp-bulk-skipped{margin-top:12px;border:1px solid var(--sp-line);border-radius:10px;padding:10px 12px;background:var(--sp-glass)}
+.sp-bulk-skipped-h{font-size:12px;font-weight:600;color:var(--sp-lav-d);margin-bottom:6px}
+.sp-bulk-skipped-row{display:flex;justify-content:space-between;gap:12px;font-size:11.5px;padding:2px 0}
+.sp-bulk-skipped-url{color:var(--sp-muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-family:var(--sp-font-numeric)}
+.sp-bulk-skipped-reason{color:var(--sp-muted);flex:none}
+
+/* ---------- avatar (TopBar) — reuses the Phase-3 .sp-avatar visual, image-or-initial ---------- */
+.sp-tb-avatar-img{width:30px;height:30px;border-radius:50%;object-fit:cover;display:block}
+
+@media(max-width:1000px){
+  .sp-report-grid{grid-template-columns:1fr}
+  .sp-mkt-hero h1{font-size:38px}
+  .sp-mkt-strip{grid-template-columns:1fr}
+}
+@media(max-width:390px){
+  .sp-mkt{padding:40px 16px 60px}
+  .sp-topbar{padding:10px 14px}
+}

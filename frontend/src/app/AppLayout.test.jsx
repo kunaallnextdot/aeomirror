@@ -12,7 +12,7 @@
    pixel-position assertions (jsdom does not apply the real stylesheet) — matched by
    static assertions against the actual shipped CSS rules for facts only the CSS itself
    can state. See GlobalLayout.css.test.js for the CSS-only checks shared across all
-   three app shells (.au-dash / .au-site / .au-pub). */
+   three app shells (.sp-dash / .sp-site / .sp-pub). */
 import React from "react";
 import { readFileSync } from "node:fs";
 import path from "node:path";
@@ -22,7 +22,7 @@ import { MemoryRouter, Routes, Route } from "react-router-dom";
 import { describe, it, expect, vi } from "vitest";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const CSS = readFileSync(path.join(__dirname, "AppLayout.aurora.css"), "utf8");
+const CSS = readFileSync(path.join(__dirname, "AppLayout.spectrum.css"), "utf8");
 
 vi.mock("../api.js", () => ({
   getDashboard: vi.fn(async () => ({})),
@@ -59,7 +59,7 @@ describe("AppLayout — global shell/footer structure", () => {
   it("renders the footer exactly once", async () => {
     renderShell();
     await waitFor(() => expect(screen.getByTestId("page-content")).toBeTruthy());
-    const footers = document.querySelectorAll("footer.au-dash-footer");
+    const footers = document.querySelectorAll("footer.sp-dash-footer");
     expect(footers.length).toBe(1);
   });
 
@@ -67,11 +67,11 @@ describe("AppLayout — global shell/footer structure", () => {
     renderShell();
     await waitFor(() => expect(screen.getByTestId("page-content")).toBeTruthy());
 
-    const main = document.querySelector("main.au-dash-main");
-    const side = document.querySelector("aside.au-dash-side");
+    const main = document.querySelector("main.sp-dash-main");
+    const side = document.querySelector("aside.sp-dash-side");
     expect(main).toBeTruthy();
-    const footer = main.querySelector(":scope > footer.au-dash-footer");
-    const content = main.querySelector(":scope > .au-dash-content");
+    const footer = main.querySelector(":scope > footer.sp-dash-footer");
+    const content = main.querySelector(":scope > .sp-dash-content");
     expect(footer).toBeTruthy();
     expect(content).toBeTruthy();
     // DOM order: content, then footer — plain flow, not a portal/overlay.
@@ -79,31 +79,48 @@ describe("AppLayout — global shell/footer structure", () => {
     // Content actually contains the page (footer never sits between/inside content).
     expect(within(content).getByTestId("page-content")).toBeTruthy();
     // The footer is not, and never was, a descendant of the sidebar.
-    expect(side.querySelector("footer.au-dash-footer")).toBeNull();
+    expect(side.querySelector("footer.sp-dash-footer")).toBeNull();
   });
 
   it("existing sidebar navigation still renders alongside the footer", async () => {
     renderShell();
     await waitFor(() => expect(screen.getByTestId("page-content")).toBeTruthy());
-    const nav = within(document.querySelector("nav.au-dash-nav"));
+    const nav = within(document.querySelector("nav.sp-dash-nav"));
     expect(nav.getByRole("link", { name: /Dashboard/ })).toBeTruthy();
     expect(nav.getByRole("link", { name: /Action Center/ })).toBeTruthy();
     expect(nav.getByRole("link", { name: /Monitoring/ })).toBeTruthy();
-    expect(document.querySelector("aside.au-dash-side")).toBeTruthy();
+    expect(document.querySelector("aside.sp-dash-side")).toBeTruthy();
+  });
+
+  it("the sidebar's brand logo links to the public homepage (/), accessibly", async () => {
+    renderShell();
+    await waitFor(() => expect(screen.getByTestId("page-content")).toBeTruthy());
+    const side = within(document.querySelector("aside.sp-dash-side"));
+    const brandLink = side.getByRole("link", { name: /Go to AEOMirror homepage/ });
+    expect(brandLink.getAttribute("href")).toBe("/");
+  });
+
+  it("the app-shell footer's brand logo links to the public homepage (/), separately from its tagline", async () => {
+    renderShell();
+    await waitFor(() => expect(screen.getByTestId("page-content")).toBeTruthy());
+    const footer = within(document.querySelector("footer.sp-dash-footer"));
+    const brandLink = footer.getByRole("link", { name: /Go to AEOMirror homepage/ });
+    expect(brandLink.getAttribute("href")).toBe("/");
+    expect(footer.getByText(/AI visibility and AEO intelligence/)).toBeTruthy();
   });
 
   it("the footer rule is never position:fixed or position:sticky in the shipped CSS", () => {
-    const block = CSS.match(/\.au-dash-footer\{[^}]*\}/)?.[0] || "";
+    const block = CSS.match(/\.sp-dash-footer\{[^}]*\}/)?.[0] || "";
     expect(block).toBeTruthy();
     expect(block).not.toMatch(/position\s*:\s*fixed/);
     expect(block).not.toMatch(/position\s*:\s*sticky/);
   });
 
   it("the content column can grow before the footer (flex:1 in the shipped CSS)", () => {
-    const shellBlock = CSS.match(/\.au-dash\{[^}]*\}/)?.[0] || "";
-    const mainBlock = CSS.match(/\.au-dash-main\{[^}]*\}/)?.[0] || "";
-    const contentBlock = CSS.match(/\.au-dash-content\{[^}]*\}/)?.[0] || "";
-    const footerBlock = CSS.match(/\.au-dash-footer\{[^}]*\}/)?.[0] || "";
+    const shellBlock = CSS.match(/\.sp-dash\{[^}]*\}/)?.[0] || "";
+    const mainBlock = CSS.match(/\.sp-dash-main\{[^}]*\}/)?.[0] || "";
+    const contentBlock = CSS.match(/\.sp-dash-content\{[^}]*\}/)?.[0] || "";
+    const footerBlock = CSS.match(/\.sp-dash-footer\{[^}]*\}/)?.[0] || "";
     // shell fills at least the viewport — a single page scroll grows it further
     expect(shellBlock).toMatch(/min-height\s*:\s*100vh/);
     // main column is a vertical flex container
@@ -115,7 +132,7 @@ describe("AppLayout — global shell/footer structure", () => {
   });
 
   it("the sidebar stays visible while scrolling (position:sticky), pinned to exactly one viewport — never stretched taller", () => {
-    const sideBlock = CSS.match(/\.au-dash-side\{[^}]*\}/)?.[0] || "";
+    const sideBlock = CSS.match(/\.sp-dash-side\{[^}]*\}/)?.[0] || "";
     expect(sideBlock).toMatch(/position\s*:\s*sticky/);
     expect(sideBlock).toMatch(/top\s*:\s*0/);
     expect(sideBlock).toMatch(/height\s*:\s*100vh/);
@@ -125,8 +142,8 @@ describe("AppLayout — global shell/footer structure", () => {
   });
 
   it("the sidebar has a bounded internal scroll as a safety net (never permanently hides content), and side-foot is pinned near its bottom", () => {
-    const sideBlock = CSS.match(/\.au-dash-side\{[^}]*\}/)?.[0] || "";
-    const sideFootBlock = CSS.match(/\.au-dash-side-foot\{[^}]*\}/)?.[0] || "";
+    const sideBlock = CSS.match(/\.sp-dash-side\{[^}]*\}/)?.[0] || "";
+    const sideFootBlock = CSS.match(/\.sp-dash-side-foot\{[^}]*\}/)?.[0] || "";
     expect(sideBlock).toMatch(/overflow-y\s*:\s*auto/);
     expect(sideFootBlock).toMatch(/margin-top\s*:\s*auto/);
   });
@@ -134,15 +151,15 @@ describe("AppLayout — global shell/footer structure", () => {
   it("the sidebar's own 'New scan' CTA is present in the DOM (not removed/hidden by the fix)", async () => {
     renderShell();
     await waitFor(() => expect(screen.getByTestId("page-content")).toBeTruthy());
-    const side = within(document.querySelector("aside.au-dash-side"));
+    const side = within(document.querySelector("aside.sp-dash-side"));
     expect(side.getByRole("button", { name: /New scan/ })).toBeTruthy();
   });
 
   it("mobile (<900px): the sidebar drops sticky/viewport-height and becomes a horizontal wrapping bar", () => {
     const mobileBlock = CSS.match(/@media\(max-width:900px\)\{[\s\S]*?\n\}/)?.[0] || "";
-    expect(mobileBlock).toMatch(/\.au-dash\{[^}]*grid-template-columns\s*:\s*1fr[^}]*\}/);
-    expect(mobileBlock).toMatch(/\.au-dash-side\{[^}]*position\s*:\s*static[^}]*\}/);
-    expect(mobileBlock).toMatch(/\.au-dash-side\{[^}]*flex-direction\s*:\s*row[^}]*\}/);
+    expect(mobileBlock).toMatch(/\.sp-dash\{[^}]*grid-template-columns\s*:\s*1fr[^}]*\}/);
+    expect(mobileBlock).toMatch(/\.sp-dash-side\{[^}]*position\s*:\s*static[^}]*\}/);
+    expect(mobileBlock).toMatch(/\.sp-dash-side\{[^}]*flex-direction\s*:\s*row[^}]*\}/);
   });
 
   it('"Recent Scans" is only active on the exact scans list — not on /app/scans/latest or a specific scan\'s detail page', async () => {
@@ -156,9 +173,73 @@ describe("AppLayout — global shell/footer structure", () => {
       </MemoryRouter>,
     );
     await waitFor(() => expect(screen.getByTestId("page-content")).toBeTruthy());
-    const nav = within(document.querySelector("nav.au-dash-nav"));
+    const nav = within(document.querySelector("nav.sp-dash-nav"));
     const recentScans = nav.getByRole("link", { name: /Recent Scans/ });
     expect(recentScans.className).not.toMatch(/\bon\b/);
+  });
+
+  it('"Scan Details" is active on a specific scan\'s detail page (/app/scans/:id) — "Recent Scans" is not, and only one item is highlighted', async () => {
+    render(
+      <MemoryRouter initialEntries={["/app/scans/ba191542-aff4-477d-bf1f-3a4d3a057d86"]}>
+        <Routes>
+          <Route path="/app" element={<AppLayout />}>
+            <Route path="scans/:scanId" element={<div data-testid="page-content">SCAN DETAILS</div>} />
+          </Route>
+        </Routes>
+      </MemoryRouter>,
+    );
+    await waitFor(() => expect(screen.getByTestId("page-content")).toBeTruthy());
+    const nav = within(document.querySelector("nav.sp-dash-nav"));
+    expect(nav.getByRole("link", { name: /Scan Details/ }).className).toMatch(/\bon\b/);
+    expect(nav.getByRole("link", { name: /Recent Scans/ }).className).not.toMatch(/\bon\b/);
+    expect(nav.getAllByRole("link").filter((a) => / on(?: |$)/.test(` ${a.className} `)).length).toBe(1);
+  });
+
+  it('"Scan Details" is also active on its own link\'s destination (/app/scans/latest)', async () => {
+    render(
+      <MemoryRouter initialEntries={["/app/scans/latest"]}>
+        <Routes>
+          <Route path="/app" element={<AppLayout />}>
+            <Route path="scans/latest" element={<div data-testid="page-content">LATEST SCAN</div>} />
+          </Route>
+        </Routes>
+      </MemoryRouter>,
+    );
+    await waitFor(() => expect(screen.getByTestId("page-content")).toBeTruthy());
+    const nav = within(document.querySelector("nav.sp-dash-nav"));
+    expect(nav.getByRole("link", { name: /Scan Details/ }).className).toMatch(/\bon\b/);
+    expect(nav.getByRole("link", { name: /Recent Scans/ }).className).not.toMatch(/\bon\b/);
+  });
+
+  it('"AI Business Impact" is active on /app/business-impact, and no other item is highlighted', async () => {
+    render(
+      <MemoryRouter initialEntries={["/app/business-impact"]}>
+        <Routes>
+          <Route path="/app" element={<AppLayout />}>
+            <Route path="business-impact" element={<div data-testid="page-content">BUSINESS IMPACT</div>} />
+          </Route>
+        </Routes>
+      </MemoryRouter>,
+    );
+    await waitFor(() => expect(screen.getByTestId("page-content")).toBeTruthy());
+    const nav = within(document.querySelector("nav.sp-dash-nav"));
+    expect(nav.getByRole("link", { name: /AI Business Impact/ }).className).toMatch(/\bon\b/);
+    expect(nav.getAllByRole("link").filter((a) => / on(?: |$)/.test(` ${a.className} `)).length).toBe(1);
+  });
+
+  it('"Action Center" is active on /app/action-center', async () => {
+    render(
+      <MemoryRouter initialEntries={["/app/action-center"]}>
+        <Routes>
+          <Route path="/app" element={<AppLayout />}>
+            <Route path="action-center" element={<div data-testid="page-content">ACTION CENTER</div>} />
+          </Route>
+        </Routes>
+      </MemoryRouter>,
+    );
+    await waitFor(() => expect(screen.getByTestId("page-content")).toBeTruthy());
+    const nav = within(document.querySelector("nav.sp-dash-nav"));
+    expect(nav.getByRole("link", { name: /Action Center/ }).className).toMatch(/\bon\b/);
   });
 
   it('"Recent Scans" is still active on its own exact list page (the `end` fix does not break the normal case)', async () => {
@@ -172,15 +253,60 @@ describe("AppLayout — global shell/footer structure", () => {
       </MemoryRouter>,
     );
     await waitFor(() => expect(screen.getByTestId("page-content")).toBeTruthy());
-    const nav = within(document.querySelector("nav.au-dash-nav"));
+    const nav = within(document.querySelector("nav.sp-dash-nav"));
     const recentScans = nav.getByRole("link", { name: /Recent Scans/ });
     expect(recentScans.className).toMatch(/\bon\b/);
+  });
+
+  it("'Monitoring' stays active on a nested dynamic monitor-detail route (/app/monitoring/:monitorId)", async () => {
+    render(
+      <MemoryRouter initialEntries={["/app/monitoring/mon-42"]}>
+        <Routes>
+          <Route path="/app" element={<AppLayout />}>
+            <Route path="monitoring/:monitorId" element={<div data-testid="page-content">MONITOR DETAIL</div>} />
+          </Route>
+        </Routes>
+      </MemoryRouter>,
+    );
+    await waitFor(() => expect(screen.getByTestId("page-content")).toBeTruthy());
+    const nav = within(document.querySelector("nav.sp-dash-nav"));
+    expect(nav.getByRole("link", { name: /Monitoring/ }).className).toMatch(/\bon\b/);
+  });
+
+  it("'Answer Tracking' stays active on a doubly-nested dynamic route (/app/answer-tracking/:monitorId/runs/:runId)", async () => {
+    render(
+      <MemoryRouter initialEntries={["/app/answer-tracking/mon-7/runs/run-99"]}>
+        <Routes>
+          <Route path="/app" element={<AppLayout />}>
+            <Route path="answer-tracking/:monitorId/runs/:runId" element={<div data-testid="page-content">RUN DETAIL</div>} />
+          </Route>
+        </Routes>
+      </MemoryRouter>,
+    );
+    await waitFor(() => expect(screen.getByTestId("page-content")).toBeTruthy());
+    const nav = within(document.querySelector("nav.sp-dash-nav"));
+    expect(nav.getByRole("link", { name: /Answer Tracking/ }).className).toMatch(/\bon\b/);
+  });
+
+  it("a trailing slash on the current path doesn't break active-state matching (/app/monitoring/)", async () => {
+    render(
+      <MemoryRouter initialEntries={["/app/monitoring/"]}>
+        <Routes>
+          <Route path="/app" element={<AppLayout />}>
+            <Route path="monitoring" element={<div data-testid="page-content">MONITORING</div>} />
+          </Route>
+        </Routes>
+      </MemoryRouter>,
+    );
+    await waitFor(() => expect(screen.getByTestId("page-content")).toBeTruthy());
+    const nav = within(document.querySelector("nav.sp-dash-nav"));
+    expect(nav.getByRole("link", { name: /Monitoring/ }).className).toMatch(/\bon\b/);
   });
 
   it("Phase K: 'View Report' opens the negative-first diagnosis (ReportView, /app/report), not the per-signal Scan Details breakdown", async () => {
     renderShell();
     await waitFor(() => expect(screen.getByTestId("page-content")).toBeTruthy());
-    const nav = within(document.querySelector("nav.au-dash-nav"));
+    const nav = within(document.querySelector("nav.sp-dash-nav"));
     const viewReport = nav.getByRole("link", { name: /View Report/ });
     expect(viewReport.getAttribute("href")).toBe("/app/report");
     // The old destination is still reachable — just honestly relabeled, never removed.

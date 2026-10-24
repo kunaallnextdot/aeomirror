@@ -1,0 +1,90 @@
+/* Spectrum styling for AI Traffic (/app/analytics/ai-traffic). Shared `sp-ga4-*`
+   classes, token-styled (reuses existing design tokens, no new palette). Port of
+   AiTraffic.aurora.css's `au-ga4-*` rules — the `au-gcm-*` (Google consent modal)
+   rules are NOT ported here: GoogleConsentModal.jsx is a separate, still-Aurora
+   component out of this migration's scope, and keeps reading AiTraffic.aurora.css
+   (still imported alongside this file) for its styling. */
+
+.sp-ga4-head h1{display:flex;align-items:center;gap:9px;font-family:var(--sp-font-heading);
+  font-size:20px;font-weight:700;color:var(--sp-ink);margin:0}
+.sp-ga4-sub{font-size:13px;color:var(--sp-muted);margin:6px 0 18px;max-width:640px;line-height:1.6}
+
+.sp-ga4-banner{padding:10px 14px;border-radius:var(--sp-r-m);font-size:13px;margin-bottom:14px}
+.sp-ga4-banner-ok{background:var(--sp-t-blue);color:var(--sp-blue-d)}
+.sp-ga4-banner-error{background:var(--sp-t-violet);color:var(--sp-violet-d)}
+
+.sp-ga4-card{background:var(--sp-solid);border:1px solid var(--sp-line);border-radius:var(--sp-r-m);
+  padding:18px;box-shadow:var(--sp-sh-s);margin-bottom:14px}
+.sp-ga4-card p{font-size:13.5px;color:var(--sp-ink);line-height:1.6;margin:8px 0 12px}
+
+.sp-ga4-toolbar{display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap}
+.sp-ga4-toolbar strong{font-size:15px;color:var(--sp-ink)}
+.sp-ga4-synced{font-family:var(--sp-font-numeric);font-size:11.5px;color:var(--sp-muted);margin-top:3px}
+.sp-ga4-actions{display:flex;gap:8px;flex-wrap:wrap}
+
+.sp-ga4-proplist{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px}
+.sp-ga4-proplist button{width:100%;text-align:left;padding:10px 12px;border:1px solid var(--sp-line);
+  border-radius:var(--sp-r-m);background:var(--sp-t-grey);font-size:13.5px;color:var(--sp-ink);cursor:pointer;
+  display:flex;align-items:center;justify-content:space-between;gap:10px;transition:border-color .15s}
+.sp-ga4-proplist button:hover{border-color:var(--sp-primary)}
+.sp-ga4-prop-account{font-size:11.5px;color:var(--sp-muted)}
+
+.sp-ga4-sources{list-style:none;margin:0;padding:0}
+.sp-ga4-sources li{display:flex;align-items:center;justify-content:space-between;
+  padding:9px 0;border-bottom:1px solid var(--sp-line-2);font-size:13.5px;color:var(--sp-ink)}
+.sp-ga4-sources li:last-child{border-bottom:0}
+.sp-ga4-sources strong{font-family:var(--sp-font-numeric);font-weight:500}
+
+.sp-ga4-note{display:flex;align-items:flex-start;gap:10px;background:var(--sp-t-grey)}
+.sp-ga4-note svg{flex:none;margin-top:2px;color:var(--sp-muted)}
+.sp-ga4-note p{margin:0;font-size:12.5px;color:var(--sp-muted)}
+
+/* ---------- Google consent modal (final-integration pass — GoogleConsentModal.jsx
+   had no CSS file of its own; its only source was this au-gcm-* block). No red here:
+   the error state reuses the needs-work violet pair, same as every other error in
+   this migration. ---------- */
+.sp-gcm-overlay{position:fixed;inset:0;background:rgba(11,16,36,.42);backdrop-filter:blur(4px);
+  z-index:100;display:flex;align-items:center;justify-content:center;padding:20px;overflow-y:auto}
+.sp-gcm-overlay :focus-visible{outline:2px solid var(--sp-primary);outline-offset:2px}
+.sp-gcm-modal{position:relative;background:var(--sp-solid);border:1px solid var(--sp-line);
+  border-radius:16px;padding:26px;max-width:560px;width:100%;max-height:calc(100vh - 40px);
+  overflow-y:auto;box-shadow:var(--sp-sh-l);font-family:var(--sp-font-body);color:var(--sp-ink)}
+.sp-gcm-x{position:absolute;top:14px;right:14px;background:none;border:none;color:var(--sp-muted);
+  cursor:pointer;padding:4px;display:flex;border-radius:6px}
+.sp-gcm-x:hover{color:var(--sp-ink)}
+.sp-gcm-x:disabled{opacity:.4;cursor:default}
+.sp-gcm-title{font-family:var(--sp-font-heading);font-size:21px;font-weight:700;margin:0 0 6px;
+  padding-right:28px;color:var(--sp-ink)}
+.sp-gcm-sub{color:var(--sp-muted);font-size:13.5px;line-height:1.55;margin:0 0 20px}
+
+.sp-gcm-section{margin-bottom:18px}
+.sp-gcm-section h3{display:flex;align-items:center;gap:7px;font-family:var(--sp-font-heading);
+  font-size:13.5px;font-weight:700;color:var(--sp-ink);margin:0 0 8px}
+.sp-gcm-section h3 svg{color:var(--sp-primary);flex:none}
+.sp-gcm-section ul{margin:0;padding-left:18px;display:flex;flex-direction:column;gap:5px}
+.sp-gcm-section li{font-size:13px;color:var(--sp-ink-2);line-height:1.55}
+.sp-gcm-section a{color:var(--sp-primary);text-decoration:none;font-weight:500;
+  display:inline-flex;align-items:center;gap:3px}
+.sp-gcm-section a:hover{text-decoration:underline}
+
+.sp-gcm-scope{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:10px;
+  background:var(--sp-t-grey);border:1px solid var(--sp-line);border-radius:var(--sp-r-s);padding:10px 12px}
+.sp-gcm-scope code{font-family:var(--sp-font-numeric);font-size:11px;color:var(--sp-ink);
+  word-break:break-all;flex:1;min-width:200px}
+.sp-gcm-scope span{font-size:11.5px;color:var(--sp-muted);background:var(--sp-solid);
+  border:1px solid var(--sp-line);border-radius:var(--sp-r-pill);padding:3px 10px;flex:none}
+
+.sp-gcm-checkbox{display:flex;align-items:flex-start;gap:8px;font-size:12.5px;color:var(--sp-ink-2);
+  line-height:1.5;margin:4px 0 16px;cursor:pointer}
+.sp-gcm-checkbox input{margin-top:2px;flex:none;cursor:pointer}
+
+.sp-gcm-err{display:flex;align-items:center;gap:8px;background:var(--sp-t-violet);color:var(--sp-violet-d);
+  border-radius:var(--sp-r-s);padding:9px 12px;font-size:12.5px;margin-bottom:14px}
+.sp-gcm-err svg{flex:none}
+.sp-gcm-err span{flex:1}
+.sp-gcm-err button{flex:none;background:none;border:1px solid var(--sp-violet-d);color:var(--sp-violet-d);
+  border-radius:var(--sp-r-s);padding:3px 10px;font-size:11.5px;cursor:pointer;font-family:inherit}
+
+.sp-gcm-actions{display:flex;justify-content:flex-end;gap:10px;flex-wrap:wrap}
+@media(max-width:480px){.sp-gcm-actions{flex-direction:column-reverse}
+  .sp-gcm-actions .sp-btn{width:100%;justify-content:center}}

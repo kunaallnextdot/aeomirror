@@ -10,8 +10,8 @@ import { getScanDetail, compareScans, ScanError } from "../api.js";
 import { fmtDate } from "../dashboard/ui.jsx";
 import DashboardHome from "../dashboard/DashboardHome.jsx";
 import ScansTable, { ScansLoading, ScansEmpty, ScansError } from "../dashboard/ScansTable.jsx";
-import { AuroraSkeletonPage, AuroraEmptyScans, AuroraError, Shell, Cell, Ring } from "../dashboard/aurora.jsx";
-const auScoreColor = (v) => (v >= 75 ? "var(--au-mint-d)" : v >= 45 ? "var(--au-lemon-d)" : "var(--au-peach-d)");
+import { SpectrumSkeletonPage, SpectrumEmptyScans, SpectrumError, Shell, Cell, Ring } from "../shared/spectrum.jsx";
+const spScoreColor = (v) => (v >= 75 ? "var(--sp-blue-d)" : v >= 45 ? "var(--sp-lav-d)" : "var(--sp-violet-d)");
 import ScanDetails, { ScanDetailLoading, ScanDetailNotFound } from "../dashboard/ScanDetails.jsx";
 import Compare from "../dashboard/Compare.jsx";
 import ReportView from "../dashboard/ReportView.jsx";
@@ -32,17 +32,17 @@ export function useAppCtx() { return useOutletContext(); }
 
 /* Scan-list gate for the migrated routes (home/scans/compare/summary/report): loading ->
    skeleton, error -> error, no scans -> empty state. (Replaced the former dark <Gated>.) */
-function AuroraGated({ children }) {
+function SpectrumGated({ children }) {
   const { loading, error, scans, reload, onRunScan } = useAppCtx();
-  if (error) return <AuroraError message={error} onRetry={reload} />;
-  if (loading) return <AuroraSkeletonPage />;
-  if (!scans.length) return <AuroraEmptyScans onRun={onRunScan} />;
+  if (error) return <SpectrumError message={error} onRetry={reload} />;
+  if (loading) return <SpectrumSkeletonPage />;
+  if (!scans.length) return <SpectrumEmptyScans onRun={onRunScan} />;
   return children;
 }
 
 export function DashboardHomeRoute() {
   const { dashboard, openDetail } = useAppCtx();
-  return <AuroraGated><DashboardHome data={dashboard} onOpenLatest={openDetail} /></AuroraGated>;
+  return <SpectrumGated><DashboardHome data={dashboard} onOpenLatest={openDetail} /></SpectrumGated>;
 }
 
 /* Sidebar "Scan Details" entry point (Phase K: previously labeled "View Report" —
@@ -64,11 +64,11 @@ export function LatestScanRoute() {
 
 function NoReportYet({ onRun }) {
   return (
-    <div className="aurora-screen"><Shell>
-      <Cell solid><div className="au-card-center">
-        <div className="au-card-t">No report yet</div>
-        <div className="au-card-s">Run your first scan to generate your report.</div>
-        <button className="au-btn au-accent" onClick={onRun}>Run Scan</button>
+    <div className="spectrum-screen"><Shell>
+      <Cell solid><div className="sp-card-center">
+        <div className="sp-card-t">No report yet</div>
+        <div className="sp-card-s">Run your first scan to generate your report.</div>
+        <button className="sp-btn sp-gradient" onClick={onRun}>Run Scan</button>
       </div></Cell>
     </Shell></div>
   );
@@ -101,19 +101,19 @@ export function ScansRoute() {
 
 export function CompareRoute() {
   const { scans } = useAppCtx();
-  return <AuroraGated><Compare scans={scans} onCompare={compareScans} /></AuroraGated>;
+  return <SpectrumGated><Compare scans={scans} onCompare={compareScans} /></SpectrumGated>;
 }
 
 export function ReportRoute() {
   const { dashboard } = useAppCtx();
   const [params] = useSearchParams();
   const scanId = params.get("scan") || dashboard?.latest_scan?.id;
-  return <AuroraGated><ReportView scanId={scanId} /></AuroraGated>;
+  return <SpectrumGated><ReportView scanId={scanId} /></SpectrumGated>;
 }
 
 export function SummaryRoute() {
   const { scans, openDetail } = useAppCtx();
-  return <AuroraGated><WebsiteSummary scans={scans} onView={openDetail} /></AuroraGated>;
+  return <SpectrumGated><WebsiteSummary scans={scans} onView={openDetail} /></SpectrumGated>;
 }
 
 /* Scan detail loads its own record by :scanId (not gated by the shared list). */
@@ -189,11 +189,11 @@ export function AppIndexRedirect() { return <Navigate to="/app/dashboard" replac
 
 export function NotFoundRoute() {
   return (
-    <div className="aurora-screen"><Shell>
-      <Cell solid><div className="au-card-center">
-        <div className="au-card-t">Page not found</div>
-        <div className="au-card-s">This page doesn’t exist under your workspace.</div>
-        <Link className="au-btn au-accent" to="/app/dashboard">Back to dashboard</Link>
+    <div className="spectrum-screen"><Shell>
+      <Cell solid><div className="sp-card-center">
+        <div className="sp-card-t">Page not found</div>
+        <div className="sp-card-s">This page doesn’t exist under your workspace.</div>
+        <Link className="sp-btn sp-gradient" to="/app/dashboard">Back to dashboard</Link>
       </div></Cell>
     </Shell></div>
   );
@@ -217,27 +217,27 @@ function WebsiteSummary({ scans, onView }) {
 
   if (rows.length === 0) {
     return (
-      <div className="aurora-screen"><Shell><Cell solid><div className="au-card-center">
-        <div className="au-ill"><Globe size={26} /></div>
-        <div className="au-card-s">No websites yet — run a scan to see per-domain rollups here.</div>
+      <div className="spectrum-screen"><Shell><Cell solid><div className="sp-card-center">
+        <div className="sp-ill"><Globe size={26} /></div>
+        <div className="sp-card-s">No websites yet — run a scan to see per-domain rollups here.</div>
       </div></Cell></Shell></div>
     );
   }
   return (
-    <div className="aurora-screen"><Shell>
-      <div className="au-stack">
+    <div className="spectrum-screen"><Shell>
+      <div className="sp-stack">
         {rows.map((g) => (
           <Cell key={g.domain} solid style={{ display: "flex", alignItems: "center", gap: 18, flexWrap: "wrap" }}>
             <span role="img" aria-label={`Score ${g.latest.overall_score ?? "not available"}`}><Ring value={g.latest.overall_score} size={52} stroke={6} /></span>
             <div style={{ flex: 1, minWidth: 160 }}>
-              <div style={{ fontSize: 15, fontWeight: 600, color: "var(--au-ink)" }}>{g.domain}</div>
-              <div className="au-dim au-mono" style={{ fontSize: 11.5, marginTop: 3 }}>{g.count} scan{g.count === 1 ? "" : "s"} · latest {fmtDate(g.latest.scan_time)}</div>
+              <div style={{ fontSize: 15, fontWeight: 600, color: "var(--sp-ink)" }}>{g.domain}</div>
+              <div className="sp-dim sp-mono" style={{ fontSize: 11.5, marginTop: 3 }}>{g.count} scan{g.count === 1 ? "" : "s"} · latest {fmtDate(g.latest.scan_time)}</div>
             </div>
             <div style={{ display: "flex", gap: 18, textAlign: "center" }}>
-              <div><div style={{ color: auScoreColor(g.best), fontWeight: 700, fontFamily: "var(--au-font-numeric)" }}>{g.best ?? "-"}</div><div className="au-dim" style={{ fontSize: 11 }}>best</div></div>
-              <div><div style={{ color: auScoreColor(g.worst), fontWeight: 700, fontFamily: "var(--au-font-numeric)" }}>{g.worst ?? "-"}</div><div className="au-dim" style={{ fontSize: 11 }}>worst</div></div>
+              <div><div style={{ color: spScoreColor(g.best), fontWeight: 700, fontFamily: "var(--sp-font-numeric)" }}>{g.best ?? "-"}</div><div className="sp-dim" style={{ fontSize: 11 }}>best</div></div>
+              <div><div style={{ color: spScoreColor(g.worst), fontWeight: 700, fontFamily: "var(--sp-font-numeric)" }}>{g.worst ?? "-"}</div><div className="sp-dim" style={{ fontSize: 11 }}>worst</div></div>
             </div>
-            <button className="au-iconbtn" onClick={() => onView(g.latest.id)}>View latest</button>
+            <button className="sp-iconbtn" onClick={() => onView(g.latest.id)}>View latest</button>
           </Cell>
         ))}
       </div>

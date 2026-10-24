@@ -2,8 +2,8 @@ import React, { useEffect, useState } from "react";
 import { BadgeCheck, AlertTriangle, Monitor, LogOut, Trash2 } from "lucide-react";
 import { passwordStrength } from "../ui.jsx";
 import {
-  Shell, AuField, AuTextInput, AuPasswordInput, AuPasswordStrength, AuAlert, AuAvatar,
-} from "../../dashboard/aurora.jsx";
+  Shell, SpField, SpTextInput, SpPasswordInput, SpPasswordStrength, SpAlert, SpAvatar,
+} from "../../shared/spectrum.jsx";
 import {
   updateMe, listSessions, revokeSession, logoutEverywhere, resendVerification,
 } from "../api.js";
@@ -81,93 +81,93 @@ export default function ProfilePage() {
   };
 
   return (
-    <div className="aurora-screen"><Shell>
+    <div className="spectrum-screen"><Shell>
       <div style={{ position: "relative", zIndex: 1, maxWidth: 720 }}>
         {/* identity */}
-        <div className="au-panel" style={{ marginBottom: 16 }}>
-          <div className="au-panel-h">Profile</div>
+        <div className="sp-panel" style={{ marginBottom: 16 }}>
+          <div className="sp-panel-h">Profile</div>
           <div style={{ display: "flex", alignItems: "center", gap: 14, marginBottom: 16 }}>
-            <AuAvatar user={{ ...user, name, avatar }} size={56} />
+            <SpAvatar user={{ ...user, name, avatar }} size={56} />
             <div>
               <div style={{ fontSize: 15, fontWeight: 700 }}>{user?.name}</div>
-              <div style={{ fontSize: 12.5, color: "var(--au-muted)", display: "flex", alignItems: "center", gap: 6, marginTop: 3 }}>
+              <div style={{ fontSize: 12.5, color: "var(--sp-muted)", display: "flex", alignItems: "center", gap: 6, marginTop: 3 }}>
                 {user?.email}
                 {user?.email_verified
-                  ? <span style={{ color: "var(--au-mint-d)", display: "inline-flex", alignItems: "center", gap: 4 }}><BadgeCheck size={13} /> verified</span>
-                  : <span style={{ color: "var(--au-lemon-d)", display: "inline-flex", alignItems: "center", gap: 4 }}><AlertTriangle size={13} /> unverified</span>}
+                  ? <span style={{ color: "var(--sp-blue-d)", display: "inline-flex", alignItems: "center", gap: 4 }}><BadgeCheck size={13} /> verified</span>
+                  : <span style={{ color: "var(--sp-lav-d)", display: "inline-flex", alignItems: "center", gap: 4 }}><AlertTriangle size={13} /> unverified</span>}
               </div>
             </div>
           </div>
           {!user?.email_verified && (
             <div style={{ marginBottom: 14 }}>
-              <AuAlert kind="info">Your email isn't verified yet. <button className="au-authlink" onClick={resend}>Resend verification</button>{verifyMsg ? ` — ${verifyMsg}` : ""}</AuAlert>
+              <SpAlert kind="info">Your email isn't verified yet. <button className="sp-authlink" onClick={resend}>Resend verification</button>{verifyMsg ? ` — ${verifyMsg}` : ""}</SpAlert>
             </div>
           )}
-          <form className="au-form" onSubmit={saveProfile}>
-            {profileMsg && <AuAlert kind={profileMsg.kind}>{profileMsg.text}</AuAlert>}
-            <AuField label="Name">
-              <AuTextInput value={name} onChange={(e) => setName(e.target.value)} required />
-            </AuField>
-            <AuField label="Avatar URL" hint="Paste an image URL, or leave blank to use your initial.">
-              <AuTextInput value={avatar} onChange={(e) => setAvatar(e.target.value)} placeholder="https://…" />
-            </AuField>
+          <form className="sp-form" onSubmit={saveProfile}>
+            {profileMsg && <SpAlert kind={profileMsg.kind}>{profileMsg.text}</SpAlert>}
+            <SpField label="Name">
+              <SpTextInput value={name} onChange={(e) => setName(e.target.value)} required />
+            </SpField>
+            <SpField label="Avatar URL" hint="Paste an image URL, or leave blank to use your initial.">
+              <SpTextInput value={avatar} onChange={(e) => setAvatar(e.target.value)} placeholder="https://…" />
+            </SpField>
             <div>
-              <div className="au-field-l" style={{ marginBottom: 8 }}>Notifications</div>
-              <label className="au-check" style={{ marginBottom: 8 }}>
+              <div className="sp-field-l" style={{ marginBottom: 8 }}>Notifications</div>
+              <label className="sp-check" style={{ marginBottom: 8 }}>
                 <input type="checkbox" checked={!!prefs.product_updates} onChange={() => togglePref("product_updates")} /> Product updates
               </label>
-              <label className="au-check">
+              <label className="sp-check">
                 <input type="checkbox" checked={!!prefs.scan_reports} onChange={() => togglePref("scan_reports")} /> Scan report emails
               </label>
             </div>
-            <button type="submit" className="au-btn au-accent" disabled={savingProfile} style={{ alignSelf: "flex-start" }}>
+            <button type="submit" className="sp-btn sp-gradient" disabled={savingProfile} style={{ alignSelf: "flex-start" }}>
               {savingProfile ? "Saving…" : "Save changes"}
             </button>
           </form>
         </div>
 
         {/* password */}
-        <div className="au-panel" style={{ marginBottom: 16 }}>
-          <div className="au-panel-h">Change password</div>
-          <form className="au-form" onSubmit={changePassword}>
-            {pwMsg && <AuAlert kind={pwMsg.kind}>{pwMsg.text}</AuAlert>}
-            <AuField label="Current password">
-              <AuPasswordInput value={curPw} onChange={(e) => setCurPw(e.target.value)} required autoComplete="current-password" />
-            </AuField>
-            <AuField label="New password">
-              <AuPasswordInput value={newPw} onChange={(e) => setNewPw(e.target.value)} required autoComplete="new-password" />
-            </AuField>
-            <AuPasswordStrength value={newPw} />
-            <button type="submit" className="au-btn au-accent" disabled={pwBusy} style={{ alignSelf: "flex-start" }}>
+        <div className="sp-panel" style={{ marginBottom: 16 }}>
+          <div className="sp-panel-h">Change password</div>
+          <form className="sp-form" onSubmit={changePassword}>
+            {pwMsg && <SpAlert kind={pwMsg.kind}>{pwMsg.text}</SpAlert>}
+            <SpField label="Current password">
+              <SpPasswordInput value={curPw} onChange={(e) => setCurPw(e.target.value)} required autoComplete="current-password" />
+            </SpField>
+            <SpField label="New password">
+              <SpPasswordInput value={newPw} onChange={(e) => setNewPw(e.target.value)} required autoComplete="new-password" />
+            </SpField>
+            <SpPasswordStrength value={newPw} />
+            <button type="submit" className="sp-btn sp-gradient" disabled={pwBusy} style={{ alignSelf: "flex-start" }}>
               {pwBusy ? "Updating…" : "Update password"}
             </button>
           </form>
         </div>
 
         {/* sessions */}
-        <div className="au-panel">
-          <div className="au-panel-h">Active sessions <span className="au-sub">devices signed in to your account</span></div>
+        <div className="sp-panel">
+          <div className="sp-panel-h">Active sessions <span className="sp-sub">devices signed in to your account</span></div>
           {sessions === null ? (
-            <div className="au-dim">Loading…</div>
+            <div className="sp-dim">Loading…</div>
           ) : sessions.length === 0 ? (
-            <div className="au-dim">No other active sessions.</div>
+            <div className="sp-dim">No other active sessions.</div>
           ) : (
             <div>
               {sessions.map((s) => (
-                <div key={s.id} className="au-mem-row">
-                  <Monitor size={18} style={{ color: "var(--au-muted)" }} />
-                  <div className="au-mem-id">
-                    <div className="au-mem-name">{shortAgent(s.user_agent)} {s.current && <span className="au-pill-you">this device</span>}</div>
-                    <div className="au-mem-email">last used {new Date(s.last_used_at || s.created_at).toLocaleString()}</div>
+                <div key={s.id} className="sp-mem-row">
+                  <Monitor size={18} style={{ color: "var(--sp-muted)" }} />
+                  <div className="sp-mem-id">
+                    <div className="sp-mem-name">{shortAgent(s.user_agent)} {s.current && <span className="sp-pill-you">this device</span>}</div>
+                    <div className="sp-mem-email">last used {new Date(s.last_used_at || s.created_at).toLocaleString()}</div>
                   </div>
                   {!s.current && (
-                    <button className="au-btn au-ghost au-sm" onClick={() => doRevoke(s.id)}><Trash2 size={13} /> Revoke</button>
+                    <button className="sp-btn sp-ghost sp-sm" onClick={() => doRevoke(s.id)}><Trash2 size={13} /> Revoke</button>
                   )}
                 </div>
               ))}
             </div>
           )}
-          <button className="au-btn au-danger au-sm" style={{ marginTop: 14 }} onClick={logoutAll}>
+          <button className="sp-btn sp-danger sp-sm" style={{ marginTop: 14 }} onClick={logoutAll}>
             <LogOut size={13} /> Sign out everywhere
           </button>
         </div>

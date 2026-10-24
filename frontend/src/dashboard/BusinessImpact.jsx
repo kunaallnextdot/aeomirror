@@ -19,8 +19,8 @@ import {
 } from "../api.js";
 import { fmtDate } from "./ui.jsx";
 import { useUpgrade } from "./UpgradeModal.jsx";
-import { Shell, Cell, Button, Skeleton } from "./aurora.jsx";
-import "./BusinessImpact.aurora.css";
+import { Shell, Cell, Button, Skeleton } from "../shared/spectrum.jsx";
+import "./BusinessImpact.spectrum.css";
 
 const CHANNEL_LABELS = {
   chatgpt: "ChatGPT", perplexity: "Perplexity", gemini: "Gemini", copilot: "Copilot",
@@ -29,11 +29,13 @@ const CHANNEL_LABELS = {
   unknown: "Unknown",
 };
 const AI_CHANNELS = ["chatgpt", "perplexity", "gemini", "copilot", "claude", "other_identifiable_ai"];
+// Spectrum tokens only (no red/amber/green) — the 4 named AI engines match the fixed
+// per-engine colors used everywhere else (SPECTRUM_ENGINES in shared/spectrum.jsx).
 const CHANNEL_COLORS = {
-  chatgpt: "#10a37f", perplexity: "#20808d", gemini: "#8e5ce6", copilot: "#2564cf",
-  claude: "#ba501d", other_identifiable_ai: "#956808",
-  organic_search: "#1c76b4", direct: "#616876", paid: "#ba501d", social: "#6c4bf0",
-  email: "#157a4e", referral: "#1c76b4", unknown: "#9aa1ab",
+  chatgpt: "var(--sp-cyan-d)", perplexity: "var(--sp-blue)", gemini: "var(--sp-indigo)", copilot: "var(--sp-cyan)",
+  claude: "var(--sp-violet)", other_identifiable_ai: "var(--sp-violet-d)",
+  organic_search: "var(--sp-blue-d)", direct: "var(--sp-muted)", paid: "var(--sp-indigo-d)", social: "var(--sp-lav-d)",
+  email: "var(--sp-lav)", referral: "var(--sp-cyan-d)", unknown: "var(--sp-muted)",
 };
 const RANGES = [
   { label: "Last 7 days", days: 7 }, { label: "Last 30 days", days: 30 },
@@ -102,14 +104,14 @@ export default function BusinessImpact() {
   useEffect(() => { load(); }, [load]);
 
   if (monitors === null) {
-    return <Shell className="au-bi"><Skeleton h={200} /></Shell>;
+    return <Shell className="sp-bi"><Skeleton h={200} /></Shell>;
   }
 
   if (!monitors.length) {
     return (
-      <Shell className="au-bi">
+      <Shell className="sp-bi">
         <Header />
-        <Cell className="au-bi-card">
+        <Cell className="sp-bi-card">
           <p>Add a site under Monitoring first — AI Business Impact tracks traffic for a specific site.</p>
         </Cell>
       </Shell>
@@ -117,14 +119,14 @@ export default function BusinessImpact() {
   }
 
   return (
-    <Shell className="au-bi">
+    <Shell className="sp-bi">
       <Header />
 
-      <div className="au-bi-toolbar">
-        <select className="au-bi-select" value={monitorId || ""} onChange={(e) => setMonitorId(e.target.value)}>
+      <div className="sp-bi-toolbar">
+        <select className="sp-bi-select" value={monitorId || ""} onChange={(e) => setMonitorId(e.target.value)}>
           {monitors.map((m) => <option key={m.id} value={m.id}>{m.name || m.normalized_url}</option>)}
         </select>
-        <div className="au-bi-ranges">
+        <div className="sp-bi-ranges">
           {RANGES.map((r) => (
             <button key={r.days} className={rangeDays === r.days ? "on" : ""} onClick={() => setRangeDays(r.days)}>
               {r.label}
@@ -133,7 +135,7 @@ export default function BusinessImpact() {
         </div>
       </div>
 
-      {error && <div className="au-bi-banner err">{error}</div>}
+      {error && <div className="sp-bi-banner err">{error}</div>}
 
       {loading && <Skeleton h={200} />}
 
@@ -144,7 +146,7 @@ export default function BusinessImpact() {
       {!loading && tracking?.installed && summary && (
         <>
           {!summary.has_data ? (
-            <Cell className="au-bi-card">
+            <Cell className="sp-bi-card">
               <Info size={16} />
               <p>Tracking is installed, but no visits have been recorded yet for this date range.
                 This is a real "no data yet" state, not a measurement error — check back once the
@@ -169,9 +171,9 @@ export default function BusinessImpact() {
 
 function Header() {
   return (
-    <header className="au-bi-head">
+    <header className="sp-bi-head">
       <h1><BarChart3 size={20} /> AI Business Impact</h1>
-      <p className="au-bi-sub">
+      <p className="sp-bi-sub">
         How much of your traffic, leads, bookings and revenue comes from AI assistants
         like ChatGPT, Perplexity, Gemini, Copilot and Claude — measured by AEOMirror's
         own tracking, independent of Google Analytics.
@@ -197,15 +199,15 @@ function SetupWizard({ monitorId, tracking, onInstalled }) {
   const checkNow = async () => { setChecking(true); try { await onInstalled(); } finally { setChecking(false); } };
 
   return (
-    <Cell className="au-bi-card au-bi-setup">
+    <Cell className="sp-bi-card sp-bi-setup">
       <h2>Install AI Business Impact tracking</h2>
       <p>Paste this one line into your site's HTML, ideally right before <code>&lt;/head&gt;</code> on
         every page. It works on any website — WordPress, Shopify, Webflow, or a custom site.</p>
-      <div className="au-bi-snippet">
+      <div className="sp-bi-snippet">
         <code>{tracking.snippet}</code>
         <button onClick={copy}>{copied ? <Check size={14} /> : <Copy size={14} />} {copied ? "Copied" : "Copy"}</button>
       </div>
-      <ul className="au-bi-setup-explain">
+      <ul className="sp-bi-setup-explain">
         <li><strong>Before installing:</strong> you can still use every AEO audit, Question Bank
           and visibility score — tracking installation never blocks those.</li>
         <li><strong>After installing:</strong> this page will show real sessions, AI-source
@@ -216,18 +218,18 @@ function SetupWizard({ monitorId, tracking, onInstalled }) {
         <RefreshCw size={14} /> Check installation status
       </Button>
 
-      <div className="au-bi-setup-divider" />
+      <div className="sp-bi-setup-divider" />
       <h3>Optional: verify real purchases and bookings</h3>
       <p>Visitor-reported conversions are shown as unverified. To count a purchase or booking as
         confirmed, your own backend calls one endpoint after a transaction actually succeeds —
         generate a key for that below.</p>
       {tracking.has_tracking_api_key && !apiKey ? (
-        <p className="au-bi-setup-note">A tracking API key is already configured for this site.</p>
+        <p className="sp-bi-setup-note">A tracking API key is already configured for this site.</p>
       ) : (
         <Button variant="ghost" onClick={makeKey} loading={busy}>Generate tracking API key</Button>
       )}
       {apiKey && (
-        <div className="au-bi-apikey">
+        <div className="sp-bi-apikey">
           <code>{apiKey}</code>
           <p>Store this now — it will not be shown again. POST it as <code>Authorization: Bearer …</code> to{" "}
             <code>{tracking.collect_url.replace("/t/collect", `/monitors/${monitorId}/tracking/confirm`)}</code>.</p>
@@ -249,17 +251,17 @@ function SummaryCards({ summary, onUpgrade }) {
     { key: "leads", label: "Leads generated", value: summary.leads, locked: summary.leads === null, tip: "Successful lead submissions recorded by the tracker — not merely visits to a contact page." },
   ];
   return (
-    <div className="au-bi-cards">
+    <div className="sp-bi-cards">
       {cards.map((c) => (
-        <Cell key={c.key} className="au-bi-stat">
-          <div className="au-bi-stat-top">
+        <Cell key={c.key} className="sp-bi-stat">
+          <div className="sp-bi-stat-top">
             <span>{c.label}</span>
-            <span className="au-bi-tip" title={c.tip}><Info size={12} /></span>
+            <span className="sp-bi-tip" title={c.tip}><Info size={12} /></span>
           </div>
           {c.locked ? (
-            <button className="au-bi-stat-locked" onClick={onUpgrade}><Lock size={13} /> Pro</button>
+            <button className="sp-bi-stat-locked" onClick={onUpgrade}><Lock size={13} /> Pro</button>
           ) : (
-            <div className="au-bi-stat-v">{c.value ?? "—"}</div>
+            <div className="sp-bi-stat-v">{c.value ?? "—"}</div>
           )}
         </Cell>
       ))}
@@ -271,16 +273,16 @@ function TrafficChart({ series }) {
   const channelsPresent = Array.from(new Set(series.flatMap((d) => Object.keys(d.by_channel))));
   const data = series.map((d) => ({ date: d.date, ...d.by_channel }));
   return (
-    <Cell className="au-bi-card">
+    <Cell className="sp-bi-card">
       <h2><TrendingUp size={16} /> Traffic over time</h2>
-      <div className="au-bi-chart">
+      <div className="sp-bi-chart">
         <ResponsiveContainer width="100%" height="100%">
           <AreaChart data={data} margin={{ top: 6, right: 8, bottom: 0, left: -20 }}>
-            <CartesianGrid stroke="var(--au-line)" vertical={false} />
-            <XAxis dataKey="date" tickFormatter={(d) => fmtDate(d)} tick={{ fill: "var(--au-muted)", fontSize: 10 }}
+            <CartesianGrid stroke="var(--sp-line)" vertical={false} />
+            <XAxis dataKey="date" tickFormatter={(d) => fmtDate(d)} tick={{ fill: "var(--sp-muted)", fontSize: 10 }}
                    axisLine={false} tickLine={false} />
-            <YAxis allowDecimals={false} tick={{ fill: "var(--au-muted)", fontSize: 10 }} axisLine={false} tickLine={false} />
-            <Tooltip contentStyle={{ background: "var(--au-solid)", border: "1px solid var(--au-line)", borderRadius: 12, fontSize: 12 }}
+            <YAxis allowDecimals={false} tick={{ fill: "var(--sp-muted)", fontSize: 10 }} axisLine={false} tickLine={false} />
+            <Tooltip contentStyle={{ background: "var(--sp-solid)", border: "1px solid var(--sp-line)", borderRadius: 12, fontSize: 12 }}
                     labelFormatter={(d) => fmtDate(d)} />
             {channelsPresent.map((ch) => (
               <Area key={ch} type="monotone" dataKey={ch} stackId="1" name={CHANNEL_LABELS[ch] || ch}
@@ -289,7 +291,7 @@ function TrafficChart({ series }) {
           </AreaChart>
         </ResponsiveContainer>
       </div>
-      <div className="au-bi-legend">
+      <div className="sp-bi-legend">
         {channelsPresent.map((ch) => (
           <span key={ch}><i style={{ background: CHANNEL_COLORS[ch] || "#999" }} />{CHANNEL_LABELS[ch] || ch}</span>
         ))}
@@ -301,20 +303,20 @@ function TrafficChart({ series }) {
 function ChannelBreakdown({ channels }) {
   const data = channels.map((c) => ({ ...c, label: CHANNEL_LABELS[c.channel] || c.channel }));
   return (
-    <Cell className="au-bi-card">
+    <Cell className="sp-bi-card">
       <h2><Users size={16} /> Traffic by source</h2>
-      <div className="au-bi-chart">
+      <div className="sp-bi-chart">
         <ResponsiveContainer width="100%" height="100%">
           <RBarChart data={data} margin={{ top: 6, right: 8, bottom: 0, left: -20 }}>
-            <CartesianGrid stroke="var(--au-line)" vertical={false} />
-            <XAxis dataKey="label" tick={{ fill: "var(--au-muted)", fontSize: 10 }} axisLine={false} tickLine={false} />
-            <YAxis allowDecimals={false} tick={{ fill: "var(--au-muted)", fontSize: 10 }} axisLine={false} tickLine={false} />
-            <Tooltip contentStyle={{ background: "var(--au-solid)", border: "1px solid var(--au-line)", borderRadius: 12, fontSize: 12 }} />
-            <Bar dataKey="sessions" fill="var(--au-primary)" radius={[4, 4, 0, 0]} />
+            <CartesianGrid stroke="var(--sp-line)" vertical={false} />
+            <XAxis dataKey="label" tick={{ fill: "var(--sp-muted)", fontSize: 10 }} axisLine={false} tickLine={false} />
+            <YAxis allowDecimals={false} tick={{ fill: "var(--sp-muted)", fontSize: 10 }} axisLine={false} tickLine={false} />
+            <Tooltip contentStyle={{ background: "var(--sp-solid)", border: "1px solid var(--sp-line)", borderRadius: 12, fontSize: 12 }} />
+            <Bar dataKey="sessions" fill="var(--sp-primary)" radius={[4, 4, 0, 0]} />
           </RBarChart>
         </ResponsiveContainer>
       </div>
-      <table className="au-bi-table">
+      <table className="sp-bi-table">
         <thead><tr><th>Source</th><th>Sessions</th><th>Conversions</th><th>Conv. rate</th><th>Revenue</th></tr></thead>
         <tbody>
           {data.map((c) => (
@@ -334,28 +336,28 @@ const PRIORITY_LABEL = { high: "High priority", medium: "Medium priority", low: 
 function LandingPageTable({ pages }) {
   if (!pages.length) return null;
   return (
-    <Cell className="au-bi-card">
+    <Cell className="sp-bi-card">
       <h2>Pages worth improving</h2>
-      <p className="au-bi-sub-sm">Ranked by observed evidence — real sessions, confirmed conversions, and
+      <p className="sp-bi-sub-sm">Ranked by observed evidence — real sessions, confirmed conversions, and
         existing AEO issues. Never a guaranteed outcome, and never an estimated revenue gain.</p>
-      <div className="au-bi-pages">
+      <div className="sp-bi-pages">
         {pages.map((p) => (
-          <div key={p.url} className={`au-bi-page pri-${p.priority}`}>
-            <div className="au-bi-page-top">
+          <div key={p.url} className={`sp-bi-page pri-${p.priority}`}>
+            <div className="sp-bi-page-top">
               <a href={p.url} target="_blank" rel="noreferrer">{p.url}</a>
-              <span className={`au-bi-pri pri-${p.priority}`}>{PRIORITY_LABEL[p.priority]}</span>
+              <span className={`sp-bi-pri pri-${p.priority}`}>{PRIORITY_LABEL[p.priority]}</span>
             </div>
-            <div className="au-bi-page-stats">
+            <div className="sp-bi-page-stats">
               <span>{p.sessions} sessions</span>
               <span>{p.ai_sessions} from AI</span>
               <span>{p.conversions} conversions ({p.conversion_rate_pct}%)</span>
               {p.revenue_cents > 0 && <span>{money(p.revenue_cents)} revenue</span>}
               {p.aeo && <span>{p.aeo.open_issue_count} open AEO issue(s)</span>}
             </div>
-            {p.recommendation && <p className="au-bi-page-rec">{p.recommendation}</p>}
-            {p.reason && <p className="au-bi-page-reason">Why: {p.reason}</p>}
+            {p.recommendation && <p className="sp-bi-page-rec">{p.recommendation}</p>}
+            {p.reason && <p className="sp-bi-page-reason">Why: {p.reason}</p>}
             {p.aeo?.scan_id && (
-              <a className="au-bi-page-link" href={`/app/scans/${p.aeo.scan_id}`}>View this page's AEO report →</a>
+              <a className="sp-bi-page-link" href={`/app/scans/${p.aeo.scan_id}`}>View this page's AEO report →</a>
             )}
           </div>
         ))}

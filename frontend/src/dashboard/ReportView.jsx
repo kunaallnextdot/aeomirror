@@ -1,8 +1,13 @@
-/* AI Visibility Report — MIGRATED to Aurora. Renders for the authed /app/report AND the
+/* AI Visibility Report — MIGRATED to Spectrum. Renders for the authed /app/report AND the
    public /r/:token share (readOnly). Data flow, hooks, effects, downloads, access/purchase
-   logic are byte-for-byte unchanged; only JSX + class names changed. `.aurora-screen`-scoped.
+   logic are byte-for-byte unchanged; only JSX + class names changed. `.spectrum-screen`-scoped.
    Out of scope (stay dark, flagged): <SharePanel> and <InsightsBody>/<ContentInsights> are
-   separate components migrated in their own phases. */
+   separate components migrated in their own phases.
+
+   <RecommendationCard> (exported below, near the bottom of this file) is also imported
+   directly by ActionCenter.jsx and ScanDetails.jsx, and <DiagnosisCard>/<VerificationBadge>
+   (imported below) are shared the same way — all now Spectrum-classed (`sp-rep-*`), so no
+   consumer needs to import ReportView.aurora.css (removed below) just to style them. */
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import {
@@ -23,13 +28,14 @@ import {
   ENTITY_SIGNAL_LABEL, CRAWL_ISSUE_TITLE, CRAWL_ISSUE_FIX, CRAWL_ISSUE_WHY,
   CONTENT_CLUSTER_TYPE_CAVEAT,
 } from "./actionSources.js";
-import { Shell, Cell, Button, Ring } from "./aurora.jsx";
-import "./ReportView.aurora.css";
+import { Shell, Cell, Button, Ring } from "../shared/spectrum.jsx";
+import "./ReportView.spectrum.css";
 
-export const AU_PRIORITY = {
-  Critical: "var(--au-peach-d)", High: "var(--au-peach-d)", Medium: "var(--au-lemon-d)", Low: "var(--au-muted)",
+// Priority -> color for the small pills on recommendation/quick-win cards.
+export const SP_PRIORITY = {
+  Critical: "var(--sp-violet-d)", High: "var(--sp-violet-d)", Medium: "var(--sp-lav-d)", Low: "var(--sp-muted)",
 };
-const auScoreColor = (v) => (v >= 75 ? "var(--au-mint-d)" : v >= 45 ? "var(--au-lemon-d)" : "var(--au-peach-d)");
+const spScoreColor = (v) => (v >= 75 ? "var(--sp-blue-d)" : v >= 45 ? "var(--sp-lav-d)" : "var(--sp-violet-d)");
 
 function fmtEv(v) {
   if (typeof v === "boolean") return v ? "yes" : "no";
@@ -151,19 +157,19 @@ export default function ReportView({ scanId, readOnly = false, report: reportPro
   };
 
   if (!readOnly && !scanId) return (
-    <div className="aurora-screen"><Shell><Cell solid><div className="au-card-center au-dim">No scans yet — run a scan to generate your report.</div></Cell></Shell></div>
+    <div className="spectrum-screen"><Shell><Cell solid><div className="sp-card-center sp-dim">No scans yet — run a scan to generate your report.</div></Cell></Shell></div>
   );
   if (error) return (
-    <div className="aurora-screen"><Shell><Cell solid><div className="au-card-center" role="alert">
-      <div className="au-ill au-ill-bad"><AlertTriangle size={26} /></div>
-      <div className="au-card-s" style={{ marginBottom: 20 }}>{error}</div>
-      <Button variant="accent" onClick={load}>Retry</Button>
+    <div className="spectrum-screen"><Shell><Cell solid><div className="sp-card-center" role="alert">
+      <div className="sp-ill sp-ill-bad"><AlertTriangle size={26} /></div>
+      <div className="sp-card-s" style={{ marginBottom: 20 }}>{error}</div>
+      <Button variant="gradient" onClick={load}>Retry</Button>
     </div></Cell></Shell></div>
   );
   if (!report) return (
-    <div className="aurora-screen"><Shell><div className="au-stack">
-      <Cell solid><div style={{ display: "grid", gap: 10 }}><div className="au-skel" style={{ height: 22, width: "45%" }} /><div className="au-skel" style={{ height: 12, width: "70%" }} /></div></Cell>
-      <Cell solid><div style={{ display: "flex", flexDirection: "column", gap: 8 }}>{Array.from({ length: 5 }).map((_, i) => <div key={i} className="au-skel" style={{ height: 44 }} />)}</div></Cell>
+    <div className="spectrum-screen"><Shell><div className="sp-stack">
+      <Cell solid><div style={{ display: "grid", gap: 10 }}><div className="sp-skel" style={{ height: 22, width: "45%" }} /><div className="sp-skel" style={{ height: 12, width: "70%" }} /></div></Cell>
+      <Cell solid><div style={{ display: "flex", flexDirection: "column", gap: 8 }}>{Array.from({ length: 5 }).map((_, i) => <div key={i} className="sp-skel" style={{ height: 44 }} />)}</div></Cell>
     </div></Shell></div>
   );
 
@@ -223,24 +229,24 @@ export default function ReportView({ scanId, readOnly = false, report: reportPro
   ];
 
   return (
-    <div className="aurora-screen">
+    <div className="spectrum-screen">
       <Shell>
-        <div className="au-stack">
+        <div className="sp-stack">
           {/* header: score + downloads */}
-          <Cell solid className="au-rep-head">
-            <div className="au-rep-head-l">
+          <Cell solid className="sp-rep-head">
+            <div className="sp-rep-head-l">
               <span role="img" aria-label={`Overall score ${sc.overall_score}, grade ${sc.grade}`}><Ring value={sc.overall_score} size={72} stroke={7} /></span>
               <div>
-                <div className="au-rep-domain">{report.domain || report.url}</div>
-                <div className="au-rep-grade">
-                  <b style={{ color: auScoreColor(sc.overall_score) }}>{sc.overall_score} / 100</b>
-                  <span className="au-dim" style={{ marginLeft: 8 }}>· Grade {sc.grade}</span>
-                  <span className="au-dim" style={{ marginLeft: 8 }}>· {recs.length} recommendation{recs.length === 1 ? "" : "s"}</span>
+                <div className="sp-rep-domain">{report.domain || report.url}</div>
+                <div className="sp-rep-grade">
+                  <b style={{ color: spScoreColor(sc.overall_score) }}>{sc.overall_score} / 100</b>
+                  <span className="sp-dim" style={{ marginLeft: 8 }}>· Grade {sc.grade}</span>
+                  <span className="sp-dim" style={{ marginLeft: 8 }}>· {recs.length} recommendation{recs.length === 1 ? "" : "s"}</span>
                 </div>
               </div>
             </div>
             {!readOnly && (
-              <div className="au-rep-actions">
+              <div className="sp-rep-actions">
                 <Button variant="ghost" disabled={busy === "pdf"} onClick={() => onDownload("pdf")}
                         title={lockExports ? "Unlock exports" : "Download PDF"}>
                   {lockExports ? <Lock size={13} /> : <FileDown size={15} />} {busy === "pdf" ? "Preparing…" : "PDF"}
@@ -257,39 +263,39 @@ export default function ReportView({ scanId, readOnly = false, report: reportPro
               </div>
             )}
           </Cell>
-          {dlError && <div className="au-rep-dlerr"><AlertTriangle size={13} /> {dlError}</div>}
+          {dlError && <div className="sp-rep-dlerr"><AlertTriangle size={13} /> {dlError}</div>}
           {justUnlocked && !dlError && (
-            <div className="au-rep-ok"><CheckCircle2 size={13} /> Exports unlocked ✓</div>
+            <div className="sp-rep-ok"><CheckCircle2 size={13} /> Exports unlocked ✓</div>
           )}
 
           {/* sticky in-page nav — jumps to each section */}
-          <nav className="au-rep-nav">
+          <nav className="sp-rep-nav">
             {NAV.map((n) => (
-              <button key={n.id} className="au-rep-nav-btn" onClick={() => scrollTo(n.id)}>{n.label}</button>
+              <button key={n.id} className="sp-rep-nav-btn" onClick={() => scrollTo(n.id)}>{n.label}</button>
             ))}
           </nav>
 
           {/* executive summary + counts */}
           <Cell solid id="rep-summary" style={{ scrollMarginTop: 120 }}>
-            <div className="au-panel-h">
+            <div className="sp-panel-h">
               Executive summary
-              {ai?.executive_summary && <span className="au-rep-ai-tag"><Sparkles size={11} /> AI-written</span>}
+              {ai?.executive_summary && <span className="sp-rep-ai-tag"><Sparkles size={11} /> AI-written</span>}
             </div>
-            <p className="au-rep-summary">{summaryText}</p>
+            <p className="sp-rep-summary">{summaryText}</p>
             {ins?.issue_count > 0 && (
-              <p className="au-rep-found">
+              <p className="sp-rep-found">
                 <AlertTriangle size={14} /> We found <b>{ins.issue_count}</b> problem{ins.issue_count === 1 ? "" : "s"} affecting your AI visibility
                 {ins.total_points_lost > 0 && <> — costing about <b>{ins.total_points_lost}</b> points.</>}
               </p>
             )}
             {ai?.executive_summary && (
-              <div className="au-rep-ai-note"><Sparkles size={11} /> Narrative generated by Claude from this scan's findings.</div>
+              <div className="sp-rep-ai-note"><Sparkles size={11} /> Narrative generated by Claude from this scan's findings.</div>
             )}
-            <div className="au-rep-counts">
+            <div className="sp-rep-counts">
               {["Critical", "High", "Medium", "Low"].map((k) => (
-                <div key={k} className="au-rep-count">
-                  <div className="au-rep-count-n" style={{ color: AU_PRIORITY[k] }}>{sc.issue_counts?.[k] ?? 0}</div>
-                  <div className="au-rep-count-l">{k}</div>
+                <div key={k} className="sp-rep-count">
+                  <div className="sp-rep-count-n" style={{ color: SP_PRIORITY[k] }}>{sc.issue_counts?.[k] ?? 0}</div>
+                  <div className="sp-rep-count-l">{k}</div>
                 </div>
               ))}
             </div>
@@ -298,30 +304,30 @@ export default function ReportView({ scanId, readOnly = false, report: reportPro
           {/* B. What's hurting your score? — negative-first, evidence-backed (free). */}
           {hasProblems && (
             <Cell solid id="rep-whats-hurting" style={{ scrollMarginTop: 120 }}>
-              <div className="au-panel-h">
-                <AlertTriangle size={14} style={{ color: "var(--au-peach-d)" }} /> What's hurting your score?
-                <span className="au-sub">the biggest reasons your AI visibility is losing points</span>
+              <div className="sp-panel-h">
+                <AlertTriangle size={14} style={{ color: "var(--sp-violet-d)" }} /> What's hurting your score?
+                <span className="sp-sub">the biggest reasons your AI visibility is losing points</span>
               </div>
-              <div className="au-rep-probs">
+              <div className="sp-rep-probs">
                 {ins.top_problems.map((p) => {
                   const evEntries = Object.entries(p.evidence || {}).filter(([k]) => k !== "detected_types");
                   return (
-                    <div key={p.signal_id} className="au-rep-prob">
-                      <div className="au-rep-prob-top">
-                        <span className="au-rep-prob-name">{p.signal}</span>
-                        <span className="au-rep-prob-score" style={{ color: auScoreColor(p.score) }}>{p.score}<span className="au-rep-prob-max">/100</span></span>
-                        <span className="au-rep-prob-loss">−{p.points_lost} pts</span>
+                    <div key={p.signal_id} className="sp-rep-prob">
+                      <div className="sp-rep-prob-top">
+                        <span className="sp-rep-prob-name">{p.signal}</span>
+                        <span className="sp-rep-prob-score" style={{ color: spScoreColor(p.score) }}>{p.score}<span className="sp-rep-prob-max">/100</span></span>
+                        <span className="sp-rep-prob-loss">−{p.points_lost} pts</span>
                       </div>
-                      <div className="au-rep-prob-issue">{p.issue}</div>
+                      <div className="sp-rep-prob-issue">{p.issue}</div>
                       {evEntries.length > 0 && (
-                        <div className="au-rep-prob-ev">
+                        <div className="sp-rep-prob-ev">
                           {evEntries.slice(0, 3).map(([k, v]) => (
-                            <span key={k} className="au-rep-prob-ev-item"><b>{k}:</b> {fmtEv(v)}</span>
+                            <span key={k} className="sp-rep-prob-ev-item"><b>{k}:</b> {fmtEv(v)}</span>
                           ))}
                         </div>
                       )}
-                      {p.recommendation_preview && <div className="au-rep-prob-prev"><Wrench size={11} /> {p.recommendation_preview}</div>}
-                      <button className="au-rep-prob-jump" onClick={() => jumpToRecommendation(p.signal_id)}>
+                      {p.recommendation_preview && <div className="sp-rep-prob-prev"><Wrench size={11} /> {p.recommendation_preview}</div>}
+                      <button className="sp-rep-prob-jump" onClick={() => jumpToRecommendation(p.signal_id)}>
                         See full fix →
                       </button>
                     </div>
@@ -334,14 +340,14 @@ export default function ReportView({ scanId, readOnly = false, report: reportPro
           {/* C. Score breakdown — every signal, points lost (free). */}
           {hasBreakdown && (
             <Cell solid id="rep-breakdown" style={{ scrollMarginTop: 120 }}>
-              <div className="au-panel-h">Score breakdown <span className="au-sub">points lost per signal (weight × gap to 100)</span></div>
-              <div className="au-rep-bd">
+              <div className="sp-panel-h">Score breakdown <span className="sp-sub">points lost per signal (weight × gap to 100)</span></div>
+              <div className="sp-rep-bd">
                 {ins.score_breakdown.map((s) => (
-                  <div key={s.signal_id} className="au-rep-bd-row">
-                    <div className="au-rep-bd-name">{s.label}</div>
-                    <div className="au-rep-bd-track"><div className="au-rep-bd-fill" style={{ width: `${s.score}%`, background: auScoreColor(s.score) }} /></div>
-                    <div className="au-rep-bd-score" style={{ color: auScoreColor(s.score) }}>{s.score}</div>
-                    <div className={`au-rep-bd-loss${s.points_lost > 0 ? " neg" : ""}`}>{s.points_lost > 0 ? `−${s.points_lost}` : "0"}</div>
+                  <div key={s.signal_id} className="sp-rep-bd-row">
+                    <div className="sp-rep-bd-name">{s.label}</div>
+                    <div className="sp-rep-bd-track"><div className="sp-rep-bd-fill" style={{ width: `${s.score}%`, background: spScoreColor(s.score) }} /></div>
+                    <div className="sp-rep-bd-score" style={{ color: spScoreColor(s.score) }}>{s.score}</div>
+                    <div className={`sp-rep-bd-loss${s.points_lost > 0 ? " neg" : ""}`}>{s.points_lost > 0 ? `−${s.points_lost}` : "0"}</div>
                   </div>
                 ))}
               </div>
@@ -360,8 +366,8 @@ export default function ReportView({ scanId, readOnly = false, report: reportPro
               a fabricated "everything is missing" diagnosis for pages never analyzed. */}
           {p4?.available === false && (
             <Cell solid id="rep-phase4-pending" style={{ scrollMarginTop: 120 }}>
-              <div className="au-panel-h">Deeper AEO Intelligence</div>
-              <div className="au-dim" style={{ fontSize: 13 }}>
+              <div className="sp-panel-h">Deeper AEO Intelligence</div>
+              <div className="sp-dim" style={{ fontSize: 13 }}>
                 Scan still in progress — insufficient evidence to generate Schema, Internal
                 Link, Entity, and Question intelligence until the scan completes.
               </div>
@@ -413,72 +419,72 @@ export default function ReportView({ scanId, readOnly = false, report: reportPro
           {/* AI priority action plan (paid reports only) */}
           {(ai?.action_plan || []).length > 0 && (
             <Cell solid>
-              <div className="au-panel-h">
-                <ListChecks size={14} style={{ color: "var(--au-primary)" }} /> Priority action plan
-                <span className="au-rep-ai-tag"><Sparkles size={11} /> AI-written</span>
+              <div className="sp-panel-h">
+                <ListChecks size={14} style={{ color: "var(--sp-primary)" }} /> Priority action plan
+                <span className="sp-rep-ai-tag"><Sparkles size={11} /> AI-written</span>
               </div>
-              <ol className="au-rep-plan">{ai.action_plan.map((step, i) => <li key={i}>{step}</li>)}</ol>
+              <ol className="sp-rep-plan">{ai.action_plan.map((step, i) => <li key={i}>{step}</li>)}</ol>
             </Cell>
           )}
 
           {/* Free tier: AI insights for the top issues + an upgrade teaser. */}
           {!readOnly && isFreeAi && (ai?.issue_insights || []).length > 0 && (
             <Cell solid>
-              <div className="au-panel-h">
-                <Sparkles size={14} style={{ color: "var(--au-primary)" }} /> Why your top issues matter
-                <span className="au-rep-ai-tag"><Sparkles size={11} /> AI-written</span>
+              <div className="sp-panel-h">
+                <Sparkles size={14} style={{ color: "var(--sp-primary)" }} /> Why your top issues matter
+                <span className="sp-rep-ai-tag"><Sparkles size={11} /> AI-written</span>
               </div>
               {ai.issue_insights.map((ins) => (
-                <div key={ins.id} className="au-rep-ai-insight">
-                  <div className="au-rep-ai-insight-t">{recsById[ins.id]?.issue_title || ins.id}</div>
+                <div key={ins.id} className="sp-rep-ai-insight">
+                  <div className="sp-rep-ai-insight-t">{recsById[ins.id]?.issue_title || ins.id}</div>
                   {ins.why_it_matters && <p>{ins.why_it_matters}</p>}
-                  {ins.priority_rationale && <p className="au-rep-ai-why-r">{ins.priority_rationale}</p>}
+                  {ins.priority_rationale && <p className="sp-rep-ai-why-r">{ins.priority_rationale}</p>}
                 </div>
               ))}
-              <div className="au-rep-ai-teaser">
-                <div className="au-rep-ai-teaser-t">
+              <div className="sp-rep-ai-teaser">
+                <div className="sp-rep-ai-teaser-t">
                   <Lock size={13} /> Full analysis for all {recs.length} issue{recs.length === 1 ? "" : "s"} + a prioritised action plan
                 </div>
-                <Button variant="accent" onClick={() => openPurchase()}>Unlock full report</Button>
+                <Button variant="gradient" onClick={() => openPurchase()}>Unlock full report</Button>
               </div>
             </Cell>
           )}
 
           {/* category breakdown */}
-          <div id="rep-categories" className="au-rep-grid2" style={{ scrollMarginTop: 120 }}>
+          <div id="rep-categories" className="sp-rep-grid2" style={{ scrollMarginTop: 120 }}>
             <Cell solid>
-              <div className="au-panel-h">Category breakdown</div>
+              <div className="sp-panel-h">Category breakdown</div>
               {(sc.category_scores || []).map((c) => (
-                <div key={c.category} className="au-bar">
-                  <div className="au-bar-l">{c.category}</div>
-                  <div className="au-bar-track"><div className="au-bar-fill" style={{ width: `${c.score}%`, background: auScoreColor(c.score) }} /></div>
-                  <div className="au-bar-v" style={{ color: auScoreColor(c.score) }}>{c.score}</div>
+                <div key={c.category} className="sp-bar-row">
+                  <div className="sp-bar-l">{c.category}</div>
+                  <div className="sp-bar-track"><div className="sp-bar-fill" style={{ width: `${c.score}%`, background: spScoreColor(c.score) }} /></div>
+                  <div className="sp-bar-v" style={{ color: spScoreColor(c.score) }}>{c.score}</div>
                 </div>
               ))}
             </Cell>
             <Cell solid>
-              <div className="au-panel-h">Strengths &amp; weaknesses</div>
-              <div className="au-rep-sw-h"><CheckCircle2 size={13} style={{ color: "var(--au-mint-d)" }} /> Strengths</div>
+              <div className="sp-panel-h">Strengths &amp; weaknesses</div>
+              <div className="sp-rep-sw-h"><CheckCircle2 size={13} style={{ color: "var(--sp-blue-d)" }} /> Strengths</div>
               {(sc.strengths || []).length ? sc.strengths.map((s) => (
-                <div key={s.label} className="au-rep-sw-row"><span>{s.label}</span><span className="au-mono" style={{ color: "var(--au-mint-d)" }}>{s.score}</span></div>
-              )) : <div className="au-dim" style={{ fontSize: 12.5, padding: "2px 0 8px" }}>None scored 75+ yet.</div>}
-              <div className="au-rep-sw-h" style={{ marginTop: 10 }}><AlertTriangle size={13} style={{ color: "var(--au-peach-d)" }} /> Weaknesses</div>
+                <div key={s.label} className="sp-rep-sw-row"><span>{s.label}</span><span className="sp-mono" style={{ color: "var(--sp-blue-d)" }}>{s.score}</span></div>
+              )) : <div className="sp-dim" style={{ fontSize: 12.5, padding: "2px 0 8px" }}>None scored 75+ yet.</div>}
+              <div className="sp-rep-sw-h" style={{ marginTop: 10 }}><AlertTriangle size={13} style={{ color: "var(--sp-violet-d)" }} /> Weaknesses</div>
               {(sc.weaknesses || []).length ? sc.weaknesses.map((w) => (
-                <div key={w.label} className="au-rep-sw-row"><span>{w.label}</span><span className="au-mono" style={{ color: "var(--au-peach-d)" }}>{w.score}</span></div>
-              )) : <div className="au-dim" style={{ fontSize: 12.5, padding: "2px 0" }}>No critical weaknesses. 🎉</div>}
+                <div key={w.label} className="sp-rep-sw-row"><span>{w.label}</span><span className="sp-mono" style={{ color: "var(--sp-violet-d)" }}>{w.score}</span></div>
+              )) : <div className="sp-dim" style={{ fontSize: 12.5, padding: "2px 0" }}>No critical weaknesses. 🎉</div>}
             </Cell>
           </div>
 
           {/* quick wins */}
           {hasQuickWins && (
             <Cell solid id="rep-quickwins" style={{ scrollMarginTop: 120 }}>
-              <div className="au-panel-h"><Zap size={14} style={{ color: "var(--au-lemon-d)" }} /> Quick wins <span className="au-sub">high impact, under an hour each</span></div>
-              <div className="au-rep-qw">
+              <div className="sp-panel-h"><Zap size={14} style={{ color: "var(--sp-lav-d)" }} /> Quick wins <span className="sp-sub">high impact, under an hour each</span></div>
+              <div className="sp-rep-qw">
                 {sc.quick_wins.map((q) => (
-                  <div key={q.id} className="au-rep-qw-item">
-                    <span className="au-rep-pri" style={{ background: AU_PRIORITY[q.priority] }}>{q.priority}</span>
-                    <span className="au-rep-qw-t">{q.issue_title}</span>
-                    <span className="au-dim au-mono" style={{ fontSize: 11 }}><Clock size={11} /> {q.estimated_fix_time}</span>
+                  <div key={q.id} className="sp-rep-qw-item">
+                    <span className="sp-rep-pri" style={{ background: SP_PRIORITY[q.priority] }}>{q.priority}</span>
+                    <span className="sp-rep-qw-t">{q.issue_title}</span>
+                    <span className="sp-dim sp-mono" style={{ fontSize: 11 }}><Clock size={11} /> {q.estimated_fix_time}</span>
                   </div>
                 ))}
               </div>
@@ -498,11 +504,11 @@ export default function ReportView({ scanId, readOnly = false, report: reportPro
           )}
 
           {/* recommendations */}
-          <div id="rep-recommendations" className="au-panel-h" style={{ margin: "8px 0 0", scrollMarginTop: 120 }}>
-            Recommendations <span className="au-sub">what's wrong, why it matters, and how to fix it</span>
+          <div id="rep-recommendations" className="sp-panel-h" style={{ margin: "8px 0 0", scrollMarginTop: 120 }}>
+            Recommendations <span className="sp-sub">what's wrong, why it matters, and how to fix it</span>
           </div>
           {recs.length === 0 && lockedCount === 0 ? (
-            <Cell solid><div className="au-dim" style={{ textAlign: "center", padding: 20 }}>No problems found — this site is in excellent shape for AI visibility. 🎉</div></Cell>
+            <Cell solid><div className="sp-dim" style={{ textAlign: "center", padding: 20 }}>No problems found — this site is in excellent shape for AI visibility. 🎉</div></Cell>
           ) : (
             <>
               {/* Paid: estimated score recovery from fixing the issues found. Free: the
@@ -510,23 +516,23 @@ export default function ReportView({ scanId, readOnly = false, report: reportPro
                   `gate_recommendations`) — every card shown is real, full content; the
                   locked remainder is represented ONLY by a count, never rendered. */}
               {ins?.max_recovery?.recoverable_points > 0 && <ScoreImpact proj={ins.max_recovery} />}
-              <div className="au-rep-list">{recs.map((r, i) => (
+              <div className="sp-rep-list">{recs.map((r, i) => (
                 <RecCard key={r.id + i} r={r} idx={i + 1} ins={aiById[r.id]}
                          verification={verificationBySignal[r.id]}
                          verifyHref={!readOnly && scanId ? `/app/scans/${encodeURIComponent(scanId)}` : null} />
               ))}</div>
               {!unlocked && lockedCount > 0 && (
-                <div className="au-rep-lock-overlay" style={{ marginTop: 12 }}>
-                  <div className="au-rep-lock-t">{lockedCount} more fix{lockedCount === 1 ? "" : "es"} found</div>
-                  <div className="au-rep-lock-s">Unlock the complete diagnosis, implementation steps and affected URLs.</div>
-                  <ul className="au-rep-lock-feats">
+                <div className="sp-rep-lock-overlay" style={{ marginTop: 12 }}>
+                  <div className="sp-rep-lock-t">{lockedCount} more fix{lockedCount === 1 ? "" : "es"} found</div>
+                  <div className="sp-rep-lock-s">Unlock the complete diagnosis, implementation steps and affected URLs.</div>
+                  <ul className="sp-rep-lock-feats">
                     <li><Check size={12} /> All affected URLs</li>
                     <li><Check size={12} /> Complete implementation steps</li>
                     <li><Check size={12} /> Schema &amp; content fixes</li>
                     <li><Check size={12} /> Detailed evidence</li>
                     <li><Check size={12} /> Projected score impact</li>
                   </ul>
-                  <Button variant="accent" onClick={() => openPurchase({ message: `${lockedCount} more fix${lockedCount === 1 ? "" : "es"} found — unlock the complete diagnosis, implementation steps and affected URLs.` })}>
+                  <Button variant="gradient" onClick={() => openPurchase({ message: `${lockedCount} more fix${lockedCount === 1 ? "" : "es"} found — unlock the complete diagnosis, implementation steps and affected URLs.` })}>
                     <Lock size={14} /> Unlock complete diagnosis
                   </Button>
                 </div>
@@ -537,13 +543,13 @@ export default function ReportView({ scanId, readOnly = false, report: reportPro
           {/* AI Content Insights already generated for this scan (Feature B, read-only). */}
           {ciInsights.length > 0 && (
             <Cell solid>
-              <div className="au-panel-h">
-                <Sparkles size={14} style={{ color: "var(--au-primary)" }} /> Content insights
-                <span className="au-sub">AI tone, clarity &amp; structure by page</span>
+              <div className="sp-panel-h">
+                <Sparkles size={14} style={{ color: "var(--sp-primary)" }} /> Content insights
+                <span className="sp-sub">AI tone, clarity &amp; structure by page</span>
               </div>
               {ciInsights.map((ci) => (
-                <div key={ci.page_url} className="au-rep-ci-page">
-                  <div className="au-rep-ci-url">{ci.page_url}</div>
+                <div key={ci.page_url} className="sp-rep-ci-page">
+                  <div className="sp-rep-ci-url">{ci.page_url}</div>
                   <InsightsBody data={ci.data} />
                 </div>
               ))}
@@ -562,10 +568,10 @@ export default function ReportView({ scanId, readOnly = false, report: reportPro
 function LockNote({ count, noun, onUnlock }) {
   if (!count) return null;
   return (
-    <div className="au-sim-lock">
+    <div className="sp-sim-lock">
       <Lock size={13} />
       <span>{count} more {noun}{count === 1 ? "" : "s"}</span>
-      <Button variant="accent" onClick={onUnlock}>Unlock</Button>
+      <Button variant="gradient" onClick={onUnlock}>Unlock</Button>
     </div>
   );
 }
@@ -591,19 +597,23 @@ function SchemaIntelligence({ data, unlocked, onUnlock, recommendations }) {
   const coveringRec = (recommendations || []).find((r) => r.id === data.related_recommendation_id);
   return (
     <Cell solid id="rep-schema" style={{ scrollMarginTop: 120 }}>
-      <div className="au-panel-h">Schema Intelligence <span className="au-sub">what structured data exists, and what's missing — some types only apply when your content supports them</span></div>
+      <div className="sp-panel-h">Schema Intelligence <span className="sp-sub">what structured data exists, and what's missing — some types only apply when your content supports them</span></div>
       {present.length > 0 && (
-        <div className="au-dim" style={{ fontSize: 12, marginBottom: 8 }}>
+        <div className="sp-dim" style={{ fontSize: 12, marginBottom: 8 }}>
           Detected: {present.join(", ")}
         </div>
       )}
+      {/* was `au-at-err` — that class lives in AnswerTracking.aurora.css (a different,
+          un-migrated screen), not this file's own CSS, so it's given its own home here
+          (`sp-rep-schema-err`, defined in ReportView.spectrum.css) rather than a blind
+          rename to a `sp-at-*` class that doesn't exist anywhere yet. */}
       {data.state === "malformed" && (
-        <div className="au-at-err" style={{ marginBottom: 8 }}>
+        <div className="sp-rep-schema-err" style={{ marginBottom: 8 }}>
           {data.malformed_blocks} JSON-LD block(s) present but malformed.
         </div>
       )}
       {missing.length === 0 ? (
-        <div className="au-dim" style={{ fontSize: 13 }}>No missing schema types found for this page. 🎉</div>
+        <div className="sp-dim" style={{ fontSize: 13 }}>No missing schema types found for this page. 🎉</div>
       ) : coveringRec ? (
         <SupportingEvidenceNote
           recommendationTitle={coveringRec.issue_title}
@@ -611,7 +621,7 @@ function SchemaIntelligence({ data, unlocked, onUnlock, recommendations }) {
           onJump={() => jumpToRecommendation(coveringRec.id)}
         />
       ) : (
-        <div className="au-rep-list">
+        <div className="sp-rep-list">
           {missing.map((m) => (
             <DiagnosisCard key={m.type}
               title={`Missing ${m.type} schema`}
@@ -624,7 +634,7 @@ function SchemaIntelligence({ data, unlocked, onUnlock, recommendations }) {
       )}
       {!unlocked && <LockNote count={data.locked_missing_count} noun="missing schema type" onUnlock={onUnlock} />}
       {data.bulk && (
-        <div className="au-dim" style={{ fontSize: 12, marginTop: 10 }}>
+        <div className="sp-dim" style={{ fontSize: 12, marginTop: 10 }}>
           {data.bulk.weak_page_count} of {data.bulk.pages_checked} scanned page(s) have weak/missing structured data.
           {!unlocked && data.locked_weak_page_count > 0 && ` ${data.locked_weak_page_count} more page(s) — Pro.`}
         </div>
@@ -638,29 +648,29 @@ function LinkIntelligence({ data, unlocked, onUnlock }) {
   const issues = data.issues || [];
   return (
     <Cell solid id="rep-links-intel" style={{ scrollMarginTop: 120 }}>
-      <div className="au-panel-h">Internal Link Intelligence <span className="au-sub">outgoing link coverage from this page</span></div>
+      <div className="sp-panel-h">Internal Link Intelligence <span className="sp-sub">outgoing link coverage from this page</span></div>
       {issues.length === 0 ? (
-        <div className="au-dim" style={{ fontSize: 13 }}>No internal-linking issues found for this page. 🎉</div>
+        <div className="sp-dim" style={{ fontSize: 13 }}>No internal-linking issues found for this page. 🎉</div>
       ) : (
-        <div className="au-rep-list">
+        <div className="sp-rep-list">
           {issues.map((iss) => (
-            <div key={iss.type} className="au-rep-card">
-              <div className="au-rep-card-b" style={{ padding: "12px 14px" }}>
-                <div className="au-rep-card-t" style={{ marginBottom: 4 }}>{iss.label}</div>
-                <p className="au-rep-desc">{iss.detail}</p>
-                <div className="au-dim" style={{ fontSize: 12, marginBottom: 6 }}>
+            <div key={iss.type} className="sp-rep-card">
+              <div className="sp-rep-card-b" style={{ padding: "12px 14px" }}>
+                <div className="sp-rep-card-t" style={{ marginBottom: 4 }}>{iss.label}</div>
+                <p className="sp-rep-desc">{iss.detail}</p>
+                <div className="sp-dim" style={{ fontSize: 12, marginBottom: 6 }}>
                   Affected URL{(iss.affected_urls || []).length === 1 ? "" : "s"}: {(iss.affected_urls || []).join(", ") || "—"}
                 </div>
-                <div className="au-rep-ai-why"><b>Recommendation:</b> {iss.recommended_action}</div>
+                <div className="sp-rep-ai-why"><b>Recommendation:</b> {iss.recommended_action}</div>
               </div>
             </div>
           ))}
         </div>
       )}
       {!unlocked && <LockNote count={data.locked_issue_count} noun="link issue" onUnlock={onUnlock} />}
-      <div className="au-dim" style={{ fontSize: 11, marginTop: 10 }}>{data.inbound_link_graph_note}</div>
+      <div className="sp-dim" style={{ fontSize: 11, marginTop: 10 }}>{data.inbound_link_graph_note}</div>
       {data.bulk && (
-        <div className="au-dim" style={{ fontSize: 12, marginTop: 4 }}>
+        <div className="sp-dim" style={{ fontSize: 12, marginTop: 4 }}>
           {data.bulk.weak_page_count} of {data.bulk.pages_checked} scanned page(s) have weak internal linking.
           {!unlocked && data.locked_weak_page_count > 0 && ` ${data.locked_weak_page_count} more page(s) — Pro.`}
         </div>
@@ -686,21 +696,21 @@ function EntityIntelligence({ data, unlocked, onUnlock, recommendations }) {
   const missingLabels = missing.map((k) => ENTITY_SIGNAL_LABEL[k] || k);
   return (
     <Cell solid id="rep-entity" style={{ scrollMarginTop: 120 }}>
-      <div className="au-panel-h">Entity Intelligence <span className="au-sub">what entity your site's own structured data represents — checked the same way for every site</span></div>
-      <div className="au-sim-scores" style={{ marginBottom: 10 }}>
-        <div className="au-sim-sc"><div className="au-sim-sc-l">Primary entity</div>
-          <div className="au-sim-sc-v" style={{ fontSize: 15 }}>{data.primary_entity_name || "Not detected"}</div></div>
-        <div className="au-sim-sc"><div className="au-sim-sc-l">Signal completeness</div>
-          <div className="au-sim-sc-v">{data.completeness_pct}%</div></div>
+      <div className="sp-panel-h">Entity Intelligence <span className="sp-sub">what entity your site's own structured data represents — checked the same way for every site</span></div>
+      <div className="sp-sim-scores" style={{ marginBottom: 10 }}>
+        <div className="sp-sim-sc"><div className="sp-sim-sc-l">Primary entity</div>
+          <div className="sp-sim-sc-v" style={{ fontSize: 15 }}>{data.primary_entity_name || "Not detected"}</div></div>
+        <div className="sp-sim-sc"><div className="sp-sim-sc-l">Signal completeness</div>
+          <div className="sp-sim-sc-v">{data.completeness_pct}%</div></div>
       </div>
       {(data.primary_entity_types || []).length > 0 && (
-        <div className="au-dim" style={{ fontSize: 12, marginBottom: 6 }}>Entity types: {data.primary_entity_types.join(", ")}</div>
+        <div className="sp-dim" style={{ fontSize: 12, marginBottom: 6 }}>Entity types: {data.primary_entity_types.join(", ")}</div>
       )}
-      <div className="au-dim" style={{ fontSize: 12, marginBottom: 6 }}>
+      <div className="sp-dim" style={{ fontSize: 12, marginBottom: 6 }}>
         sameAs: {sameAs.length > 0 ? sameAs.join(", ") : (data.same_as_note || "No sameAs relationship detected.")}
       </div>
       {missing.length === 0 ? (
-        <div className="au-dim" style={{ fontSize: 13 }}>No missing entity signals detected. 🎉</div>
+        <div className="sp-dim" style={{ fontSize: 13 }}>No missing entity signals detected. 🎉</div>
       ) : coveringRec ? (
         <SupportingEvidenceNote
           recommendationTitle={coveringRec.issue_title}
@@ -716,9 +726,9 @@ function EntityIntelligence({ data, unlocked, onUnlock, recommendations }) {
       )}
       {!unlocked && <LockNote count={data.locked_missing_signal_count} noun="missing entity signal" onUnlock={onUnlock} />}
       {!unlocked && data.locked_same_as_count > 0 && (
-        <div className="au-dim" style={{ fontSize: 11, marginTop: 4 }}>{data.locked_same_as_count} more sameAs link(s) — Pro.</div>
+        <div className="sp-dim" style={{ fontSize: 11, marginTop: 4 }}>{data.locked_same_as_count} more sameAs link(s) — Pro.</div>
       )}
-      <div className="au-dim" style={{ fontSize: 11, marginTop: 10 }}>{data.knowledge_graph_note}</div>
+      <div className="sp-dim" style={{ fontSize: 11, marginTop: 10 }}>{data.knowledge_graph_note}</div>
     </Cell>
   );
 }
@@ -734,17 +744,17 @@ function QuestionMining({ data, unlocked, onUnlock }) {
   if (questions.length === 0) return null;
   return (
     <Cell solid id="rep-questions" style={{ scrollMarginTop: 120 }}>
-      <div className="au-panel-h">Question Opportunities <span className="au-sub">questions your site should answer — also included in the Question Bank below</span></div>
-      <div className="au-rep-list">
+      <div className="sp-panel-h">Question Opportunities <span className="sp-sub">questions your site should answer — also included in the Question Bank below</span></div>
+      <div className="sp-rep-list">
         {questions.map((q, i) => (
-          <div key={i} className="au-rep-card">
-            <div className="au-rep-card-b" style={{ padding: "12px 14px" }}>
-              <div className="au-rep-card-t" style={{ marginBottom: 4 }}>"{q.text}"</div>
-              <div className="au-dim" style={{ fontSize: 12 }}>
+          <div key={i} className="sp-rep-card">
+            <div className="sp-rep-card-b" style={{ padding: "12px 14px" }}>
+              <div className="sp-rep-card-t" style={{ marginBottom: 4 }}>"{q.text}"</div>
+              <div className="sp-dim" style={{ fontSize: 12 }}>
                 {_CATEGORY_LABEL[q.category] || q.category} · source: {q.source === "schema_faq" ? "FAQ schema" : "page heading"}
                 {q.affected_url ? ` · ${q.affected_url}` : ""}
               </div>
-              {q.answer && <p className="au-rep-desc" style={{ marginTop: 6 }}>{q.answer}</p>}
+              {q.answer && <p className="sp-rep-desc" style={{ marginTop: 6 }}>{q.answer}</p>}
             </div>
           </div>
         ))}
@@ -764,9 +774,9 @@ const _TSEO_SUMMARY_LABEL = {
   redirected: "Redirected", errors: "Errors", unknown: "Unknown",
 };
 const _TSEO_STATUS_COLOR = {
-  indexable: "var(--au-mint-d)", not_indexable: "var(--au-peach-d)",
-  blocked: "var(--au-peach-d)", redirected: "var(--au-lemon-d)",
-  error: "var(--au-peach-d)", unknown: "var(--au-muted)",
+  indexable: "var(--sp-blue-d)", not_indexable: "var(--sp-violet-d)",
+  blocked: "var(--sp-violet-d)", redirected: "var(--sp-lav-d)",
+  error: "var(--sp-violet-d)", unknown: "var(--sp-muted)",
 };
 const _TSEO_STATUS_LABEL = {
   indexable: "Indexable", not_indexable: "Not indexable", blocked: "Blocked",
@@ -785,8 +795,8 @@ function TechnicalSeoIntelligence({ data, unlocked, onUnlock, recommendations })
   if (data.available === false) {
     return (
       <Cell solid id="rep-technical-seo" style={{ scrollMarginTop: 120 }}>
-        <div className="au-panel-h">Technical SEO &amp; Indexability</div>
-        <div className="au-dim" style={{ fontSize: 13 }}>
+        <div className="sp-panel-h">Technical SEO &amp; Indexability</div>
+        <div className="sp-dim" style={{ fontSize: 13 }}>
           Scan still in progress — insufficient evidence to generate indexability
           intelligence until the scan completes.
         </div>
@@ -813,23 +823,23 @@ function TechnicalSeoIntelligence({ data, unlocked, onUnlock, recommendations })
 
   return (
     <Cell solid id="rep-technical-seo" style={{ scrollMarginTop: 120 }}>
-      <div className="au-panel-h">
+      <div className="sp-panel-h">
         Technical SEO &amp; Indexability
-        <span className="au-sub">
+        <span className="sp-sub">
           for every crawled URL: can search engines discover, crawl, and index it?
         </span>
       </div>
-      <div className="au-sim-scores" style={{ marginBottom: 12 }}>
-        <div className="au-sim-sc">
-          <div className="au-sim-sc-l">URLs analyzed</div>
-          <div className="au-sim-sc-v">{summary.total_urls}</div>
+      <div className="sp-sim-scores" style={{ marginBottom: 12 }}>
+        <div className="sp-sim-sc">
+          <div className="sp-sim-sc-l">URLs analyzed</div>
+          <div className="sp-sim-sc-v">{summary.total_urls}</div>
         </div>
         {["indexable", "not_indexable", "blocked", "redirected", "errors", "unknown"]
           .filter((k) => summary[k] > 0)
           .map((k) => (
-            <div key={k} className="au-sim-sc">
-              <div className="au-sim-sc-l">{_TSEO_SUMMARY_LABEL[k]}</div>
-              <div className="au-sim-sc-v">{summary[k]}</div>
+            <div key={k} className="sp-sim-sc">
+              <div className="sp-sim-sc-l">{_TSEO_SUMMARY_LABEL[k]}</div>
+              <div className="sp-sim-sc-v">{summary[k]}</div>
             </div>
           ))}
       </div>
@@ -842,7 +852,7 @@ function TechnicalSeoIntelligence({ data, unlocked, onUnlock, recommendations })
           it renders as supporting evidence for that recommendation instead of a
           duplicate action, with Verify offered only there — never invented here. */}
       {issues.length > 0 && (
-        <div className="au-rep-list" style={{ marginBottom: 12 }}>
+        <div className="sp-rep-list" style={{ marginBottom: 12 }}>
           {issues.map((iss) => {
             const coveringRec = (recommendations || []).find((r) => r.id === _TSEO_CODE_TO_SIGNAL[iss.code]);
             if (coveringRec) {
@@ -872,38 +882,38 @@ function TechnicalSeoIntelligence({ data, unlocked, onUnlock, recommendations })
           a claim those URLs are broken/unindexable — kept visually and textually
           separate from the issues list above so it can never read as urgency. */}
       {sitemapGaps.length > 0 && (
-        <div className="au-tseo-coverage" style={{ marginBottom: 12 }}>
-          <div className="au-tseo-coverage-h">Scan coverage — not an indexability error</div>
-          <p className="au-dim" style={{ fontSize: 12, margin: "4px 0 6px" }}>
+        <div className="sp-tseo-coverage" style={{ marginBottom: 12 }}>
+          <div className="sp-tseo-coverage-h">Scan coverage — not an indexability error</div>
+          <p className="sp-dim" style={{ fontSize: 12, margin: "4px 0 6px" }}>
             {sitemapGaps.length} URL{sitemapGaps.length === 1 ? "" : "s"} listed in your
             sitemap {sitemapGaps.length === 1 ? "was" : "were"} not reached during this
             scan's crawl. This reflects this scan's own coverage, not a claim that these
             URLs are unindexable.
           </p>
-          <div className="au-dim" style={{ fontSize: 11.5 }}>{sitemapGaps.slice(0, 5).join(", ")}</div>
+          <div className="sp-dim" style={{ fontSize: 11.5 }}>{sitemapGaps.slice(0, 5).join(", ")}</div>
           {!unlocked && data.locked_sitemap_gap_count > 0 && (
-            <div className="au-dim" style={{ fontSize: 11, marginTop: 4 }}>{data.locked_sitemap_gap_count} more — Pro.</div>
+            <div className="sp-dim" style={{ fontSize: 11, marginTop: 4 }}>{data.locked_sitemap_gap_count} more — Pro.</div>
           )}
         </div>
       )}
 
       {urls.length > 0 && (
-        <div className="au-rep-list" style={{ marginTop: issues.length > 0 ? 14 : 0 }}>
+        <div className="sp-rep-list" style={{ marginTop: issues.length > 0 ? 14 : 0 }}>
           {urls.map((u) => (
-            <div key={u.url} className="au-rep-card">
-              <div className="au-rep-card-b" style={{ padding: "10px 14px" }}>
-                <div className="au-tseo-row">
-                  <span className="au-tseo-badge" style={{ background: _TSEO_STATUS_COLOR[u.indexability_status] || "var(--au-muted)" }}>
+            <div key={u.url} className="sp-rep-card">
+              <div className="sp-rep-card-b" style={{ padding: "10px 14px" }}>
+                <div className="sp-tseo-row">
+                  <span className="sp-tseo-badge" style={{ background: _TSEO_STATUS_COLOR[u.indexability_status] || "var(--sp-muted)" }}>
                     {_TSEO_STATUS_LABEL[u.indexability_status] || u.indexability_status}
                   </span>
-                  <span className="au-tseo-url">{u.url}</span>
-                  <span className="au-dim" style={{ fontSize: 11.5 }}>HTTP {u.status_code ?? "unknown"}</span>
+                  <span className="sp-tseo-url">{u.url}</span>
+                  <span className="sp-dim" style={{ fontSize: 11.5 }}>HTTP {u.status_code ?? "unknown"}</span>
                 </div>
                 {(u.issues || []).length > 0 && (
-                  <div className="au-dim" style={{ fontSize: 11.5, marginTop: 4 }}>{u.issues.join(", ")}</div>
+                  <div className="sp-dim" style={{ fontSize: 11.5, marginTop: 4 }}>{u.issues.join(", ")}</div>
                 )}
                 {u.canonical_type === "other" && (
-                  <div className="au-dim" style={{ fontSize: 11.5, marginTop: 2 }}>Canonical → {u.canonical}</div>
+                  <div className="sp-dim" style={{ fontSize: 11.5, marginTop: 2 }}>Canonical → {u.canonical}</div>
                 )}
               </div>
             </div>
@@ -928,8 +938,8 @@ function CrawlGraphIntelligence({ data, unlocked, onUnlock }) {
     if (data.reason === "multi_page_crawl_required") return null;   // single-page scan: nothing to show
     return (
       <Cell solid id="rep-crawl-graph" style={{ scrollMarginTop: 120 }}>
-        <div className="au-panel-h">Crawl Graph &amp; Internal Linking</div>
-        <div className="au-dim" style={{ fontSize: 13 }}>
+        <div className="sp-panel-h">Crawl Graph &amp; Internal Linking</div>
+        <div className="sp-dim" style={{ fontSize: 13 }}>
           Scan still in progress — insufficient evidence to build the internal-link
           graph until the scan completes.
         </div>
@@ -959,18 +969,18 @@ function CrawlGraphIntelligence({ data, unlocked, onUnlock }) {
 
   return (
     <Cell solid id="rep-crawl-graph" style={{ scrollMarginTop: 120 }}>
-      <div className="au-panel-h">
+      <div className="sp-panel-h">
         Crawl Graph &amp; Internal Linking
-        <span className="au-sub">how your crawled pages actually connect to each other</span>
+        <span className="sp-sub">how your crawled pages actually connect to each other</span>
       </div>
-      <div className="au-sim-scores" style={{ marginBottom: 12 }}>
-        <div className="au-sim-sc"><div className="au-sim-sc-l">Pages crawled</div><div className="au-sim-sc-v">{summary.pages}</div></div>
-        <div className="au-sim-sc"><div className="au-sim-sc-l">Internal links</div><div className="au-sim-sc-v">{summary.internal_edges}</div></div>
-        <div className="au-sim-sc"><div className="au-sim-sc-l">Reachable</div><div className="au-sim-sc-v">{summary.reachable_pages}</div></div>
-        <div className="au-sim-sc"><div className="au-sim-sc-l">Disconnected</div><div className="au-sim-sc-v">{summary.disconnected_pages}</div></div>
-        <div className="au-sim-sc"><div className="au-sim-sc-l">Orphan pages</div><div className="au-sim-sc-v">{summary.orphan_pages}</div></div>
+      <div className="sp-sim-scores" style={{ marginBottom: 12 }}>
+        <div className="sp-sim-sc"><div className="sp-sim-sc-l">Pages crawled</div><div className="sp-sim-sc-v">{summary.pages}</div></div>
+        <div className="sp-sim-sc"><div className="sp-sim-sc-l">Internal links</div><div className="sp-sim-sc-v">{summary.internal_edges}</div></div>
+        <div className="sp-sim-sc"><div className="sp-sim-sc-l">Reachable</div><div className="sp-sim-sc-v">{summary.reachable_pages}</div></div>
+        <div className="sp-sim-sc"><div className="sp-sim-sc-l">Disconnected</div><div className="sp-sim-sc-v">{summary.disconnected_pages}</div></div>
+        <div className="sp-sim-sc"><div className="sp-sim-sc-l">Orphan pages</div><div className="sp-sim-sc-v">{summary.orphan_pages}</div></div>
         {summary.max_depth != null && (
-          <div className="au-sim-sc"><div className="au-sim-sc-l">Max depth</div><div className="au-sim-sc-v">{summary.max_depth}</div></div>
+          <div className="sp-sim-sc"><div className="sp-sim-sc-l">Max depth</div><div className="sp-sim-sc-v">{summary.max_depth}</div></div>
         )}
       </div>
 
@@ -984,7 +994,7 @@ function CrawlGraphIntelligence({ data, unlocked, onUnlock }) {
           that would blur the two together. No Verify link: crawl_graph issues carry
           no `related_recommendation_id` on the backend, so one is never invented. */}
       {issues.length > 0 && (
-        <div className="au-rep-list" style={{ marginBottom: 12 }}>
+        <div className="sp-rep-list" style={{ marginBottom: 12 }}>
           {issues.map((iss) => (
             <DiagnosisCard key={iss.code}
               title={iss.label} severity={iss.severity}
@@ -999,13 +1009,13 @@ function CrawlGraphIntelligence({ data, unlocked, onUnlock }) {
 
       {orphans.length > 0 && (
         <>
-          <div className="au-panel-h" style={{ fontSize: 13, marginTop: 14 }}>Orphan pages <span className="au-sub">zero inbound internal links</span></div>
-          <div className="au-rep-list" style={{ marginBottom: 12 }}>
+          <div className="sp-panel-h" style={{ fontSize: 13, marginTop: 14 }}>Orphan pages <span className="sp-sub">zero inbound internal links</span></div>
+          <div className="sp-rep-list" style={{ marginBottom: 12 }}>
             {orphans.map((o) => (
-              <div key={o.url} className="au-rep-card">
-                <div className="au-rep-card-b" style={{ padding: "10px 14px" }}>
-                  <span className="au-tseo-url">{o.url}</span>
-                  <div className="au-dim" style={{ fontSize: 11.5, marginTop: 2 }}>
+              <div key={o.url} className="sp-rep-card">
+                <div className="sp-rep-card-b" style={{ padding: "10px 14px" }}>
+                  <span className="sp-tseo-url">{o.url}</span>
+                  <div className="sp-dim" style={{ fontSize: 11.5, marginTop: 2 }}>
                     0 referring pages · {o.outbound_pages} outbound link{o.outbound_pages === 1 ? "" : "s"}
                     {o.depth != null ? ` · depth ${o.depth}` : o.reachable === false ? " · not reachable from seed" : ""}
                   </div>
@@ -1019,15 +1029,15 @@ function CrawlGraphIntelligence({ data, unlocked, onUnlock }) {
 
       {depthHistogram.length > 0 && (
         <>
-          <div className="au-panel-h" style={{ fontSize: 13, marginTop: 14 }}>Site structure <span className="au-sub">depth from the crawl seed</span></div>
-          <div className="au-rep-bd" style={{ marginBottom: 12 }}>
+          <div className="sp-panel-h" style={{ fontSize: 13, marginTop: 14 }}>Site structure <span className="sp-sub">depth from the crawl seed</span></div>
+          <div className="sp-rep-bd" style={{ marginBottom: 12 }}>
             {depthHistogram.map((d) => (
-              <div key={d.label} className="au-rep-bd-row">
-                <div className="au-rep-bd-name">Depth {d.label}</div>
-                <div className="au-rep-bd-track">
-                  <div className="au-rep-bd-fill" style={{ width: `${Math.min(100, (d.count / summary.pages) * 100)}%`, background: "var(--au-primary)" }} />
+              <div key={d.label} className="sp-rep-bd-row">
+                <div className="sp-rep-bd-name">Depth {d.label}</div>
+                <div className="sp-rep-bd-track">
+                  <div className="sp-rep-bd-fill" style={{ width: `${Math.min(100, (d.count / summary.pages) * 100)}%`, background: "var(--sp-primary)" }} />
                 </div>
-                <div className="au-rep-bd-score">{d.count} page{d.count === 1 ? "" : "s"}</div>
+                <div className="sp-rep-bd-score">{d.count} page{d.count === 1 ? "" : "s"}</div>
               </div>
             ))}
           </div>
@@ -1036,19 +1046,19 @@ function CrawlGraphIntelligence({ data, unlocked, onUnlock }) {
 
       {topReferenced.length > 0 && (
         <>
-          <div className="au-panel-h" style={{ fontSize: 13, marginTop: 14 }}>Top referenced pages</div>
-          <div className="au-rep-list">
+          <div className="sp-panel-h" style={{ fontSize: 13, marginTop: 14 }}>Top referenced pages</div>
+          <div className="sp-rep-list">
             {topReferenced.map((t) => (
-              <div key={t.url} className="au-rep-card">
-                <div className="au-rep-card-b" style={{ padding: "8px 14px", flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
-                  <span className="au-tseo-url">{t.url}</span>
-                  <span className="au-dim" style={{ fontSize: 11.5, whiteSpace: "nowrap" }}>{t.inbound_pages} referring page{t.inbound_pages === 1 ? "" : "s"}</span>
+              <div key={t.url} className="sp-rep-card">
+                <div className="sp-rep-card-b" style={{ padding: "8px 14px", flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+                  <span className="sp-tseo-url">{t.url}</span>
+                  <span className="sp-dim" style={{ fontSize: 11.5, whiteSpace: "nowrap" }}>{t.inbound_pages} referring page{t.inbound_pages === 1 ? "" : "s"}</span>
                 </div>
               </div>
             ))}
           </div>
           {!unlocked && data.locked_top_referenced_count > 0 && (
-            <div className="au-dim" style={{ fontSize: 11, marginTop: 6 }}>{data.locked_top_referenced_count} more — Pro.</div>
+            <div className="sp-dim" style={{ fontSize: 11, marginTop: 6 }}>{data.locked_top_referenced_count} more — Pro.</div>
           )}
         </>
       )}
@@ -1086,17 +1096,17 @@ function ContentCluster({ cluster }) {
       fix={cluster.recommendation}
       affectedPages={
         <div style={{ marginTop: 6, display: "flex", flexDirection: "column", gap: 2 }}>
-          {cluster.pages.map((p) => <span key={p.url} className="au-tseo-url">{p.url}</span>)}
+          {cluster.pages.map((p) => <span key={p.url} className="sp-tseo-url">{p.url}</span>)}
         </div>
       }
     >
       {cluster.pages.length > 1 && (
-        <button type="button" className="au-ci-toggle" onClick={() => setExpanded((e) => !e)}>
+        <button type="button" className="sp-ci-toggle" onClick={() => setExpanded((e) => !e)}>
           {expanded ? "Hide" : "Show"} page details
         </button>
       )}
       {expanded && (
-        <ul className="au-ci-evidence">
+        <ul className="sp-ci-evidence">
           {cluster.pages.map((p) => (
             <li key={p.url}>
               {p.url} — {p.title || "no title"} · {p.word_count} words
@@ -1115,8 +1125,8 @@ function ContentIntelligence({ data, unlocked, onUnlock }) {
     if (data.reason === "multi_page_crawl_required") return null;   // single-page scan: nothing to show
     return (
       <Cell solid id="rep-content-intelligence" style={{ scrollMarginTop: 120 }}>
-        <div className="au-panel-h">Content Intelligence</div>
-        <div className="au-dim" style={{ fontSize: 13 }}>
+        <div className="sp-panel-h">Content Intelligence</div>
+        <div className="sp-dim" style={{ fontSize: 13 }}>
           Scan still in progress — insufficient evidence to analyze content overlap
           until the scan completes.
         </div>
@@ -1131,18 +1141,18 @@ function ContentIntelligence({ data, unlocked, onUnlock }) {
 
   return (
     <Cell solid id="rep-content-intelligence" style={{ scrollMarginTop: 120 }}>
-      <div className="au-panel-h">
+      <div className="sp-panel-h">
         Content Intelligence
-        <span className="au-sub">potential cannibalization, near-duplicate and overlapping content</span>
+        <span className="sp-sub">potential cannibalization, near-duplicate and overlapping content</span>
       </div>
-      <div className="au-sim-scores" style={{ marginBottom: 12 }}>
-        <div className="au-sim-sc"><div className="au-sim-sc-l">Pages analyzed</div><div className="au-sim-sc-v">{summary.pages_analyzed}</div></div>
-        <div className="au-sim-sc"><div className="au-sim-sc-l">Potential cannibalization</div><div className="au-sim-sc-v">{summary.potential_cannibalization_clusters}</div></div>
-        <div className="au-sim-sc"><div className="au-sim-sc-l">Near-duplicate</div><div className="au-sim-sc-v">{summary.duplicate_clusters}</div></div>
-        <div className="au-sim-sc"><div className="au-sim-sc-l">Content overlap</div><div className="au-sim-sc-v">{summary.overlap_clusters}</div></div>
-        <div className="au-sim-sc"><div className="au-sim-sc-l">Duplicate elements</div><div className="au-sim-sc-v">{summary.duplicate_elements}</div></div>
+      <div className="sp-sim-scores" style={{ marginBottom: 12 }}>
+        <div className="sp-sim-sc"><div className="sp-sim-sc-l">Pages analyzed</div><div className="sp-sim-sc-v">{summary.pages_analyzed}</div></div>
+        <div className="sp-sim-sc"><div className="sp-sim-sc-l">Potential cannibalization</div><div className="sp-sim-sc-v">{summary.potential_cannibalization_clusters}</div></div>
+        <div className="sp-sim-sc"><div className="sp-sim-sc-l">Near-duplicate</div><div className="sp-sim-sc-v">{summary.duplicate_clusters}</div></div>
+        <div className="sp-sim-sc"><div className="sp-sim-sc-l">Content overlap</div><div className="sp-sim-sc-v">{summary.overlap_clusters}</div></div>
+        <div className="sp-sim-sc"><div className="sp-sim-sc-l">Duplicate elements</div><div className="sp-sim-sc-v">{summary.duplicate_elements}</div></div>
         {summary.thin_pages > 0 && (
-          <div className="au-sim-sc"><div className="au-sim-sc-l">Thin-content</div><div className="au-sim-sc-v">{summary.thin_pages}</div></div>
+          <div className="sp-sim-sc"><div className="sp-sim-sc-l">Thin-content</div><div className="sp-sim-sc-v">{summary.thin_pages}</div></div>
         )}
       </div>
 
@@ -1150,7 +1160,7 @@ function ContentIntelligence({ data, unlocked, onUnlock }) {
           actionable overlap — never rendered as if it were a problem (same rule
           Action Center's own normalizer already applies to this exact field). */}
       {clusters.filter((c) => c.recommended_action !== "KEEP_SEPARATE").length > 0 && (
-        <div className="au-rep-list" style={{ marginBottom: 12 }}>
+        <div className="sp-rep-list" style={{ marginBottom: 12 }}>
           {clusters.filter((c) => c.recommended_action !== "KEEP_SEPARATE")
             .map((c) => <ContentCluster key={c.id} cluster={c} />)}
         </div>
@@ -1159,10 +1169,10 @@ function ContentIntelligence({ data, unlocked, onUnlock }) {
 
       {elements.length > 0 && (
         <>
-          <div className="au-panel-h" style={{ fontSize: 13, marginTop: 14 }}>Duplicate elements</div>
+          <div className="sp-panel-h" style={{ fontSize: 13, marginTop: 14 }}>Duplicate elements</div>
           {/* No `fix` step here — the backend provides no per-element recommendation
               field (unlike clusters' own `recommendation`), so none is invented. */}
-          <div className="au-rep-list" style={{ marginBottom: 12 }}>
+          <div className="sp-rep-list" style={{ marginBottom: 12 }}>
             {elements.map((e, i) => (
               <DiagnosisCard key={i}
                 title={
@@ -1174,7 +1184,7 @@ function ContentIntelligence({ data, unlocked, onUnlock }) {
             ))}
           </div>
           {!unlocked && data.locked_duplicate_element_count > 0 && (
-            <div className="au-dim" style={{ fontSize: 11, marginTop: 4, marginBottom: 12 }}>
+            <div className="sp-dim" style={{ fontSize: 11, marginTop: 4, marginBottom: 12 }}>
               {data.locked_duplicate_element_count} more duplicate-element group(s) — Pro.
             </div>
           )}
@@ -1183,13 +1193,13 @@ function ContentIntelligence({ data, unlocked, onUnlock }) {
 
       {thin.length > 0 && (
         <>
-          <div className="au-panel-h" style={{ fontSize: 13, marginTop: 14 }}>Thin-content candidates <span className="au-sub">relative to this site's own median</span></div>
-          <div className="au-rep-list">
+          <div className="sp-panel-h" style={{ fontSize: 13, marginTop: 14 }}>Thin-content candidates <span className="sp-sub">relative to this site's own median</span></div>
+          <div className="sp-rep-list">
             {thin.map((p) => (
-              <div key={p.url} className="au-rep-card">
-                <div className="au-rep-card-b" style={{ padding: "8px 14px", flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
-                  <span className="au-tseo-url">{p.url}</span>
-                  <span className="au-dim" style={{ fontSize: 11.5, whiteSpace: "nowrap" }}>{p.word_count} words (site median {p.site_median_word_count})</span>
+              <div key={p.url} className="sp-rep-card">
+                <div className="sp-rep-card-b" style={{ padding: "8px 14px", flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+                  <span className="sp-tseo-url">{p.url}</span>
+                  <span className="sp-dim" style={{ fontSize: 11.5, whiteSpace: "nowrap" }}>{p.word_count} words (site median {p.site_median_word_count})</span>
                 </div>
               </div>
             ))}
@@ -1197,7 +1207,7 @@ function ContentIntelligence({ data, unlocked, onUnlock }) {
         </>
       )}
       {!unlocked && data.locked_thin_page_count > 0 && (
-        <div className="au-dim" style={{ fontSize: 11, marginTop: 6 }}>{data.locked_thin_page_count} more thin page(s) — Pro.</div>
+        <div className="sp-dim" style={{ fontSize: 11, marginTop: 6 }}>{data.locked_thin_page_count} more thin page(s) — Pro.</div>
       )}
     </Cell>
   );
@@ -1209,14 +1219,14 @@ function ContentIntelligence({ data, unlocked, onUnlock }) {
 function ScoreImpact({ proj }) {
   if (!proj) return null;
   return (
-    <div className="au-rep-ip">
-      <div className="au-rep-ip-row">
-        <div className="au-rep-ip-col"><div className="au-rep-ip-l">Current</div><div className="au-rep-ip-v">{proj.current_score}</div></div>
-        <TrendingUp size={18} className="au-rep-ip-arrow" aria-hidden="true" />
-        <div className="au-rep-ip-col"><div className="au-rep-ip-l">Potential recovery</div><div className="au-rep-ip-v pos">+{proj.recoverable_points}</div></div>
-        <div className="au-rep-ip-col"><div className="au-rep-ip-l">Estimated after fixes</div><div className="au-rep-ip-v goal">{proj.projected_score}</div></div>
+    <div className="sp-rep-ip">
+      <div className="sp-rep-ip-row">
+        <div className="sp-rep-ip-col"><div className="sp-rep-ip-l">Current</div><div className="sp-rep-ip-v">{proj.current_score}</div></div>
+        <TrendingUp size={18} className="sp-rep-ip-arrow" aria-hidden="true" />
+        <div className="sp-rep-ip-col"><div className="sp-rep-ip-l">Potential recovery</div><div className="sp-rep-ip-v pos">+{proj.recoverable_points}</div></div>
+        <div className="sp-rep-ip-col"><div className="sp-rep-ip-l">Estimated after fixes</div><div className="sp-rep-ip-v goal">{proj.projected_score}</div></div>
       </div>
-      <div className="au-rep-ip-note">{proj.label}</div>
+      <div className="sp-rep-ip-note">{proj.label}</div>
     </div>
   );
 }
@@ -1245,41 +1255,41 @@ function ScoreSimulator({ data, unlocked, onUnlock }) {
 
   return (
     <Cell solid id="rep-simulator" style={{ scrollMarginTop: 120 }}>
-      <div className="au-panel-h">
-        <TrendingUp size={14} style={{ color: "var(--au-primary)" }} /> Score impact simulator
-        <span className="au-sub">select the fixes you'll make to see the estimated recovery</span>
+      <div className="sp-panel-h">
+        <TrendingUp size={14} style={{ color: "var(--sp-primary)" }} /> Score impact simulator
+        <span className="sp-sub">select the fixes you'll make to see the estimated recovery</span>
       </div>
-      <div className="au-sim-scores">
-        <div className="au-sim-sc"><div className="au-sim-sc-l">Current score</div><div className="au-sim-sc-v">{round1(data.current_score)}</div></div>
-        <div className="au-sim-plus" aria-hidden="true">+</div>
-        <div className="au-sim-sc"><div className="au-sim-sc-l">Selected fixes</div><div className="au-sim-sc-v pos">+{recovery}</div></div>
-        <TrendingUp size={16} className="au-sim-arrow" aria-hidden="true" />
-        <div className="au-sim-sc"><div className="au-sim-sc-l">Estimated score</div><div className="au-sim-sc-v goal">{projected}</div></div>
+      <div className="sp-sim-scores">
+        <div className="sp-sim-sc"><div className="sp-sim-sc-l">Current score</div><div className="sp-sim-sc-v">{round1(data.current_score)}</div></div>
+        <div className="sp-sim-plus" aria-hidden="true">+</div>
+        <div className="sp-sim-sc"><div className="sp-sim-sc-l">Selected fixes</div><div className="sp-sim-sc-v pos">+{recovery}</div></div>
+        <TrendingUp size={16} className="sp-sim-arrow" aria-hidden="true" />
+        <div className="sp-sim-sc"><div className="sp-sim-sc-l">Estimated score</div><div className="sp-sim-sc-v goal">{projected}</div></div>
       </div>
-      <div className="au-sim-note">{data.label}</div>
-      <div className="au-sim-items">
+      <div className="sp-sim-note">{data.label}</div>
+      <div className="sp-sim-items">
         {shown.map((it) => {
           const on = sel.has(it.signal_id);
           return (
-            <button key={it.signal_id} type="button" className={`au-sim-item${on ? " on" : ""}`}
+            <button key={it.signal_id} type="button" className={`sp-sim-item${on ? " on" : ""}`}
                     onClick={() => toggle(it.signal_id)} aria-pressed={on}>
-              <span className="au-sim-check">{on ? <CheckCircle2 size={17} /> : <Circle size={17} />}</span>
-              <span className="au-sim-item-main">
-                <span className="au-sim-item-t">{it.title}</span>
-                <span className="au-sim-item-meta">
+              <span className="sp-sim-check">{on ? <CheckCircle2 size={17} /> : <Circle size={17} />}</span>
+              <span className="sp-sim-item-main">
+                <span className="sp-sim-item-t">{it.title}</span>
+                <span className="sp-sim-item-meta">
                   {it.signal} · score {it.current_score}{it.priority ? ` · ${it.priority}` : ""}{it.difficulty ? ` · ${it.difficulty}` : ""}{it.estimated_fix_time ? ` · ${it.estimated_fix_time}` : ""}
                 </span>
               </span>
-              <span className="au-sim-item-rec">+{round1(it.recoverable_points)}</span>
+              <span className="sp-sim-item-rec">+{round1(it.recoverable_points)}</span>
             </button>
           );
         })}
       </div>
       {!unlocked && lockedItems > 0 && (
-        <div className="au-sim-lock">
+        <div className="sp-sim-lock">
           <Lock size={13} />
           <span>{lockedItems} more opportunit{lockedItems === 1 ? "y" : "ies"} in the full simulator</span>
-          <Button variant="accent" onClick={onUnlock}>Unlock full simulator</Button>
+          <Button variant="gradient" onClick={onUnlock}>Unlock full simulator</Button>
         </div>
       )}
     </Cell>
@@ -1305,16 +1315,16 @@ function ActionPlan({ data, unlocked, onUnlock }) {
     const locked = data.locked_task_count ?? 0;
     return (
       <Cell solid id="rep-plan" style={{ scrollMarginTop: 120 }}>
-        <div className="au-panel-h">
-          <ListChecks size={14} style={{ color: "var(--au-primary)" }} /> Your 30-day AEO action plan
-          <span className="au-sub">a prioritised, week-by-week plan built from your findings</span>
+        <div className="sp-panel-h">
+          <ListChecks size={14} style={{ color: "var(--sp-primary)" }} /> Your 30-day AEO action plan
+          <span className="sp-sub">a prioritised, week-by-week plan built from your findings</span>
         </div>
-        <div className="au-plan-tasks">{preview.map((t, i) => <PlanTask key={(t.id || "") + i} t={t} />)}</div>
+        <div className="sp-plan-tasks">{preview.map((t, i) => <PlanTask key={(t.id || "") + i} t={t} />)}</div>
         {locked > 0 && (
-          <div className="au-rep-lock-overlay" style={{ marginTop: 12 }}>
-            <div className="au-rep-lock-t">Your audit found {locked} more action{locked === 1 ? "" : "s"}</div>
-            <div className="au-rep-lock-s">Unlock your complete 30-day AEO plan with implementation steps, priority, affected pages and estimated score impact.</div>
-            <Button variant="accent" onClick={() => onUnlock(locked)}><Lock size={14} /> Unlock complete plan</Button>
+          <div className="sp-rep-lock-overlay" style={{ marginTop: 12 }}>
+            <div className="sp-rep-lock-t">Your audit found {locked} more action{locked === 1 ? "" : "s"}</div>
+            <div className="sp-rep-lock-s">Unlock your complete 30-day AEO plan with implementation steps, priority, affected pages and estimated score impact.</div>
+            <Button variant="gradient" onClick={() => onUnlock(locked)}><Lock size={14} /> Unlock complete plan</Button>
           </div>
         )}
       </Cell>
@@ -1323,20 +1333,20 @@ function ActionPlan({ data, unlocked, onUnlock }) {
 
   return (
     <Cell solid id="rep-plan" style={{ scrollMarginTop: 120 }}>
-      <div className="au-panel-h">
-        <ListChecks size={14} style={{ color: "var(--au-primary)" }} /> Your 30-day AEO action plan
-        <span className="au-sub">prioritised week-by-week from your findings</span>
+      <div className="sp-panel-h">
+        <ListChecks size={14} style={{ color: "var(--sp-primary)" }} /> Your 30-day AEO action plan
+        <span className="sp-sub">prioritised week-by-week from your findings</span>
       </div>
       {PLAN_WEEKS.map(([k, label]) => (data[k] || []).length > 0 && (
-        <div key={k} className="au-plan-week">
-          <div className="au-plan-week-h">{label}</div>
-          <div className="au-plan-tasks">{data[k].map((t, i) => <PlanTask key={(t.id || "") + i} t={t} />)}</div>
+        <div key={k} className="sp-plan-week">
+          <div className="sp-plan-week-h">{label}</div>
+          <div className="sp-plan-tasks">{data[k].map((t, i) => <PlanTask key={(t.id || "") + i} t={t} />)}</div>
         </div>
       ))}
       {(data.backlog || []).length > 0 && (
-        <div className="au-plan-week">
-          <div className="au-plan-week-h au-plan-backlog">Later / Backlog</div>
-          <div className="au-plan-tasks">{data.backlog.map((t, i) => <PlanTask key={"bk" + i} t={t} />)}</div>
+        <div className="sp-plan-week">
+          <div className="sp-plan-week-h sp-plan-backlog">Later / Backlog</div>
+          <div className="sp-plan-tasks">{data.backlog.map((t, i) => <PlanTask key={"bk" + i} t={t} />)}</div>
         </div>
       )}
     </Cell>
@@ -1345,12 +1355,12 @@ function ActionPlan({ data, unlocked, onUnlock }) {
 
 function PlanTask({ t }) {
   return (
-    <div className="au-plan-task">
-      {t.priority && <span className="au-rep-pri" style={{ background: AU_PRIORITY[t.priority] }}>{t.priority}</span>}
-      <div className="au-plan-task-main">
-        <div className="au-plan-task-t">{t.recommendation}</div>
-        {t.why_it_matters && <div className="au-plan-task-why">{t.why_it_matters}</div>}
-        <div className="au-plan-task-meta">
+    <div className="sp-plan-task">
+      {t.priority && <span className="sp-rep-pri" style={{ background: SP_PRIORITY[t.priority] }}>{t.priority}</span>}
+      <div className="sp-plan-task-main">
+        <div className="sp-plan-task-t">{t.recommendation}</div>
+        {t.why_it_matters && <div className="sp-plan-task-why">{t.why_it_matters}</div>}
+        <div className="sp-plan-task-meta">
           {t.signal && <span>{t.signal}</span>}
           {t.difficulty && <span><Wrench size={11} /> {t.difficulty}</span>}
           {t.estimated_fix_time && <span><Clock size={11} /> {t.estimated_fix_time}</span>}
@@ -1367,7 +1377,11 @@ function PlanTask({ t }) {
    of it — see ScanDetails.jsx. `showProblem` is false only in Scan Details, whose own
    "What's wrong" bullets already show this same text (fx.problem is literally the
    signal's first issue string) — skipping it there avoids showing the identical
-   sentence twice in the same expanded panel, never a change to the underlying data. */
+   sentence twice in the same expanded panel, never a change to the underlying data.
+
+   Spectrum-classed (`sp-rep-*`) — ActionCenter.jsx and ScanDetails.jsx both import this
+   exact component directly and no longer need any Aurora CSS import to style it; RecCard
+   below wraps it in the same `sp-rep-card`/`sp-rep-card-h` shell this screen already uses. */
 export function RecommendationCard({ r, ins, showProblem = true }) {
   const fx = r.fix_template || {};
   // `showProblem` also gates Evidence: Scan Details (showProblem=false there) already
@@ -1385,54 +1399,60 @@ export function RecommendationCard({ r, ins, showProblem = true }) {
   // this data (Full Report, Action Center, Scan Details) keeps the exact same real
   // content, just fix-first.
   return (
-    <div className="au-rep-card-b">
-      {showProblem && <p className="au-rep-desc">{r.description}</p>}
-      {showProblem && fx.problem && <><div className="au-rep-fx-h">Problem</div><p className="au-rep-desc">{fx.problem}</p></>}
+    <div className="sp-rep-card-b">
+      {showProblem && <p className="sp-rep-desc">{r.description}</p>}
+      {showProblem && fx.problem && <><div className="sp-rep-fx-h">Problem</div><p className="sp-rep-desc">{fx.problem}</p></>}
 
       {(fx.recommended_fix || []).length > 0 && (
-        <><div className="au-rep-fx-h au-rep-fx-h-prominent">Recommended fix</div>
-          <ul className="au-rep-fx-ul au-rep-fix-prominent">{fx.recommended_fix.map((s, i) => <li key={i}><Wrench size={11} /> <span>{s}</span></li>)}</ul></>
+        <><div className="sp-rep-fx-h sp-rep-fx-h-prominent">Recommended fix</div>
+          <ul className="sp-rep-fx-ul sp-rep-fix-prominent">{fx.recommended_fix.map((s, i) => <li key={i}><Wrench size={11} /> <span>{s}</span></li>)}</ul></>
       )}
       {fx.implementation_example && (
-        <><div className="au-rep-fx-h">Implementation example</div>
-          <pre className="au-code">{fx.implementation_example}</pre></>
+        <><div className="sp-rep-fx-h">Implementation example</div>
+          <pre className="sp-code">{fx.implementation_example}</pre></>
       )}
-      {fx.expected_outcome && <><div className="au-rep-fx-h">Expected outcome</div><p className="au-rep-outcome"><CheckCircle2 size={12} /> {fx.expected_outcome}</p></>}
+      {fx.expected_outcome && <><div className="sp-rep-fx-h">Expected outcome</div><p className="sp-rep-outcome"><CheckCircle2 size={12} /> {fx.expected_outcome}</p></>}
 
       {ins?.why_it_matters && (
-        <div className="au-rep-ai-why">
-          <div className="au-rep-ai-why-h"><Sparkles size={12} /> Why it matters</div>
+        <div className="sp-rep-ai-why">
+          <div className="sp-rep-ai-why-h"><Sparkles size={12} /> Why it matters</div>
           <p>{ins.why_it_matters}</p>
-          {ins.priority_rationale && <p className="au-rep-ai-why-r">{ins.priority_rationale}</p>}
+          {ins.priority_rationale && <p className="sp-rep-ai-why-r">{ins.priority_rationale}</p>}
         </div>
       )}
-      {fx.explanation && <><div className="au-rep-fx-h">Explanation</div><p className="au-rep-desc">{fx.explanation}</p></>}
+      {fx.explanation && <><div className="sp-rep-fx-h">Explanation</div><p className="sp-rep-desc">{fx.explanation}</p></>}
 
       {showProblem && (evIssues.length > 0 || evFindings.length > 0) && (
         <>
-          <div className="au-rep-fx-h">Evidence</div>
+          <div className="sp-rep-fx-h">Evidence</div>
           {evIssues.length > 0 && (
-            <ul className="au-rep-fx-ul">
+            <ul className="sp-rep-fx-ul">
               {evIssues.map((s, i) => <li key={i}><AlertTriangle size={11} /> <span>{s}</span></li>)}
             </ul>
           )}
           {evFindings.length > 0 && (
-            <ul className="au-rep-fx-ul">
+            <ul className="sp-rep-fx-ul">
               {evFindings.map(([k, v]) => <li key={k}><AlertTriangle size={11} /> <span>{k}: {fmtEv(v)}</span></li>)}
             </ul>
           )}
         </>
       )}
 
-      <div className="au-rep-impact">
-        <div><div className="au-rep-impact-l"><Gauge size={12} /> Business impact</div><div>{r.business_impact}</div></div>
-        <div><div className="au-rep-impact-l"><Gauge size={12} /> AI visibility impact</div><div>{r.ai_visibility_impact}</div></div>
+      <div className="sp-rep-impact">
+        <div><div className="sp-rep-impact-l"><Gauge size={12} /> Business impact</div><div>{r.business_impact}</div></div>
+        <div><div className="sp-rep-impact-l"><Gauge size={12} /> AI visibility impact</div><div>{r.ai_visibility_impact}</div></div>
       </div>
-      <div className="au-rep-meta-row">
+      <div className="sp-rep-meta-row">
         <span><Clock size={12} /> {r.estimated_fix_time}</span>
         <span><Wrench size={12} /> {r.difficulty}</span>
         <span>Severity: <b>{r.severity}</b></span>
+        {r.confidence && <span>Confidence: <b>{r.confidence}</b></span>}
       </div>
+      {showProblem && r.url && (
+        <div className="sp-rep-affected-url">
+          Affected page: <a href={r.url} target="_blank" rel="noreferrer">{r.url}</a>
+        </div>
+      )}
     </div>
   );
 }
@@ -1440,13 +1460,13 @@ export function RecommendationCard({ r, ins, showProblem = true }) {
 function RecCard({ r, idx, defaultOpen, ins, verifyHref, verification }) {
   const [open, setOpen] = useState(defaultOpen ?? idx === 1);   // collapsed by default; first expanded
   return (
-    <div className="au-rep-card" id={`rec-${r.id}`} style={{ scrollMarginTop: 120 }}>
-      <button id={`rec-h-${r.id}`} className="au-rep-card-h" onClick={() => setOpen((o) => !o)} aria-expanded={open}>
-        <span className="au-rep-pri" style={{ background: AU_PRIORITY[r.priority] }}>{r.priority}</span>
-        <span className="au-rep-card-t">{idx}. {r.issue_title}</span>
+    <div className="sp-rep-card" id={`rec-${r.id}`} style={{ scrollMarginTop: 120 }}>
+      <button id={`rec-h-${r.id}`} className="sp-rep-card-h" onClick={() => setOpen((o) => !o)} aria-expanded={open}>
+        <span className="sp-rep-pri" style={{ background: SP_PRIORITY[r.priority] }}>{r.priority}</span>
+        <span className="sp-rep-card-t">{idx}. {r.issue_title}</span>
         <VerificationBadge verification={verification} />
-        <span className="au-rep-card-meta">{r.category} · score <b style={{ color: auScoreColor(r.score) }}>{r.score}</b>{r.estimated_fix_time ? ` · ${r.estimated_fix_time}` : ""}</span>
-        <ChevronDown size={16} className="au-rep-chev" style={{ transform: open ? "rotate(180deg)" : "none" }} />
+        <span className="sp-rep-card-meta">{r.category} · score <b style={{ color: spScoreColor(r.score) }}>{r.score}</b>{r.estimated_fix_time ? ` · ${r.estimated_fix_time}` : ""}</span>
+        <ChevronDown size={16} className="sp-rep-chev" style={{ transform: open ? "rotate(180deg)" : "none" }} />
       </button>
       {open && (
         <>
@@ -1456,7 +1476,7 @@ function RecCard({ r, idx, defaultOpen, ins, verifyHref, verification }) {
               there rather than duplicating that state/logic on this page. Never claims
               "verified" itself; it only offers to go check. */}
           {verifyHref && (
-            <div className="au-rep-verify-link">
+            <div className="sp-rep-verify-link">
               <Link to={verifyHref}><History size={12} /> Verify after re-scan</Link>
             </div>
           )}

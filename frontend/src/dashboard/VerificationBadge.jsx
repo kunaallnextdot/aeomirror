@@ -20,7 +20,7 @@ export default function VerificationBadge({ verification }) {
   if (!copy) return null;
   const Icon = copy.icon;
   return (
-    <span className={`au-verify-badge au-verify-${copy.tone}`}>
+    <span className={`sp-verify-badge sp-verify-${copy.tone}`}>
       <Icon size={11} /> {copy.label}
     </span>
   );

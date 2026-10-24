@@ -115,19 +115,19 @@ describe("SupportingEvidenceNote — never a duplicate action, only a jump-link 
 });
 
 describe("Phase C mobile-safety (static — jsdom does not apply real CSS; verifies the shipped rules directly)", () => {
-  const REPORT_CSS = readFileSync(path.join(__dirname, "ReportView.aurora.css"), "utf8");
+  const REPORT_CSS = readFileSync(path.join(__dirname, "ReportView.spectrum.css"), "utf8");
   const block = (selector) => REPORT_CSS.match(new RegExp(selector.replace(/[.]/g, "\\.") + "\\{[^}]*\\}"))?.[0] || "";
 
-  it("URLs wrap instead of causing horizontal overflow (.au-tseo-url)", () => {
-    expect(block(".au-tseo-url")).toMatch(/word-break\s*:\s*break-all/);
+  it("URLs wrap instead of causing horizontal overflow (.sp-tseo-url)", () => {
+    expect(block(".sp-tseo-url")).toMatch(/word-break\s*:\s*break-all/);
   });
 
-  it("the badge+title row wraps to one column on narrow viewports (.au-tseo-row)", () => {
-    expect(block(".au-tseo-row")).toMatch(/flex-wrap\s*:\s*wrap/);
+  it("the badge+title row wraps to one column on narrow viewports (.sp-tseo-row)", () => {
+    expect(block(".sp-tseo-row")).toMatch(/flex-wrap\s*:\s*wrap/);
   });
 
   it("the new scan-coverage block has no fixed/min width that could overflow on mobile", () => {
-    const b = block(".au-tseo-coverage");
+    const b = block(".sp-tseo-coverage");
     expect(b).not.toMatch(/width\s*:\s*\d/);
     expect(b).not.toMatch(/min-width/);
   });

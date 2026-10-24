@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { Shell, AuField, AuTextInput, AuAlert } from "../../dashboard/aurora.jsx";
+import { Shell, SpField, SpTextInput, SpAlert } from "../../shared/spectrum.jsx";
 import { getOrg, updateOrg } from "../api.js";
 import { useAuth } from "../AuthContext.jsx";
 
@@ -31,38 +31,38 @@ export default function OrganizationPage() {
   };
 
   if (err) return (
-    <div className="aurora-screen"><Shell>
-      <div style={{ position: "relative", zIndex: 1, maxWidth: 720 }}><AuAlert>{err}</AuAlert></div>
+    <div className="spectrum-screen"><Shell>
+      <div style={{ position: "relative", zIndex: 1, maxWidth: 720 }}><SpAlert>{err}</SpAlert></div>
     </Shell></div>
   );
   if (!org) return (
-    <div className="aurora-screen"><Shell>
-      <div className="au-dim" style={{ position: "relative", zIndex: 1 }}>Loading…</div>
+    <div className="spectrum-screen"><Shell>
+      <div className="sp-dim" style={{ position: "relative", zIndex: 1 }}>Loading…</div>
     </Shell></div>
   );
 
   return (
-    <div className="aurora-screen"><Shell>
+    <div className="spectrum-screen"><Shell>
       <div style={{ position: "relative", zIndex: 1, maxWidth: 720 }}>
-        <div className="au-panel">
-          <div className="au-panel-h">Organization</div>
-          <form className="au-form" onSubmit={save}>
-            {msg && <AuAlert kind="ok">{msg}</AuAlert>}
-            <AuField label="Name">
-              <AuTextInput value={name} onChange={(e) => setName(e.target.value)} disabled={!canEdit} required />
-            </AuField>
-            <AuField label="Workspace URL slug" hint="Used in links. Generated from the name.">
-              <AuTextInput value={org.slug} disabled />
-            </AuField>
-            <AuField label="Created">
-              <AuTextInput value={org.created_at ? new Date(org.created_at).toLocaleDateString() : "—"} disabled />
-            </AuField>
+        <div className="sp-panel">
+          <div className="sp-panel-h">Organization</div>
+          <form className="sp-form" onSubmit={save}>
+            {msg && <SpAlert kind="ok">{msg}</SpAlert>}
+            <SpField label="Name">
+              <SpTextInput value={name} onChange={(e) => setName(e.target.value)} disabled={!canEdit} required />
+            </SpField>
+            <SpField label="Workspace URL slug" hint="Used in links. Generated from the name.">
+              <SpTextInput value={org.slug} disabled />
+            </SpField>
+            <SpField label="Created">
+              <SpTextInput value={org.created_at ? new Date(org.created_at).toLocaleDateString() : "—"} disabled />
+            </SpField>
             {canEdit ? (
-              <button type="submit" className="au-btn au-accent" disabled={busy} style={{ alignSelf: "flex-start" }}>
+              <button type="submit" className="sp-btn sp-gradient" disabled={busy} style={{ alignSelf: "flex-start" }}>
                 {busy ? "Saving…" : "Save changes"}
               </button>
             ) : (
-              <div className="au-field-hint">Only the organization owner or an admin can change these settings.</div>
+              <div className="sp-field-hint">Only the organization owner or an admin can change these settings.</div>
             )}
           </form>
         </div>

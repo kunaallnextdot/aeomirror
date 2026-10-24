@@ -1,0 +1,61 @@
+/* Spectrum styling for Recent Scans (/app/scans). Screen-scoped `sp-sc-*` classes for the
+   parts with no direct shared primitive (filter toolbar, data table, row actions, the
+   floating compare bar). Token-for-token port of ScansTable.aurora.css's `au-sc-*` rules
+   onto `--sp-*`; the Aurora original is LEFT INTACT. Loaded only with ScansTable.
+   NOTE (report): table + form controls (search/select) have no shared archetype; token-
+   styled here and could be promoted to shared Spectrum primitives at cleanup. */
+
+/* filter toolbar */
+.sp-sc-toolbar{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:16px;position:relative;z-index:1}
+.sp-sc-search{display:flex;align-items:center;gap:8px;background:var(--sp-solid);border:1px solid var(--sp-line);
+  border-radius:var(--sp-r-pill);padding:9px 15px;color:var(--sp-muted);flex:1;min-width:200px}
+.sp-sc-search input{border:0;background:none;outline:none;color:var(--sp-ink);font:inherit;font-size:13.5px;flex:1;min-width:0}
+.sp-sc-search input::placeholder{color:var(--sp-muted)}
+.sp-sc-search:focus-within{outline:2px solid var(--sp-primary);outline-offset:1px}
+.sp-sc-select{background:var(--sp-solid);border:1px solid var(--sp-line);border-radius:var(--sp-r-pill);
+  color:var(--sp-ink-2);font:inherit;font-size:13px;padding:9px 14px;cursor:pointer}
+.sp-sc-select:focus-visible{outline:2px solid var(--sp-primary);outline-offset:1px}
+
+/* table */
+.sp-sc-tablewrap{overflow-x:auto;border:1px solid var(--sp-line);border-radius:var(--sp-r-m);background:var(--sp-solid)}
+.sp-sc-table{width:100%;border-collapse:collapse;font-size:13px}
+.sp-sc-table th{font-family:var(--sp-font-numeric);font-size:10px;letter-spacing:.06em;text-transform:uppercase;
+  color:var(--sp-muted);text-align:left;padding:12px 14px;border-bottom:1px solid var(--sp-line);white-space:nowrap;font-weight:500}
+.sp-sc-table td{padding:11px 14px;border-bottom:1px solid var(--sp-line-2);vertical-align:middle;color:var(--sp-ink-2)}
+.sp-sc-table tbody tr:last-child td{border-bottom:0}
+.sp-sc-table tbody tr:hover{background:rgba(11,16,36,.02)}
+.sp-sc-table tr.sp-sc-sel{background:var(--sp-t-blue)}
+.sp-sc-url{font-weight:600;color:var(--sp-ink)}
+.sp-sc-meta{font-family:var(--sp-font-numeric);font-size:12px;color:var(--sp-muted);white-space:nowrap}
+.sp-sc-empty{text-align:center;padding:28px;color:var(--sp-muted)}
+.sp-sc-th-right,.sp-sc-td-right{text-align:right}
+
+/* row actions */
+.sp-sc-actions{display:flex;gap:6px;justify-content:flex-end}
+.sp-sc-iconbtn{display:inline-flex;align-items:center;justify-content:center;width:30px;height:30px;
+  border-radius:9px;border:1px solid var(--sp-line);background:var(--sp-solid);color:var(--sp-ink-2);
+  cursor:pointer;transition:border-color .15s,color .15s}
+.sp-sc-iconbtn:hover:not(:disabled){border-color:var(--sp-primary);color:var(--sp-primary)}
+.sp-sc-iconbtn:disabled{opacity:.5;cursor:not-allowed}
+.sp-sc-iconbtn:focus-visible{outline:2px solid var(--sp-primary);outline-offset:2px}
+.sp-sc-iconbtn.sp-sc-danger:hover:not(:disabled){border-color:var(--sp-violet-d);color:var(--sp-violet-d)}
+.sp-sc-check{width:16px;height:16px;accent-color:var(--sp-primary);cursor:pointer}
+
+/* floating compare bar (appears when scans are ticked) */
+.sp-sc-cmp{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);z-index:60;display:flex;align-items:center;
+  gap:14px;background:var(--sp-ink);color:#fff;border-radius:var(--sp-r-pill);padding:10px 12px 10px 18px;box-shadow:var(--sp-sh-l)}
+.sp-sc-cmp-n{font-family:var(--sp-font-numeric);font-size:12.5px}
+.sp-sc-cmp-go{display:inline-flex;align-items:center;gap:7px;background:var(--sp-primary);color:#fff;border:0;
+  border-radius:var(--sp-r-pill);padding:7px 14px;font-weight:600;font-size:13px;cursor:pointer;font-family:inherit}
+.sp-sc-cmp-hint{font-size:12px;color:rgba(255,255,255,.7)}
+.sp-sc-cmp-x{background:rgba(255,255,255,.14);border:0;color:#fff;border-radius:50%;width:28px;height:28px;
+  display:grid;place-items:center;cursor:pointer}
+
+/* loading + empty + error (route-scoped Spectrum states) */
+.sp-sc-skrows{display:flex;flex-direction:column;gap:8px}
+.sp-sc-center{text-align:center;padding:48px 24px;position:relative;z-index:1}
+.sp-sc-ill{width:56px;height:56px;border-radius:50%;display:grid;place-items:center;margin:0 auto 16px;
+  background:var(--sp-t-blue);color:var(--sp-blue-d)}
+.sp-sc-ill.sp-sc-bad{background:var(--sp-t-violet);color:var(--sp-violet-d)}
+.sp-sc-ct{font-family:var(--sp-font-heading);font-size:20px;font-weight:700;color:var(--sp-ink);margin-bottom:8px}
+.sp-sc-cs{font-size:13.5px;color:var(--sp-muted);max-width:440px;margin:0 auto 20px;line-height:1.6}

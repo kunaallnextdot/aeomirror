@@ -1,0 +1,42 @@
+/* Spectrum styling for the AI Content Insights card (Feature B). Embedded sub-component —
+   rendered inside ScanDetails / ReportView, NOT a route-level screen — so (like SharePanel's
+   `sp-share-*` classes) this deliberately has no `.spectrum-screen`/`<Shell>` wrapper of its
+   own; it just uses the shared `sp-panel` card + these screen-specific `sp-ci-*` rules for the
+   shapes the shared classes don't cover (stacked tone/clarity/structure meters, the fix-first
+   "what to fix" blocks, the before/after rewrite diff). All colours are `--sp-*` tokens —
+   monochrome-blue, no red/amber/green. */
+
+.sp-ci-lock,.sp-ci-empty{padding:6px 0 4px}
+.sp-ci-lock-t{display:flex;align-items:center;gap:7px;font-weight:700;font-size:13.5px;color:var(--sp-ink)}
+.sp-ci-lock-s{font-size:12.5px;color:var(--sp-muted);margin:5px 0 12px}
+.sp-ci-err{display:flex;align-items:center;gap:7px;color:var(--sp-violet-d);font-size:12.5px;margin-top:10px}
+
+.sp-ci-body{display:flex;flex-direction:column;gap:14px}
+.sp-ci-meters{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px}
+.sp-ci-meter-top{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:5px}
+.sp-ci-meter-l{font-size:12px;font-weight:600;color:var(--sp-ink-2)}
+.sp-ci-meter-n{font-size:15px;font-weight:800}
+.sp-ci-meter-track{height:6px;border-radius:4px;background:var(--sp-line);overflow:hidden}
+.sp-ci-meter-track>div{height:100%;border-radius:4px;transition:width .3s}
+.sp-ci-meter-a{font-size:11.5px;color:var(--sp-ink-2);line-height:1.45;margin-top:5px}
+
+.sp-ci-block .sp-ci-h{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.3px;
+  color:var(--sp-muted);margin-bottom:6px}
+.sp-ci-ul{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px}
+.sp-ci-ul li{display:flex;gap:7px;align-items:flex-start;font-size:12.5px;line-height:1.5;color:var(--sp-ink)}
+.sp-ci-ul li svg{flex:none;margin-top:2px;color:var(--sp-blue-d)}
+
+/* Structure/Tone/Clarity's own fix-first block — visually dominant vs. the generic
+   Suggestions list below it, matching the same fix-first hierarchy used elsewhere in the
+   report. Tint reuses --sp-t-blue, the same "highlighted callout" tint BillingView's
+   sp-bill-hero uses — an informational emphasis, not a status colour. */
+.sp-ci-fix-tone,.sp-ci-fix-clarity,.sp-ci-fix-structure{background:var(--sp-t-blue);border-radius:var(--sp-r-m);padding:11px 13px}
+.sp-ci-ol{margin:0;padding-left:18px;display:flex;flex-direction:column;gap:5px}
+.sp-ci-ol li{font-size:12.5px;line-height:1.5;color:var(--sp-ink)}
+
+.sp-ci-ba{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.sp-ci-ba-col{border:1px solid var(--sp-line);border-radius:9px;padding:9px 11px;background:var(--sp-page)}
+.sp-ci-ba-after{border-color:var(--sp-primary);background:var(--sp-t-blue)}
+.sp-ci-ba-l{font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.3px;color:var(--sp-muted);margin-bottom:5px}
+.sp-ci-ba-col p{font-size:12px;line-height:1.5;color:var(--sp-ink);margin:0;white-space:pre-wrap}
+@media (max-width:640px){.sp-ci-ba{grid-template-columns:1fr}}

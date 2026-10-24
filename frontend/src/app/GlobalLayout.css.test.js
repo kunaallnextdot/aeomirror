@@ -1,5 +1,5 @@
 /* Global footer/layout fix — static assertions against the three actual shipped app
-   shells (.au-dash: authenticated app, .au-site: public marketing/contact, .au-pub:
+   shells (.sp-dash: authenticated app, .sp-site: public marketing/contact, .sp-pub:
    public shared report). jsdom does not apply imported CSS in this project's test setup
    (no `test.css` config), so "not fixed/sticky" and "content can grow before the footer"
    are facts only the CSS source itself can state — read and asserted directly here
@@ -12,9 +12,9 @@ import { describe, it, expect } from "vitest";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const read = (rel) => readFileSync(path.join(__dirname, rel), "utf8");
 
-const APP_LAYOUT_CSS = read("AppLayout.aurora.css");
-const APP_CSS = read("../App.aurora.css");
-const DASHBOARD_AURORA_CSS = read("../dashboard/aurora.css");
+const APP_LAYOUT_CSS = read("AppLayout.spectrum.css");
+const APP_CSS = read("../App.spectrum.css");
+const SHARED_SPECTRUM_CSS = read("../shared/spectrum.css");
 
 function block(css, selector) {
   const re = new RegExp(selector.replace(/[.]/g, "\\.") + "\\{[^}]*\\}");
@@ -23,19 +23,19 @@ function block(css, selector) {
 
 describe.each([
   {
-    name: "authenticated app shell (.au-dash)",
+    name: "authenticated app shell (.sp-dash)",
     css: APP_LAYOUT_CSS,
-    shell: ".au-dash", column: ".au-dash-main", content: ".au-dash-content", footer: ".au-dash-footer",
+    shell: ".sp-dash", column: ".sp-dash-main", content: ".sp-dash-content", footer: ".sp-dash-footer",
   },
   {
-    name: "public marketing/contact shell (.au-site)",
+    name: "public marketing/contact shell (.sp-site)",
     css: APP_CSS,
-    shell: ".au-site", column: ".au-site", content: ".au-site-content", footer: ".au-site-footer",
+    shell: ".sp-site", column: ".sp-site", content: ".sp-site-content", footer: ".sp-site-footer",
   },
   {
-    name: "public shared-report shell (.au-pub)",
-    css: DASHBOARD_AURORA_CSS,
-    shell: ".au-pub", column: ".au-pub", content: ".au-pub-main", footer: ".au-pub-foot",
+    name: "public shared-report shell (.sp-pub)",
+    css: SHARED_SPECTRUM_CSS,
+    shell: ".sp-pub", column: ".sp-pub", content: ".sp-pub-main", footer: ".sp-pub-foot",
   },
 ])("$name", ({ css, shell, column, content, footer }) => {
   it("the shell fills at least the viewport height", () => {

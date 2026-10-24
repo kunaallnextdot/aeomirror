@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { AuAuthShell, AuField, AuTextInput, AuPasswordInput, AuAlert, AuSubmitButton } from "../../dashboard/aurora.jsx";
+import { SpAuthShell, SpField, SpTextInput, SpPasswordInput, SpAlert, SpSubmitButton } from "../../shared/spectrum.jsx";
 import { useAuth } from "../AuthContext.jsx";
 import { navigate } from "../router.jsx";
 import { hasPendingScan } from "../pendingScan.js";
@@ -36,29 +36,29 @@ export default function Login() {
   };
 
   return (
-    <AuAuthShell
+    <SpAuthShell
       title="Welcome back"
       subtitle="Sign in to your AEOMirror dashboard."
-      footer={<>New to AEOMirror? <button className="au-authlink" onClick={() => navigate("/register")}>Create an account</button></>}
+      footer={<>New to AEOMirror? <button className="sp-authlink" onClick={() => navigate("/register")}>Create an account</button></>}
     >
-      <form className="au-form" onSubmit={submit}>
-        {err && <AuAlert>{err}</AuAlert>}
-        <AuField label="Email">
-          <AuTextInput type="email" value={email} onChange={(e) => setEmail(e.target.value)}
+      <form className="sp-form" onSubmit={submit}>
+        {err && <SpAlert>{err}</SpAlert>}
+        <SpField label="Email">
+          <SpTextInput type="email" value={email} onChange={(e) => setEmail(e.target.value)}
                      required autoFocus placeholder="you@company.com" autoComplete="email" />
-        </AuField>
-        <AuField label="Password">
-          <AuPasswordInput value={password} onChange={(e) => setPassword(e.target.value)}
+        </SpField>
+        <SpField label="Password">
+          <SpPasswordInput value={password} onChange={(e) => setPassword(e.target.value)}
                          required autoComplete="current-password" />
-        </AuField>
-        <div className="au-auth-row">
-          <label className="au-check">
+        </SpField>
+        <div className="sp-auth-row">
+          <label className="sp-check">
             <input type="checkbox" checked={remember} onChange={(e) => setRemember(e.target.checked)} /> Remember me
           </label>
-          <button type="button" className="au-authlink" onClick={() => navigate("/forgot-password")}>Forgot password?</button>
+          <button type="button" className="sp-authlink" onClick={() => navigate("/forgot-password")}>Forgot password?</button>
         </div>
-        <AuSubmitButton busy={busy}>Sign in</AuSubmitButton>
+        <SpSubmitButton busy={busy}>Sign in</SpSubmitButton>
       </form>
-    </AuAuthShell>
+    </SpAuthShell>
   );
 }

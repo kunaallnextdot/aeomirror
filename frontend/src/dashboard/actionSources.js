@@ -424,6 +424,72 @@ export function normalizeCrawlGraphIssues(crawlGraph, scanId) {
   }));
 }
 
+const URL_INTEL_PRIORITY_LABEL = { critical: "Critical", high: "High", medium: "Medium", low: "Low" };
+
+/** report.url_intelligence.findings[] -> ActionItem[]. Connects the URL Intelligence
+ * Engine (real site crawl + per-template AI analysis) into the SAME Action Center
+ * a user already works from — previously this data was only reachable from a
+ * separate "Site Intelligence" page. Read-only: never triggers a new crawl (the
+ * backend summary this reads is itself a read-only join against an EXISTING
+ * completed crawl — see reports/service.py::build_url_intelligence_summary).
+ *
+ * `verified` is this source's OWN verification concept (UrlFinding.verification_status,
+ * set by recrawl-to-verify — a different, per-URL evidence diff, not the scan-signal
+ * Verification table) — ActionCenter.jsx treats `item.verified` as an independent
+ * "already demoted" signal alongside the existing verifySignalId path, rather than
+ * forcing this source into the other system's shape. */
+export function normalizeUrlIntelligenceFindings(urlIntelligence, scanId) {
+  if (!urlIntelligence?.available) return [];
+  const destination = urlIntelligence.monitor_id
+    ? { to: `/app/monitoring/${encodeURIComponent(urlIntelligence.monitor_id)}/intelligence`,
+        label: "Open Site Intelligence" }
+    : reportDest(scanId, null);
+  return (urlIntelligence.findings || []).map((f) => ({
+    id: `url_intel:${f.id}`, kind: "url_intelligence", source: "Site Crawl Intelligence",
+    type: f.category,
+    title: f.finding_title,
+    problem: f.why_it_matters || f.finding_title,
+    why: f.affected_url_count > 1
+      ? `Affects ${f.affected_url_count} page(s) sharing this template.` : null,
+    priority: URL_INTEL_PRIORITY_LABEL[f.priority] || "Low",
+    confidence: f.confidence,
+    evidencePreview: f.url ? [f.url] : [],
+    fullEvidence: f.url ? [f.url] : [],
+    fixText: f.recommended_fix,
+    verified: f.verification_status === "verified",
+    destination,
+    raw: f,
+  }));
+}
+
+/** Items from DIFFERENT sources that reference the SAME affected URL are flagged as
+ * related to each other (never hidden/merged — we have no reliable way to know
+ * whether they're the same underlying root cause or two genuinely different
+ * problems on that page) so a user reviewing one doesn't act on it unaware of the
+ * others. This is deliberately a "detect and surface", not "suppress" rule: unlike
+ * the related_recommendation_id dedup above (a real, backend-confirmed same-issue
+ * link), a shared URL is only circumstantial evidence of overlap. */
+function flagUrlOverlaps(items) {
+  const byUrl = new Map();
+  for (const item of items) {
+    for (const url of item.fullEvidence || []) {
+      if (!/^https?:\/\//.test(url)) continue;
+      if (!byUrl.has(url)) byUrl.set(url, []);
+      byUrl.get(url).push(item);
+    }
+  }
+  for (const group of byUrl.values()) {
+    if (group.length < 2) continue;
+    for (const item of group) {
+      const others = group.filter((g) => g !== item && g.source !== item.source);
+      if (others.length) {
+        item.overlapsWith = others.map((o) => ({ id: o.id, source: o.source, title: o.title }));
+      }
+    }
+  }
+  return items;
+}
+
 /** Sums the locked-item counts for every source Action Center actually normalizes
  * into a card — never a source it doesn't render, so this banner never promises more
  * than opening the report would reveal. Each field is read straight from the
@@ -438,7 +504,8 @@ export function computeLockedActionCount(report) {
     + (report.phase4?.schema?.locked_missing_count || 0)
     + (report.phase4?.entity?.locked_missing_signal_count || 0)
     + (report.phase4?.links?.locked_issue_count || 0)
-    + (report.crawl_graph?.locked_issue_count || 0);
+    + (report.crawl_graph?.locked_issue_count || 0)
+    + (report.url_intelligence?.locked_finding_count || 0);
 }
 
 function formatEvidenceValue(v) {
@@ -454,7 +521,8 @@ function formatEvidenceValue(v) {
  * source (Recommendations > Technical SEO > AI Visibility > Content Intelligence,
  * per the ticket's documented tie-breaker), then id, for full determinism. */
 export function buildActionItems({
-  recommendations, technicalSeo, contentIntelligence, answerSimulation, phase4, crawlGraph, scanId,
+  recommendations, technicalSeo, contentIntelligence, answerSimulation, phase4, crawlGraph,
+  urlIntelligence, scanId,
 }) {
   const recs = recommendations || [];
   const recommendationIds = new Set(recs.map((r) => r.id));
@@ -482,6 +550,9 @@ export function buildActionItems({
   items.push(...normalizeCrawlGraphIssues(crawlGraph, scanId));
   const questions = normalizeQuestionFindings(phase4, scanId);
   if (questions) items.push(questions);
+  items.push(...normalizeUrlIntelligenceFindings(urlIntelligence, scanId));
+
+  flagUrlOverlaps(items);
 
   items.sort((a, b) => {
     const pr = (PRIORITY_RANK[a.priority] ?? 9) - (PRIORITY_RANK[b.priority] ?? 9);

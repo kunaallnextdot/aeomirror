@@ -51,7 +51,7 @@ describe("InsightsBody — Structure fix-first block", () => {
       ...BASE,
       structure: { ...BASE.structure, fixes: ["Add a clear H1"], implementation: "" },
     }} />);
-    const fixBlock = document.querySelector(".ci-structure-fix");
+    const fixBlock = document.querySelector(".sp-ci-fix-structure");
     const suggestionsHeading = screen.getByText("Suggestions");
     expect(fixBlock.compareDocumentPosition(suggestionsHeading) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });

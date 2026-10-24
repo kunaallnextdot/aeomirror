@@ -1,14 +1,14 @@
-/* Recent Scans table + filters + row actions — MIGRATED to the Aurora design system.
+/* Recent Scans table + filters + row actions — MIGRATED to the Spectrum design system.
    Filtering/sorting/selection logic, hooks and handlers are byte-for-byte unchanged; only
-   JSX + class names changed (dark d-* -> Aurora primitives + au-sc-*). The route-level
+   JSX + class names changed (Aurora au-* -> Spectrum primitives + sp-sc-*). The route-level
    loading / empty / error states (owned by the shared <Gated> for 5 routes) are re-skinned
    here as ScansLoading / ScansEmpty / ScansError and used by ScansRoute ONLY, so the shared
    Gated / EmptyState / ErrorState primitives stay untouched for the other routes. */
 import React, { useMemo, useState } from "react";
 import { Search, Eye, RefreshCw, Trash2, GitCompare, X, Radar, AlertTriangle } from "lucide-react";
 import { fmtDate, fmtDuration } from "./ui.jsx";
-import { Shell, Cell, Tag, Ring, Skeleton } from "./aurora.jsx";
-import "./ScansTable.aurora.css";
+import { Shell, Cell, Tag, Ring, Skeleton } from "../shared/spectrum.jsx";
+import "./ScansTable.spectrum.css";
 
 const DAY = 86400000;
 const STATUS_VARIANT = { pass: "ok", warn: "warning", fail: "critical" };
@@ -57,31 +57,31 @@ export default function ScansTable({ scans = [], busyId, onView, onRerun, onDele
   const hasNonBillable = billableCount < scans.length;
 
   return (
-    <div className="aurora-screen">
+    <div className="spectrum-screen">
       <Shell>
         {hasNonBillable && (
-          <div className="au-dim" style={{ fontSize: 12.5, margin: "0 2px 10px" }}>
+          <div className="sp-dim" style={{ fontSize: 12.5, margin: "0 2px 10px" }}>
             {scans.length} scan{scans.length === 1 ? "" : "s"} · {billableCount} counted toward your monthly scan quota
             {" "}(scans tagged <b>Monitor</b> below were triggered automatically and don&apos;t use your quota)
           </div>
         )}
-        <div className="au-sc-toolbar">
-          <div className="au-sc-search">
+        <div className="sp-sc-toolbar">
+          <div className="sp-sc-search">
             <Search size={15} />
             <input placeholder="Search by URL" value={q} onChange={(e) => setQ(e.target.value)} spellCheck={false} />
           </div>
-          <select className="au-sc-select" value={score} onChange={(e) => setScore(e.target.value)}>
+          <select className="sp-sc-select" value={score} onChange={(e) => setScore(e.target.value)}>
             <option value="all">All scores</option>
             <option value="high">Healthy (75+)</option>
             <option value="mid">Needs work (45-74)</option>
             <option value="low">At risk (&lt;45)</option>
           </select>
-          <select className="au-sc-select" value={when} onChange={(e) => setWhen(e.target.value)}>
+          <select className="sp-sc-select" value={when} onChange={(e) => setWhen(e.target.value)}>
             <option value="all">All time</option>
             <option value="7">Last 7 days</option>
             <option value="30">Last 30 days</option>
           </select>
-          <select className="au-sc-select" value={sort} onChange={(e) => setSort(e.target.value)}>
+          <select className="sp-sc-select" value={sort} onChange={(e) => setSort(e.target.value)}>
             <option value="newest">Newest first</option>
             <option value="oldest">Oldest first</option>
             <option value="highest">Highest score</option>
@@ -90,55 +90,55 @@ export default function ScansTable({ scans = [], busyId, onView, onRerun, onDele
         </div>
 
         <Cell solid style={{ padding: 0, overflow: "hidden" }}>
-          <div className="au-sc-tablewrap" style={{ border: 0, borderRadius: 0 }}>
-            <table className="au-sc-table">
+          <div className="sp-sc-tablewrap" style={{ border: 0, borderRadius: 0 }}>
+            <table className="sp-sc-table">
               <thead>
                 <tr>
                   {onCompareSelected && <th style={{ width: 34 }} aria-label="Select" />}
                   <th>Website</th><th>Overall Score</th><th>Status</th>
-                  <th>Scan Date</th><th>Duration</th><th className="au-sc-th-right">Actions</th>
+                  <th>Scan Date</th><th>Duration</th><th className="sp-sc-th-right">Actions</th>
                 </tr>
               </thead>
               <tbody>
                 {rows.length === 0 && (
-                  <tr><td colSpan={onCompareSelected ? 7 : 6} className="au-sc-empty">No scans match these filters.</td></tr>
+                  <tr><td colSpan={onCompareSelected ? 7 : 6} className="sp-sc-empty">No scans match these filters.</td></tr>
                 )}
                 {rows.map((s) => {
                   const busy = busyId === s.id;
                   const isSel = selected.includes(s.id);
                   const st = s.status || scoreStatus(s.overall_score);
                   return (
-                    <tr key={s.id} className={isSel ? "au-sc-sel" : ""}>
+                    <tr key={s.id} className={isSel ? "sp-sc-sel" : ""}>
                       {onCompareSelected && (
                         <td>
-                          <input type="checkbox" className="au-sc-check" checked={isSel}
+                          <input type="checkbox" className="sp-sc-check" checked={isSel}
                                  onChange={() => toggleSel(s.id)} aria-label={`Select ${s.domain || s.url} for comparison`} />
                         </td>
                       )}
                       <td>
-                        <span className="au-sc-url">{s.domain || s.url}</span>
+                        <span className="sp-sc-url">{s.domain || s.url}</span>
                         {s.billable === false && (
                           <Tag variant="info" style={{ marginLeft: 6 }} title="Triggered by a monitor — doesn't use your scan quota">Monitor</Tag>
                         )}
                       </td>
                       <td><span role="img" aria-label={`Score ${s.overall_score ?? "not available"}`}><Ring value={s.overall_score} size={34} /></span></td>
                       <td><Tag variant={STATUS_VARIANT[st] || "info"}>{String(st).toUpperCase()}</Tag></td>
-                      <td className="au-sc-meta">{fmtDate(s.scan_time)}</td>
-                      <td className="au-sc-meta">{fmtDuration(s.duration_ms)}</td>
-                      <td className="au-sc-td-right">
-                        <div className="au-sc-actions">
-                          <button className="au-sc-iconbtn" onClick={() => onView(s.id)}
+                      <td className="sp-sc-meta">{fmtDate(s.scan_time)}</td>
+                      <td className="sp-sc-meta">{fmtDuration(s.duration_ms)}</td>
+                      <td className="sp-sc-td-right">
+                        <div className="sp-sc-actions">
+                          <button className="sp-sc-iconbtn" onClick={() => onView(s.id)}
                                   title="View scan details" aria-label={`View scan details for ${s.domain || s.url}`}>
                             <Eye size={13} />
                           </button>
                           {canRun && (
-                            <button className="au-sc-iconbtn" disabled={busy} onClick={() => onRerun(s.id)}
+                            <button className="sp-sc-iconbtn" disabled={busy} onClick={() => onRerun(s.id)}
                                     title="Re-run scan" aria-label={`Re-run scan for ${s.domain || s.url}`}>
                               <RefreshCw size={13} className={busy ? "spin-slow" : ""} />
                             </button>
                           )}
                           {canDelete && (
-                            <button className="au-sc-iconbtn au-sc-danger" disabled={busy} onClick={() => onDelete(s.id)}
+                            <button className="sp-sc-iconbtn sp-sc-danger" disabled={busy} onClick={() => onDelete(s.id)}
                                     title="Delete" aria-label={`Delete scan for ${s.domain || s.url}`}>
                               <Trash2 size={13} />
                             </button>
@@ -155,14 +155,14 @@ export default function ScansTable({ scans = [], busyId, onView, onRerun, onDele
 
         {/* floating compare bar — appears only when exactly two scans are ticked */}
         {onCompareSelected && selected.length > 0 && (
-          <div className="au-sc-cmp">
-            <span className="au-sc-cmp-n">{selected.length} selected</span>
+          <div className="sp-sc-cmp">
+            <span className="sp-sc-cmp-n">{selected.length} selected</span>
             {selected.length === 2
-              ? <button className="au-sc-cmp-go" onClick={() => onCompareSelected(selected[0], selected[1])}>
+              ? <button className="sp-sc-cmp-go" onClick={() => onCompareSelected(selected[0], selected[1])}>
                   <GitCompare size={14} /> Compare selected
                 </button>
-              : <span className="au-sc-cmp-hint">pick one more to compare</span>}
-            <button className="au-sc-cmp-x" onClick={() => setSelected([])} title="Clear selection"><X size={14} /></button>
+              : <span className="sp-sc-cmp-hint">pick one more to compare</span>}
+            <button className="sp-sc-cmp-x" onClick={() => setSelected([])} title="Clear selection"><X size={14} /></button>
           </div>
         )}
       </Shell>
@@ -170,39 +170,39 @@ export default function ScansTable({ scans = [], busyId, onView, onRerun, onDele
   );
 }
 
-/* Route-level LOADING (Aurora) — replaces the shared <StatsSkeleton/><TableSkeleton/> for
+/* Route-level LOADING (Spectrum) — replaces the shared <StatsSkeleton/><TableSkeleton/> for
    /app/scans only. */
 export function ScansLoading() {
   return (
-    <div className="aurora-screen">
+    <div className="spectrum-screen">
       <Shell>
-        <div className="au-sc-toolbar">
+        <div className="sp-sc-toolbar">
           <Skeleton w="40%" h={38} /><Skeleton w={120} h={38} /><Skeleton w={120} h={38} />
         </div>
         <Cell solid>
-          <div className="au-sc-skrows">{Array.from({ length: 6 }).map((_, i) => <Skeleton key={i} h={44} />)}</div>
+          <div className="sp-sc-skrows">{Array.from({ length: 6 }).map((_, i) => <Skeleton key={i} h={44} />)}</div>
         </Cell>
       </Shell>
     </div>
   );
 }
 
-/* Route-level EMPTY (Aurora) — copy verbatim from the shared EmptyState. */
+/* Route-level EMPTY (Spectrum) — copy verbatim from the shared EmptyState. */
 export function ScansEmpty({ onRun }) {
   return (
-    <div className="aurora-screen">
+    <div className="spectrum-screen">
       <Shell>
         <Cell solid>
-          <div className="au-sc-center">
-            <div className="au-sc-ill"><Radar size={26} /></div>
-            <div className="au-sc-ct">No scans yet</div>
-            <div className="au-sc-cs">
+          <div className="sp-sc-center">
+            <div className="sp-sc-ill"><Radar size={26} /></div>
+            <div className="sp-sc-ct">No scans yet</div>
+            <div className="sp-sc-cs">
               Run your first scan to see:
-              <ul className="au-empty-bullets">
+              <ul className="sp-empty-bullets">
                 <li>visibility score</li><li>biggest problems</li><li>evidence</li><li>recommended fixes</li>
               </ul>
             </div>
-            <button className="au-btn au-accent" onClick={onRun}><Radar size={16} /> Run first scan</button>
+            <button className="sp-btn sp-gradient" onClick={onRun}><Radar size={16} /> Run first scan</button>
           </div>
         </Cell>
       </Shell>
@@ -210,16 +210,16 @@ export function ScansEmpty({ onRun }) {
   );
 }
 
-/* Route-level ERROR (Aurora) — copy verbatim from the shared ErrorState. */
+/* Route-level ERROR (Spectrum) — copy verbatim from the shared ErrorState. */
 export function ScansError({ message, onRetry }) {
   return (
-    <div className="aurora-screen">
+    <div className="spectrum-screen">
       <Shell>
         <Cell solid>
-          <div className="au-sc-center" role="alert">
-            <div className="au-sc-ill au-sc-bad"><AlertTriangle size={26} /></div>
-            <div className="au-sc-cs" style={{ marginBottom: onRetry ? 20 : 0 }}>{message || "Something went wrong."}</div>
-            {onRetry && <button className="au-btn au-accent" onClick={onRetry}><RefreshCw size={14} /> Retry</button>}
+          <div className="sp-sc-center" role="alert">
+            <div className="sp-sc-ill sp-sc-bad"><AlertTriangle size={26} /></div>
+            <div className="sp-sc-cs" style={{ marginBottom: onRetry ? 20 : 0 }}>{message || "Something went wrong."}</div>
+            {onRetry && <button className="sp-btn sp-gradient" onClick={onRetry}><RefreshCw size={14} /> Retry</button>}
           </div>
         </Cell>
       </Shell>

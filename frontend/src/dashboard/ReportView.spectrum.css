@@ -1,0 +1,255 @@
+/* Spectrum styling for the AI Visibility Report (/app/report) + the public share (/r/:token),
+   which render the SAME ReportView. Screen-scoped `sp-rep-*` for parts with no shared-primitive
+   equivalent (in-page nav, issue-count grid, recommendation accordion cards, Pro-lock overlay,
+   AI-narrative tags, quick wins, impact grid, action plan). Built from --sp-* tokens — a
+   faithful structural port of ReportView.aurora.css (kept, unchanged, alongside this file: it
+   is still relied on by ActionCenter.jsx/ScanDetails.jsx, which import it directly to style the
+   shared, not-yet-migrated <RecommendationCard> this file's own JSX still renders in Aurora
+   classnames — see ReportView.jsx's own comment on that).
+
+   No red/amber/green anywhere (hard constraint): success/"good" (was mint) -> --sp-blue-d /
+   --sp-t-blue; danger/"bad" (was peach) -> --sp-violet-d / --sp-t-violet; info/neutral (was
+   sky) -> --sp-cyan-d / --sp-t-cyan; the decorative "AI-written" lavender (was lav, Aurora's
+   own hue, not one of the score-semantic colors) -> --sp-indigo-d / --sp-t-indigo — indigo is
+   the one brand hue the score-semantic mapping above leaves free, and is already the fixed
+   accent for Gemini elsewhere in Spectrum (shared/spectrum.jsx), so reusing it here keeps the
+   AI-written tag visually distinct from every pass/warn/fail colour without inventing a hex. */
+
+.sp-rep-head{display:flex;align-items:center;justify-content:space-between;gap:18px;flex-wrap:wrap}
+.sp-rep-head-l{display:flex;align-items:center;gap:18px;min-width:0}
+.sp-rep-domain{font-family:var(--sp-font-heading);font-size:20px;font-weight:700;color:var(--sp-ink);word-break:break-word}
+.sp-rep-grade{font-size:13.5px;color:var(--sp-ink-2);margin-top:4px}
+.sp-rep-actions{display:flex;gap:8px;flex-wrap:wrap}
+
+.sp-rep-dlerr{display:flex;align-items:center;gap:7px;color:var(--sp-violet-d);background:var(--sp-t-violet);
+  border-radius:var(--sp-r-s);padding:9px 13px;font-size:12.5px;margin-top:10px}
+.sp-rep-ok{display:flex;align-items:center;gap:7px;color:var(--sp-blue-d);background:var(--sp-t-blue);
+  border-radius:var(--sp-r-s);padding:9px 13px;font-size:12.5px;margin-top:10px}
+
+/* sticky in-page nav */
+/* top:76px, not 0 — the app shell's own sticky header (.sp-dash-top, z-index:10) is
+   ~76px tall and ALSO sticks at top:0; without this offset the two stack at the same
+   spot and this in-page nav renders hidden behind the taller/higher z-index shell bar
+   once scrolled. See the matching 640px override below for the shorter mobile header. */
+.sp-rep-nav{position:sticky;top:76px;z-index:5;display:flex;gap:6px;flex-wrap:wrap;padding:12px 0;margin-top:8px}
+.sp-rep-nav-btn{background:var(--sp-solid);border:1px solid var(--sp-line);border-radius:var(--sp-r-pill);
+  color:var(--sp-ink-2);font:inherit;font-size:12.5px;font-weight:600;padding:7px 14px;cursor:pointer;transition:.15s}
+.sp-rep-nav-btn:hover{background:var(--sp-t-blue);color:var(--sp-blue-d);border-color:transparent}
+
+.sp-rep-summary{font-size:14.5px;line-height:1.6;color:var(--sp-ink-2);margin:0}
+.sp-rep-ai-tag{display:inline-flex;align-items:center;gap:4px;font-family:var(--sp-font-numeric);font-size:9.5px;
+  letter-spacing:.06em;text-transform:uppercase;color:var(--sp-indigo-d);background:var(--sp-t-indigo);
+  padding:2px 8px;border-radius:var(--sp-r-pill);margin-left:8px;font-weight:600}
+.sp-rep-ai-note{display:flex;align-items:center;gap:6px;margin-top:6px;font-size:11px;color:var(--sp-muted)}
+
+/* issue-count grid */
+.sp-rep-counts{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-top:16px}
+@media(max-width:640px){.sp-rep-counts{grid-template-columns:repeat(2,1fr)}.sp-rep-nav{top:68px}}
+.sp-rep-count{background:var(--sp-glass);border:1px solid var(--sp-line-2);border-radius:var(--sp-r-s);padding:12px;text-align:center}
+.sp-rep-count-n{font-family:var(--sp-font-numeric);font-size:26px;line-height:1;font-weight:500}
+.sp-rep-count-l{font-size:11px;color:var(--sp-muted);margin-top:5px}
+
+/* two-column grid (categories + strengths) */
+.sp-rep-grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+@media(max-width:820px){.sp-rep-grid2{grid-template-columns:1fr}}
+.sp-rep-sw-h{display:flex;align-items:center;gap:7px;font-size:12.5px;font-weight:600;color:var(--sp-ink);margin:0 0 6px}
+.sp-rep-sw-row{display:flex;justify-content:space-between;gap:12px;font-size:13px;color:var(--sp-ink-2);padding:4px 0}
+
+/* action plan */
+.sp-rep-plan{margin:0;padding-left:20px;font-size:13.5px;color:var(--sp-ink-2);line-height:1.7}
+.sp-rep-plan li{margin-bottom:4px}
+
+/* AI insight blocks */
+.sp-rep-ai-insight{border-top:1px solid var(--sp-line-2);padding:12px 0}
+.sp-rep-ai-insight-t{font-weight:700;font-size:13.5px;color:var(--sp-ink);margin-bottom:5px}
+.sp-rep-ai-insight p{margin:4px 0;font-size:13px;color:var(--sp-ink-2);line-height:1.55}
+.sp-rep-ai-why-r{color:var(--sp-muted);font-style:italic}
+.sp-rep-ai-why{background:var(--sp-t-indigo);border-radius:var(--sp-r-s);padding:11px 13px;margin:10px 0}
+.sp-rep-ai-why-h{display:flex;align-items:center;gap:6px;font-weight:700;font-size:12px;color:var(--sp-indigo-d);margin-bottom:5px}
+.sp-rep-ai-teaser{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;
+  border-top:1px solid var(--sp-line-2);margin-top:12px;padding-top:14px}
+.sp-rep-ai-teaser-t{display:flex;align-items:center;gap:7px;font-size:13px;color:var(--sp-ink-2)}
+
+/* quick wins */
+.sp-rep-qw{display:flex;flex-direction:column;gap:8px}
+.sp-rep-qw-item{display:flex;align-items:center;gap:10px;background:var(--sp-glass);border:1px solid var(--sp-line-2);
+  border-radius:var(--sp-r-s);padding:10px 12px}
+.sp-rep-qw-t{flex:1;min-width:0;font-size:13.5px;font-weight:600;color:var(--sp-ink)}
+.sp-rep-pri{font-family:var(--sp-font-numeric);font-size:9.5px;letter-spacing:.05em;text-transform:uppercase;
+  color:#fff;padding:3px 8px;border-radius:var(--sp-r-pill);flex:none;font-weight:600}
+
+/* recommendation cards */
+.sp-rep-list{display:flex;flex-direction:column;gap:10px}
+.sp-rep-card{background:var(--sp-solid);border:1px solid var(--sp-line);border-radius:var(--sp-r-m);overflow:hidden}
+.sp-rep-card-h{display:flex;align-items:center;gap:11px;width:100%;background:none;border:0;cursor:pointer;
+  padding:14px 16px;text-align:left;font-family:inherit}
+.sp-rep-card-h:hover{background:rgba(11,16,36,.02)}
+.sp-rep-card-h:focus-visible{outline:2px solid var(--sp-primary);outline-offset:-2px}
+.sp-rep-verify-link{padding:0 16px 14px}
+.sp-rep-verify-link a{display:inline-flex;align-items:center;gap:6px;font-size:12px;
+  font-weight:600;color:var(--sp-primary);text-decoration:none}
+.sp-rep-verify-link a:hover{text-decoration:underline}
+.sp-rep-card-t{flex:1;min-width:0;font-size:14px;font-weight:600;color:var(--sp-ink)}
+.sp-rep-card-meta{font-size:11.5px;color:var(--sp-muted);white-space:nowrap}
+.sp-rep-chev{color:var(--sp-muted);transition:transform .2s;flex:none}
+.sp-rep-card-b{padding:2px 16px 16px;display:flex;flex-direction:column;gap:10px}
+.sp-rep-desc{font-size:13.5px;line-height:1.55;color:var(--sp-ink-2);margin:0}
+.sp-rep-impact{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+@media(max-width:640px){.sp-rep-impact{grid-template-columns:1fr}}
+.sp-rep-impact-l{display:flex;align-items:center;gap:6px;font-family:var(--sp-font-numeric);font-size:10px;
+  letter-spacing:.05em;text-transform:uppercase;color:var(--sp-muted);margin-bottom:4px}
+.sp-rep-meta-row{display:flex;gap:16px;flex-wrap:wrap;font-size:12px;color:var(--sp-muted)}
+.sp-rep-meta-row span{display:inline-flex;align-items:center;gap:5px}
+.sp-rep-affected-url{font-size:12px;color:var(--sp-muted);margin-top:8px;word-break:break-all}
+.sp-rep-affected-url a{color:var(--sp-primary);text-decoration:none;font-weight:500}
+.sp-rep-affected-url a:hover{text-decoration:underline}
+.sp-rep-fx-h{font-family:var(--sp-font-numeric);font-size:10px;letter-spacing:.06em;text-transform:uppercase;
+  color:var(--sp-muted);margin-top:4px}
+/* Fix-first hierarchy (DiagnosisCard): the actionable fix reads as the visually
+   dominant step — a quiet highlighted block, not a loud banner — with evidence/why
+   staying real and available but secondary. */
+.sp-rep-fx-h-prominent{color:var(--sp-primary);font-weight:700}
+.sp-rep-fix-prominent{background:var(--sp-t-cyan);border-radius:var(--sp-r-s);padding:9px 11px;
+  color:var(--sp-ink);font-weight:500}
+.sp-rep-fx-ul{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px}
+.sp-rep-fx-ul li{display:flex;align-items:flex-start;gap:8px;font-size:13px;color:var(--sp-ink-2);line-height:1.5}
+.sp-rep-fx-ul li svg{margin-top:2px;flex:none;color:var(--sp-primary)}
+.sp-rep-outcome{display:flex;align-items:center;gap:7px;color:var(--sp-blue-d);font-size:13px;margin:0}
+
+/* Pro-lock overlay (blurred recs) */
+.sp-rep-lockwrap{position:relative;border-radius:var(--sp-r-m);overflow:hidden}
+.sp-rep-blur{filter:blur(6px);opacity:.55;pointer-events:none}
+.sp-rep-lock-overlay{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;
+  gap:8px;text-align:center;padding:24px;background:linear-gradient(180deg,rgba(247,249,251,.35),rgba(247,249,251,.94))}
+.sp-rep-lock-t{font-family:var(--sp-font-heading);font-weight:700;font-size:16px;color:var(--sp-ink)}
+.sp-rep-lock-s{font-size:12.5px;color:var(--sp-muted);max-width:380px}
+
+/* content insights (read-only) */
+.sp-rep-ci-page{border-top:1px solid var(--sp-line-2);padding-top:12px;margin-top:12px}
+.sp-rep-ci-url{font-family:var(--sp-font-numeric);font-size:11.5px;color:var(--sp-muted);margin-bottom:8px}
+
+/* ReportView-owned home for the "malformed JSON-LD" notice — was `au-at-err`, a class
+   that actually lives in AnswerTracking.aurora.css (a different, still-unmigrated
+   screen), not ReportView's own CSS, so it gets its own name here instead of a blind
+   rename to a `sp-at-*` class that would not exist anywhere yet. */
+.sp-rep-schema-err{background:var(--sp-t-violet);color:var(--sp-violet-d);border-radius:var(--sp-r-s);
+  padding:9px 12px;font-size:12.5px;margin:10px 0}
+
+/* ---- Phase 1: negative-first ---- */
+/* "We found X issues" lead line in the summary */
+.sp-rep-found{display:flex;align-items:center;gap:7px;flex-wrap:wrap;margin:10px 0 0;
+  font-size:13.5px;line-height:1.5;color:var(--sp-violet-d)}
+.sp-rep-found b{color:var(--sp-ink)}
+
+/* B. What's hurting your score? */
+.sp-rep-probs{display:flex;flex-direction:column;gap:10px}
+.sp-rep-prob{border:1px solid var(--sp-line);border-radius:var(--sp-r-m);padding:12px 14px;
+  background:var(--sp-page)}
+.sp-rep-prob-top{display:flex;align-items:baseline;gap:10px}
+.sp-rep-prob-name{font-weight:650;font-size:14px;color:var(--sp-ink);flex:1;min-width:120px}
+.sp-rep-prob-score{font-family:var(--sp-font-numeric);font-weight:700;font-size:18px}
+.sp-rep-prob-max{font-size:11px;color:var(--sp-muted);font-weight:600}
+.sp-rep-prob-loss{font-family:var(--sp-font-numeric);font-size:12px;font-weight:700;color:var(--sp-violet-d);
+  background:rgba(76,47,196,.10);border-radius:999px;padding:2px 9px;white-space:nowrap}
+.sp-rep-prob-issue{font-size:13px;line-height:1.5;color:var(--sp-ink-2);margin-top:6px}
+.sp-rep-prob-prev{display:flex;align-items:flex-start;gap:6px;font-size:12px;line-height:1.5;
+  color:var(--sp-muted);margin-top:6px}
+.sp-rep-prob-prev svg{margin-top:2px;flex-shrink:0;color:var(--sp-primary)}
+.sp-rep-prob-ev{display:flex;flex-wrap:wrap;gap:5px 14px;margin-top:7px}
+.sp-rep-prob-ev-item{font-size:11.5px;color:var(--sp-muted)}
+.sp-rep-prob-ev-item b{color:var(--sp-ink-2);font-weight:600}
+.sp-rep-prob-jump{margin-top:8px;background:none;border:none;padding:0;cursor:pointer;
+  font-size:11.5px;font-weight:600;color:var(--sp-primary);font-family:inherit}
+.sp-rep-prob-jump:hover{text-decoration:underline}
+
+/* C. Score breakdown (points lost per signal) */
+.sp-rep-bd{display:flex;flex-direction:column;gap:9px}
+.sp-rep-bd-row{display:grid;grid-template-columns:minmax(120px,1.4fr) 3fr 30px 52px;align-items:center;gap:10px}
+.sp-rep-bd-name{font-size:13px;color:var(--sp-ink-2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sp-rep-bd-track{height:8px;border-radius:999px;background:var(--sp-line-2);overflow:hidden}
+.sp-rep-bd-fill{height:100%;border-radius:999px}
+.sp-rep-bd-score{font-family:var(--sp-font-numeric);font-size:13px;font-weight:700;text-align:right}
+.sp-rep-bd-loss{font-family:var(--sp-font-numeric);font-size:12px;font-weight:600;text-align:right;color:var(--sp-muted)}
+.sp-rep-bd-loss.neg{color:var(--sp-violet-d)}
+@media (max-width:560px){
+  .sp-rep-bd-row{grid-template-columns:1fr 34px 46px;grid-template-areas:"name score loss" "track track track"}
+  .sp-rep-bd-name{grid-area:name}.sp-rep-bd-score{grid-area:score}.sp-rep-bd-loss{grid-area:loss}
+  .sp-rep-bd-track{grid-area:track}
+}
+
+/* Paywall benefits list */
+.sp-rep-lock-feats{list-style:none;margin:4px 0 0;padding:0;display:grid;gap:5px;text-align:left}
+.sp-rep-lock-feats li{display:flex;align-items:center;gap:7px;font-size:12.5px;color:var(--sp-ink-2)}
+.sp-rep-lock-feats svg{color:var(--sp-blue-d);flex-shrink:0}
+
+/* Score impact preview (estimate only) */
+.sp-rep-ip{border:1px solid var(--sp-line);border-radius:var(--sp-r-m);padding:12px 14px;
+  background:var(--sp-page);margin:2px 0 12px}
+.sp-rep-ip-row{display:flex;align-items:center;justify-content:center;gap:16px;flex-wrap:wrap}
+.sp-rep-ip-col{text-align:center;min-width:78px}
+.sp-rep-ip-l{font-size:10.5px;letter-spacing:.04em;text-transform:uppercase;color:var(--sp-muted)}
+.sp-rep-ip-v{font-family:var(--sp-font-numeric);font-weight:700;font-size:22px;color:var(--sp-ink);margin-top:2px}
+.sp-rep-ip-v.pos{color:var(--sp-blue-d)}
+.sp-rep-ip-v.goal{color:var(--sp-primary)}
+.sp-rep-ip-arrow{color:var(--sp-blue-d);flex-shrink:0}
+.sp-rep-ip-note{text-align:center;font-size:11px;color:var(--sp-muted);margin-top:8px;font-style:italic}
+
+/* ---- Phase 2: score impact simulator ---- */
+.sp-sim-scores{display:flex;align-items:center;justify-content:center;gap:14px;flex-wrap:wrap;
+  padding:14px 12px;border:1px solid var(--sp-line);border-radius:var(--sp-r-m);background:var(--sp-page)}
+.sp-sim-sc{text-align:center;min-width:82px}
+.sp-sim-sc-l{font-size:10.5px;letter-spacing:.04em;text-transform:uppercase;color:var(--sp-muted)}
+.sp-sim-sc-v{font-family:var(--sp-font-numeric);font-weight:700;font-size:24px;color:var(--sp-ink);margin-top:2px}
+.sp-sim-sc-v.pos{color:var(--sp-blue-d)}
+.sp-sim-sc-v.goal{color:var(--sp-primary)}
+.sp-sim-plus{font-size:20px;color:var(--sp-muted);font-weight:600}
+.sp-sim-arrow{color:var(--sp-blue-d);flex-shrink:0}
+.sp-sim-note{text-align:center;font-size:11px;color:var(--sp-muted);font-style:italic;margin:8px 0 12px}
+.sp-sim-items{display:flex;flex-direction:column;gap:8px}
+.sp-sim-item{display:flex;align-items:center;gap:11px;width:100%;text-align:left;cursor:pointer;
+  border:1px solid var(--sp-line);border-radius:var(--sp-r-m);background:var(--sp-solid);
+  padding:10px 13px;transition:border-color .15s,background .15s}
+.sp-sim-item:hover{border-color:var(--sp-primary)}
+.sp-sim-item.on{border-color:var(--sp-blue-d);background:rgba(18,67,201,.06)}
+.sp-sim-check{color:var(--sp-muted);flex-shrink:0;display:flex}
+.sp-sim-item.on .sp-sim-check{color:var(--sp-blue-d)}
+.sp-sim-item-main{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
+.sp-sim-item-t{font-size:13.5px;font-weight:600;color:var(--sp-ink)}
+.sp-sim-item-meta{font-size:11.5px;color:var(--sp-muted)}
+.sp-sim-item-rec{font-family:var(--sp-font-numeric);font-weight:700;font-size:15px;color:var(--sp-blue-d);
+  white-space:nowrap}
+.sp-sim-lock{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:12px;padding:10px 13px;
+  border:1px dashed var(--sp-line);border-radius:var(--sp-r-m);font-size:12.5px;color:var(--sp-ink-2)}
+.sp-sim-lock>span{flex:1;min-width:140px}
+
+/* ---- Technical SEO & Indexability ---- */
+.sp-tseo-badge{flex-shrink:0;font-size:9.5px;font-weight:700;text-transform:uppercase;
+  letter-spacing:.04em;color:#fff;padding:2px 8px;border-radius:999px}
+.sp-tseo-url{font-weight:600;font-size:13px;word-break:break-all;color:var(--sp-ink)}
+.sp-tseo-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+/* Scan-coverage information (e.g. sitemap URLs this scan didn't crawl) — deliberately
+   NOT styled like an issue card (no severity badge, no red/orange accent): this is
+   informational parity, never urgency. */
+.sp-tseo-coverage{background:var(--sp-page);border-radius:var(--sp-r-s);padding:10px 12px}
+.sp-tseo-coverage-h{font-family:var(--sp-font-numeric);font-size:10px;letter-spacing:.06em;
+  text-transform:uppercase;color:var(--sp-muted);font-weight:700}
+
+/* ---- Content Intelligence: expandable cluster page details ---- */
+.sp-ci-toggle{background:none;border:none;padding:0;margin-top:6px;font-size:11.5px;
+  font-weight:600;color:var(--sp-primary);cursor:pointer;text-decoration:underline}
+.sp-ci-evidence{margin:6px 0 0;padding-left:16px;font-size:12px;color:var(--sp-ink-2);line-height:1.6}
+
+/* ---- Phase 2: 30-day action plan ---- */
+.sp-plan-week{margin-top:14px}
+.sp-plan-week:first-of-type{margin-top:4px}
+.sp-plan-week-h{font-family:var(--sp-font-heading);font-weight:700;font-size:13px;color:var(--sp-primary);
+  margin-bottom:8px;padding-bottom:5px;border-bottom:1px solid var(--sp-line-2)}
+.sp-plan-week-h.sp-plan-backlog{color:var(--sp-muted)}
+.sp-plan-tasks{display:flex;flex-direction:column;gap:8px}
+.sp-plan-task{display:flex;align-items:flex-start;gap:10px;border:1px solid var(--sp-line);
+  border-radius:var(--sp-r-m);padding:11px 13px;background:var(--sp-page)}
+.sp-plan-task-main{flex:1;min-width:0}
+.sp-plan-task-t{font-size:13.5px;font-weight:600;color:var(--sp-ink)}
+.sp-plan-task-why{font-size:12px;line-height:1.5;color:var(--sp-ink-2);margin-top:3px}
+.sp-plan-task-meta{display:flex;flex-wrap:wrap;gap:12px;margin-top:6px;font-size:11px;color:var(--sp-muted)}
+.sp-plan-task-meta span{display:inline-flex;align-items:center;gap:4px}

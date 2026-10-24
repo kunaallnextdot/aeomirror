@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import {
-  AuAuthShell, AuField, AuTextInput, AuPasswordInput, AuPasswordStrength, AuAlert, AuSubmitButton,
-} from "../../dashboard/aurora.jsx";
+  SpAuthShell, SpField, SpTextInput, SpPasswordInput, SpPasswordStrength, SpAlert, SpSubmitButton,
+} from "../../shared/spectrum.jsx";
 import { passwordStrength } from "../ui.jsx";
 import { useAuth } from "../AuthContext.jsx";
 import { navigate } from "../router.jsx";
@@ -38,41 +38,41 @@ export default function Register() {
   };
 
   return (
-    <AuAuthShell
+    <SpAuthShell
       title="Create your account"
       subtitle="Start tracking your AI visibility. You'll own a workspace you can invite your team to."
-      footer={<>Already have an account? <button className="au-authlink" onClick={() => navigate("/login")}>Sign in</button></>}
+      footer={<>Already have an account? <button className="sp-authlink" onClick={() => navigate("/login")}>Sign in</button></>}
     >
-      <form className="au-form" onSubmit={submit}>
-        {err && <AuAlert>{err}</AuAlert>}
-        <AuField label="Your name">
-          <AuTextInput value={name} onChange={(e) => setName(e.target.value)} required autoFocus
+      <form className="sp-form" onSubmit={submit}>
+        {err && <SpAlert>{err}</SpAlert>}
+        <SpField label="Your name">
+          <SpTextInput value={name} onChange={(e) => setName(e.target.value)} required autoFocus
                      placeholder="Ada Lovelace" autoComplete="name" />
-        </AuField>
-        <AuField label="Work email">
-          <AuTextInput type="email" value={email} onChange={(e) => setEmail(e.target.value)}
+        </SpField>
+        <SpField label="Work email">
+          <SpTextInput type="email" value={email} onChange={(e) => setEmail(e.target.value)}
                      required placeholder="you@company.com" autoComplete="email" />
-        </AuField>
-        <AuField label="Organization name" hint="Optional — defaults to your name's team.">
-          <AuTextInput value={organizationName} onChange={(e) => setOrg(e.target.value)}
+        </SpField>
+        <SpField label="Organization name" hint="Optional — defaults to your name's team.">
+          <SpTextInput value={organizationName} onChange={(e) => setOrg(e.target.value)}
                      placeholder="Acme Inc." />
-        </AuField>
-        <AuField label="Password">
-          <AuPasswordInput value={password} onChange={(e) => setPassword(e.target.value)}
+        </SpField>
+        <SpField label="Password">
+          <SpPasswordInput value={password} onChange={(e) => setPassword(e.target.value)}
                          required autoComplete="new-password" />
-        </AuField>
-        <AuPasswordStrength value={password} />
-        <AuSubmitButton busy={busy}>Create account</AuSubmitButton>
-        <div className="au-field-hint" style={{ textAlign: "center" }}>
+        </SpField>
+        <SpPasswordStrength value={password} />
+        <SpSubmitButton busy={busy}>Create account</SpSubmitButton>
+        <div className="sp-field-hint" style={{ textAlign: "center" }}>
           By creating an account, you agree to our{" "}
-          <button type="button" className="au-authlink" onClick={() => navigate("/terms")}>Terms of Service</button>
+          <button type="button" className="sp-authlink" onClick={() => navigate("/terms")}>Terms of Service</button>
           {" "}and{" "}
-          <button type="button" className="au-authlink" onClick={() => navigate("/privacy")}>Privacy Policy</button>.
+          <button type="button" className="sp-authlink" onClick={() => navigate("/privacy")}>Privacy Policy</button>.
         </div>
-        <div className="au-field-hint" style={{ textAlign: "center" }}>
+        <div className="sp-field-hint" style={{ textAlign: "center" }}>
           We'll email you a link to verify your address.
         </div>
       </form>
-    </AuAuthShell>
+    </SpAuthShell>
   );
 }

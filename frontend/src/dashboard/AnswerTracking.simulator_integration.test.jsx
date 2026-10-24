@@ -46,7 +46,7 @@ describe("AnswerTracking primary/secondary panel placement", () => {
 
     await waitFor(() => expect(screen.getByTestId("answer-simulator")).toBeTruthy());
 
-    const details = document.querySelector("details.au-at-premium");
+    const details = document.querySelector("details.sp-at-premium");
     expect(details).toBeTruthy();
     expect(details.open).toBe(false);   // collapsed by default
     expect(details.querySelector("summary").textContent).toBe("Provider Tracking (Premium)");

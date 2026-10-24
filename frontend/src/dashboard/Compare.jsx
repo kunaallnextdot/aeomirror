@@ -1,13 +1,13 @@
-/* Compare two scans — MIGRATED to Aurora. Data flow, hooks, deep-link auto-run guard,
+/* Compare two scans — MIGRATED to Spectrum. Data flow, hooks, deep-link auto-run guard,
    metering/gate logic are byte-for-byte unchanged; only JSX + class names changed.
-   `.aurora-screen`-scoped. */
+   `.spectrum-screen`-scoped. */
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { ArrowRight, TrendingUp, TrendingDown, Minus, Lock } from "lucide-react";
 import { fmtDate } from "./ui.jsx";
 import { ScanError } from "../api.js";
 import { useUpgrade } from "./UpgradeModal.jsx";
 import { queryParam } from "../auth/router.jsx";
-import { Shell, Cell, Ring, Button } from "./aurora.jsx";
+import { Shell, Cell, Ring, Button } from "../shared/spectrum.jsx";
 import { diffSignals } from "./verification.js";
 
 export default function Compare({ scans = [], onCompare }) {
@@ -50,7 +50,7 @@ export default function Compare({ scans = [], onCompare }) {
   }, [scans, runCompare]);
 
   const opts = (v, set) => (
-    <select className="au-select" value={v}
+    <select className="sp-select" value={v}
             onChange={(e) => { set(e.target.value); setA(null); setB(null); setGate(null); }}
             style={{ width: "100%" }}>
       <option value="">Select a scan…</option>
@@ -75,39 +75,39 @@ export default function Compare({ scans = [], onCompare }) {
   }
 
   return (
-    <div className="aurora-screen">
+    <div className="spectrum-screen">
       <Shell>
-        <div className="au-cmp-pick">
-          <Cell solid><div className="au-lbl">Previous scan</div><div style={{ marginTop: 10 }}>{opts(aId, setAId)}</div></Cell>
-          <Cell solid><div className="au-lbl">Current scan</div><div style={{ marginTop: 10 }}>{opts(bId, setBId)}</div></Cell>
+        <div className="sp-cmp-pick">
+          <Cell solid><div className="sp-lbl">Previous scan</div><div style={{ marginTop: 10 }}>{opts(aId, setAId)}</div></Cell>
+          <Cell solid><div className="sp-lbl">Current scan</div><div style={{ marginTop: 10 }}>{opts(bId, setBId)}</div></Cell>
         </div>
 
         <div style={{ display: "flex", justifyContent: "center", margin: "14px 0" }}>
-          <Button variant="accent" disabled={!aId || !bId || loading} onClick={() => runCompare(aId, bId)}>
+          <Button variant="gradient" disabled={!aId || !bId || loading} onClick={() => runCompare(aId, bId)}>
             {loading ? "Comparing…" : "Compare"}
           </Button>
         </div>
 
         {gate ? (
-          <Cell solid><div className="au-card-center">
-            <div className="au-ill au-ill-warn"><Lock size={22} /></div>
-            <div className="au-card-s">{gate}</div>
-            <Button variant="accent" onClick={() => openUpgrade("compares", { message: gate })}>Upgrade to Pro</Button>
+          <Cell solid><div className="sp-card-center">
+            <div className="sp-ill sp-ill-warn"><Lock size={22} /></div>
+            <div className="sp-card-s">{gate}</div>
+            <Button variant="gradient" onClick={() => openUpgrade("compares", { message: gate })}>Upgrade to Pro</Button>
           </div></Cell>
         ) : (!a || !b) ? (
-          <Cell solid><div className="au-dim" style={{ textAlign: "center", padding: 24 }}>
+          <Cell solid><div className="sp-dim" style={{ textAlign: "center", padding: 24 }}>
             {loading ? "Loading…" : (aId && bId) ? "Click Compare to run the comparison." : "Pick two scans to compare."}
           </div></Cell>
         ) : (
           <>
             <Cell solid style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 26, marginBottom: 16 }}>
               <Delta label={a.domain} value={a.overall_score} />
-              <ArrowRight size={22} style={{ color: "var(--au-muted)" }} />
+              <ArrowRight size={22} style={{ color: "var(--sp-muted)" }} />
               <Delta label={b.domain} value={b.overall_score} />
               <ScoreDelta before={a.overall_score} after={b.overall_score} />
             </Cell>
 
-            <div className="au-grid2">
+            <div className="sp-grid2">
               <DiffList title="Improved signals" items={improved.map((x) => `${x.label}: ${x.before} → ${x.after}`)} tone="up" />
               <DiffList title="Regressed signals" items={regressed.map((x) => `${x.label}: ${x.before} → ${x.after}`)} tone="down" />
               <DiffList title="Resolved issues" items={resolved} tone="up" />
@@ -124,7 +124,7 @@ function Delta({ label, value }) {
   return (
     <div style={{ textAlign: "center" }}>
       <span role="img" aria-label={`Score ${value ?? "not available"}`}><Ring value={value} size={64} stroke={6} /></span>
-      <div className="au-dim" style={{ fontSize: 12, marginTop: 6, maxWidth: 140, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{label}</div>
+      <div className="sp-dim" style={{ fontSize: 12, marginTop: 6, maxWidth: 140, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{label}</div>
     </div>
   );
 }
@@ -132,20 +132,20 @@ function Delta({ label, value }) {
 function ScoreDelta({ before, after }) {
   const diff = (after ?? 0) - (before ?? 0);
   const Icon = diff > 0 ? TrendingUp : diff < 0 ? TrendingDown : Minus;
-  const cls = diff > 0 ? "au-up" : diff < 0 ? "au-down" : "au-flat";
-  return <div className={cls} style={{ display: "flex", alignItems: "center", gap: 6, fontWeight: 700, fontFamily: "var(--au-font-numeric)", fontSize: 18 }}><Icon size={18} /> {diff > 0 ? "+" : ""}{diff}</div>;
+  const cls = diff > 0 ? "sp-up" : diff < 0 ? "sp-down" : "sp-flat";
+  return <div className={cls} style={{ display: "flex", alignItems: "center", gap: 6, fontWeight: 700, fontFamily: "var(--sp-font-numeric)", fontSize: 18 }}><Icon size={18} /> {diff > 0 ? "+" : ""}{diff}</div>;
 }
 
 function DiffList({ title, items, tone }) {
   return (
     <Cell solid>
-      <div className="au-panel-h">{title} <span className="au-sub">{items.length}</span></div>
-      {items.length === 0 ? <div className="au-dim" style={{ fontSize: 12.5 }}>None</div> : (
+      <div className="sp-panel-h">{title} <span className="sp-sub">{items.length}</span></div>
+      {items.length === 0 ? <div className="sp-dim" style={{ fontSize: 12.5 }}>None</div> : (
         <div>
           {items.map((it, i) => (
-            <div key={i} className="au-cmp-diff">
-              <span className={tone === "up" ? "au-up" : "au-down"}>{tone === "up" ? "▲" : "▼"}</span>
-              <span style={{ color: "var(--au-ink-2)" }}>{it}</span>
+            <div key={i} className="sp-cmp-diff">
+              <span className={tone === "up" ? "sp-up" : "sp-down"}>{tone === "up" ? "▲" : "▼"}</span>
+              <span style={{ color: "var(--sp-ink-2)" }}>{it}</span>
             </div>
           ))}
         </div>

@@ -220,7 +220,7 @@ describe("ReportView Content Intelligence section", () => {
     // "Content overlap" still legitimately appears once, as the summary counter's own
     // label — but no diagnosis CARD (page URLs, recommendation text) is ever rendered
     // for a KEEP_SEPARATE cluster.
-    expect(document.querySelectorAll(".au-rep-card").length).toBe(0);
+    expect(document.querySelectorAll(".sp-rep-card").length).toBe(0);
     expect(screen.queryByText("https://example.com/x")).toBeNull();
     expect(screen.queryByText(/genuinely distinct purposes/)).toBeNull();
   });

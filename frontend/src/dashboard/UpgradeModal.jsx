@@ -5,8 +5,8 @@
  * - useUpgrade() exposes the usage, whether the org is limited (Free + enforcement),
  *   openUpgrade(reason) to pop the modal, handleGated(err, reason) to turn a backend
  *   402 into the modal, and reloadSubscription() to refresh the meters after an action.
- * - <UpgradeModal> is the dark, reason-specific paywall. Checkout goes through the
- *   same billing API BillingView uses (startCheckout).
+ * - <UpgradeModal> is the Spectrum-styled, reason-specific paywall. Checkout goes
+ *   through the same billing API BillingView uses (startCheckout).
  */
 import React, { createContext, useCallback, useContext, useEffect, useState } from "react";
 import { Crown, FileText, X, AlertTriangle, Check, Sparkles } from "lucide-react";
@@ -130,46 +130,46 @@ function UpgradeModal({ reason, message, scanId, onSuccess, onClose, onUpgraded 
   };
 
   return (
-    <div className="au-up-overlay" onClick={onClose} role="dialog" aria-modal="true">
-      <div className="au-up-modal" onClick={(e) => e.stopPropagation()}>
-        <button className="au-up-x" onClick={onClose} aria-label="Close"><X size={16} /></button>
-        <div className="au-up-eyebrow"><Sparkles size={13} /> UPGRADE</div>
-        <h2 className="au-up-title">{copy.title}</h2>
-        <p className="au-up-sub">{message || copy.sub}</p>
+    <div className="sp-up-overlay" onClick={onClose} role="dialog" aria-modal="true">
+      <div className="sp-up-modal" onClick={(e) => e.stopPropagation()}>
+        <button className="sp-up-x" onClick={onClose} aria-label="Close"><X size={16} /></button>
+        <div className="sp-up-eyebrow"><Sparkles size={13} /> UPGRADE</div>
+        <h2 className="sp-up-title">{copy.title}</h2>
+        <p className="sp-up-sub">{message || copy.sub}</p>
 
-        <div className={`au-up-options${showOneTime ? " au-two" : ""}`}>
-          <div className="au-up-card au-featured">
-            <div className="au-up-card-h"><Crown size={15} /> Pro</div>
-            <div className="au-up-price">$29<span>/mo</span></div>
-            <div className="au-up-card-tag">The full toolkit</div>
-            <ul className="au-up-feats">
+        <div className={`sp-up-options${showOneTime ? " sp-two" : ""}`}>
+          <div className="sp-up-card sp-featured">
+            <div className="sp-up-card-h"><Crown size={15} /> Pro</div>
+            <div className="sp-up-price">$29<span>/mo</span></div>
+            <div className="sp-up-card-tag">The full toolkit</div>
+            <ul className="sp-up-feats">
               {PRO_FEATURES.map((f) => <li key={f}><Check size={12} /> {f}</li>)}
             </ul>
-            <button className="au-btn au-accent au-block" disabled={!!busy} onClick={() => go("pro")}>
+            <button className="sp-btn sp-gradient sp-block" disabled={!!busy} onClick={() => go("pro")}>
               {busy === "pro" ? "Processing…" : "Upgrade to Pro"}
             </button>
           </div>
 
           {showOneTime && (
-            <div className="au-up-card">
-              <div className="au-up-card-h"><FileText size={15} /> One-time report</div>
-              <div className="au-up-price">$9<span> once</span></div>
-              <div className="au-up-card-tag">Unlock just this report</div>
-              <ul className="au-up-feats">
+            <div className="sp-up-card">
+              <div className="sp-up-card-h"><FileText size={15} /> One-time report</div>
+              <div className="sp-up-price">$9<span> once</span></div>
+              <div className="sp-up-card-tag">Unlock just this report</div>
+              <ul className="sp-up-feats">
                 <li><Check size={12} /> Every recommendation &amp; fix</li>
                 <li><Check size={12} /> AI-written report narrative</li>
                 <li><Check size={12} /> PDF / CSV / JSON exports</li>
                 <li><Check size={12} /> Doesn't change your plan</li>
               </ul>
-              <button className="au-btn au-ghost au-block" disabled={!!busy} onClick={() => go("report")}>
+              <button className="sp-btn sp-ghost sp-block" disabled={!!busy} onClick={() => go("report")}>
                 {busy === "report" ? "Processing…" : "Unlock for $9"}
               </button>
             </div>
           )}
         </div>
 
-        {err && <div className="au-up-err"><AlertTriangle size={13} /> {err}</div>}
-        <button className="au-up-later" onClick={onClose}>Maybe later</button>
+        {err && <div className="sp-up-err"><AlertTriangle size={13} /> {err}</div>}
+        <button className="sp-up-later" onClick={onClose}>Maybe later</button>
       </div>
     </div>
   );

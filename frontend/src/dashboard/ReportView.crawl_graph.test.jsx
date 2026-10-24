@@ -126,7 +126,7 @@ describe("ReportView Real Crawl Graph & Internal Linking section", () => {
     // the locked orphan gets no table row of its own (it's real free-tier data on the
     // ORPHAN_PAGE issue's own affected_urls — legitimately shown there as Evidence —
     // but never the full per-page orphan-table detail beyond the free preview)
-    const tableUrls = Array.from(document.querySelectorAll(".au-tseo-url")).map((n) => n.textContent);
+    const tableUrls = Array.from(document.querySelectorAll(".sp-tseo-url")).map((n) => n.textContent);
     expect(tableUrls).not.toContain("https://example.com/old-article");
   });
 

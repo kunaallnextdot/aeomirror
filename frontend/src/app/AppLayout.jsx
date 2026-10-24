@@ -4,7 +4,7 @@
    are passed to route children through the Outlet context so behaviour matches the old
    single-component dashboard (one load, shared across views). */
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { Link, NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
+import { Link, Outlet, useLocation, useNavigate } from "react-router-dom";
 import {
   Radar, LayoutDashboard, ScanLine, GitCompare, Globe, ArrowLeft, FileText, FileSearch,
   Activity, User, Users, Building2, LogOut, Shield, CreditCard, MessageSquare, Mail, ListChecks,
@@ -13,11 +13,12 @@ import {
 import {
   getDashboard, getScans, deleteScan, rerunScan, bulkScanUrls, ScanError,
 } from "../api.js";
+import Logo from "../shared/Logo.jsx";
 import { UpgradeProvider, useUpgrade } from "../dashboard/UpgradeModal.jsx";
 import { useAuth } from "../auth/AuthContext.jsx";
-import { AuAvatar } from "../dashboard/aurora.jsx";
+import { SpAvatar } from "../shared/spectrum.jsx";
 import { RouteErrorBoundary, InLayoutErrorState } from "./RouteErrorBoundary.jsx";
-import "./AppLayout.aurora.css";
+import "./AppLayout.spectrum.css";
 
 const SUPPORT_EMAIL = "aeomirror.support@gmail.com";
 
@@ -30,14 +31,22 @@ const SUPPORT_EMAIL = "aeomirror.support@gmail.com";
 // `to`/`label` pairing changed.
 export const NAV = [
   { to: "/app/dashboard", label: "Dashboard", icon: LayoutDashboard },
-  { to: "/app/scans", label: "Recent Scans", icon: ScanLine },
+  // `exact` so a scan detail page (/app/scans/:id) lights up "Scan Details" below,
+  // never this one too — see isNavItemActive's own comment.
+  { to: "/app/scans", label: "Recent Scans", icon: ScanLine, exact: true },
   { to: "/app/report", label: "View Report", icon: FileSearch },
   { to: "/app/action-center", label: "Action Center", icon: ListChecks },
   { to: "/app/monitoring", label: "Monitoring", icon: Activity },
   { to: "/app/answer-tracking", label: "Answer Tracking", icon: MessageSquare },
   { to: "/app/analytics/ai-traffic", label: "AI Traffic", icon: BarChart3 },
   { to: "/app/business-impact", label: "AI Business Impact", icon: TrendingUp },
-  { to: "/app/scans/latest", label: "Scan Details", icon: FileText },
+  // `activeUnder` — the real route for this screen is scans/:scanId (ScanDetailRoute),
+  // reached either via this exact link (scans/latest, which redirects to the latest
+  // scan's id) or by opening any scan from elsewhere (e.g. Recent Scans' own list,
+  // or a deep link). Either way the URL becomes /app/scans/<id>, never literally
+  // /app/scans/latest again, so matching has to cover any id, not just this link's
+  // own `to`.
+  { to: "/app/scans/latest", label: "Scan Details", icon: FileText, activeUnder: "/app/scans" },
   { to: "/app/compare", label: "Compare", icon: GitCompare },
   { to: "/app/website-summary", label: "Websites", icon: Globe },
 ];
@@ -47,6 +56,22 @@ const ACCOUNT_NAV = [
   { to: "/app/team", label: "Team", icon: Users },
   { to: "/app/organization", label: "Organization", icon: Building2 },
 ];
+
+// Single source of truth for sidebar active-state, used for every NAV/ACCOUNT_NAV item
+// (replaces NavLink's own matching so every item's rule is explicit and in one place).
+// Trailing slashes never matter (stripped before comparing, except the bare "/").
+// Default rule: active on an exact match OR nested under `to` (e.g. Monitoring stays
+// active on /app/monitoring/:monitorId and .../intelligence; Answer Tracking stays
+// active on /app/answer-tracking/:monitorId/runs/:runId) — every current route besides
+// Scans happens to have no OTHER nav item nested under it, so this is safe everywhere.
+// `exact: true` opts out of the nested case (Recent Scans). `activeUnder` opts IN to
+// matching only the nested case, not the base path itself (Scan Details).
+export function isNavItemActive(pathname, item) {
+  const p = pathname.length > 1 ? pathname.replace(/\/+$/, "") : pathname;
+  if (item.activeUnder) return p.startsWith(item.activeUnder + "/");
+  if (item.exact) return p === item.to;
+  return p === item.to || p.startsWith(item.to + "/");
+}
 
 const FOOTER_PRODUCT = [
   { to: "/app/dashboard", label: "Dashboard" },
@@ -198,50 +223,51 @@ function LayoutBody() {
        handleGated, reloadSubscription]);
 
   return (
-    <div className="au-dash">
-      <aside className="au-dash-side">
-        <div className="au-dash-brand"><Radar size={18} /> AEOMirror</div>
-        <nav className="au-dash-nav">
+    <div className="sp-dash">
+      <aside className="sp-dash-side">
+        <Link to="/" className="sp-dash-brand" aria-label="Go to AEOMirror homepage"><Logo variant="lockup" size={18} /></Link>
+        <nav className="sp-dash-nav">
           {NAV.map((n) => (
-            <NavLink key={n.to} to={n.to} end={n.to === "/app/scans"}
-                     className={({ isActive }) => "au-dash-nav-item" + (isActive ? " on" : "")}>
+            <Link key={n.to} to={n.to}
+                  className={"sp-dash-nav-item" + (isNavItemActive(location.pathname, n) ? " on" : "")}>
               <n.icon size={16} /> <span>{n.label}</span>
-            </NavLink>
+            </Link>
           ))}
-          <div style={{ height: 1, background: "var(--au-line)", margin: "8px 6px" }} />
+          <div style={{ height: 1, background: "var(--sp-line)", margin: "8px 6px" }} />
           {ACCOUNT_NAV.map((n) => (
-            <NavLink key={n.to} to={n.to} className={({ isActive }) => "au-dash-nav-item" + (isActive ? " on" : "")}>
+            <Link key={n.to} to={n.to}
+                  className={"sp-dash-nav-item" + (isNavItemActive(location.pathname, n) ? " on" : "")}>
               <n.icon size={16} /> <span>{n.label}</span>
-            </NavLink>
+            </Link>
           ))}
         </nav>
-        <div className="au-dash-side-foot">
+        <div className="sp-dash-side-foot">
           {meteredScans && <SideScanMeter scans={usage?.scans} onUpgrade={isLimited ? () => openUpgrade("scans") : null} />}
-          <button className="au-dash-newscan" onClick={onRunScan}><Radar size={15} /> New scan</button>
+          <button className="sp-dash-newscan" onClick={onRunScan}><Radar size={15} /> New scan</button>
           {user?.is_platform_admin && (
-            <button className="au-dash-exit" onClick={() => navigate("/admin")}><Shield size={14} /> Admin panel</button>
+            <button className="sp-dash-exit" onClick={() => navigate("/admin")}><Shield size={14} /> Admin panel</button>
           )}
-          <button className="au-dash-exit" onClick={() => navigate("/")}><ArrowLeft size={14} /> Homepage scanner</button>
-          <div className="au-dash-user">
-            <AuAvatar user={user} size={32} />
-            <div className="au-dash-user-id">
-              <div className="au-dash-user-name">{user?.name}</div>
-              <div className="au-dash-user-role">{role}{org ? ` · ${org.name}` : ""}</div>
+          <button className="sp-dash-exit" onClick={() => navigate("/")}><ArrowLeft size={14} /> Homepage scanner</button>
+          <div className="sp-dash-user">
+            <SpAvatar user={user} size={32} />
+            <div className="sp-dash-user-id">
+              <div className="sp-dash-user-name">{user?.name}</div>
+              <div className="sp-dash-user-role">{role}{org ? ` · ${org.name}` : ""}</div>
             </div>
-            <button className="au-dash-exit" style={{ padding: 8 }} title="Sign out"
+            <button className="sp-dash-exit" style={{ padding: 8 }} title="Sign out"
                     onClick={async () => { await logout(); navigate("/"); }}><LogOut size={14} /></button>
           </div>
         </div>
       </aside>
 
-      <main className="au-dash-main">
-        <header className="au-dash-top">
+      <main className="sp-dash-main">
+        <header className="sp-dash-top">
           <div>
-            <div className="au-dash-top-title">{title}</div>
-            <div className="au-dash-top-sub">{subtitle}</div>
+            <div className="sp-dash-top-title">{title}</div>
+            <div className="sp-dash-top-sub">{subtitle}</div>
           </div>
         </header>
-        <div className="au-dash-content" key={location.pathname}>
+        <div className="sp-dash-content" key={location.pathname}>
           {/* Keyed by pathname so navigating clears any prior error. Runtime errors in a
               view render in-layout (sidebar stays usable); a stale-chunk error recovers
               via the guarded reload. */}
@@ -262,46 +288,47 @@ function LayoutBody() {
 function AppFooter() {
   const year = new Date().getFullYear();
   return (
-    <footer className="au-dash-footer">
-      <div className="au-dash-footer-top">
-        <div className="au-dash-footer-brand">
-          <div className="au-dash-footer-logo"><Radar size={15} /> AEOMirror</div>
-          <p className="au-dash-footer-tag">AI visibility and AEO intelligence for modern websites.</p>
+    <footer className="sp-dash-footer">
+      <div className="sp-dash-footer-top">
+        <div className="sp-dash-footer-brand">
+          <Link to="/" aria-label="Go to AEOMirror homepage"><Logo variant="lockup" size={15} /></Link>
+          <p className="sp-dash-footer-tag">AI visibility and AEO intelligence for modern websites.</p>
         </div>
         <FooterCol title="Product" items={FOOTER_PRODUCT} />
         <FooterCol title="Resources" items={FOOTER_RESOURCES}>
-          <a className="au-dash-footer-link" href={`mailto:${SUPPORT_EMAIL}`}><Mail size={11} /> Help</a>
+          <a className="sp-dash-footer-link" href={`mailto:${SUPPORT_EMAIL}`}><Mail size={11} /> Help</a>
         </FooterCol>
         <FooterCol title="Account" items={FOOTER_ACCOUNT} />
       </div>
-      <div className="au-dash-footer-bottom">© {year} AEOMirror. All rights reserved.</div>
+      <div className="sp-dash-footer-bottom">© {year} AEOMirror. All rights reserved.</div>
     </footer>
   );
 }
 
 function FooterCol({ title, items, children }) {
   return (
-    <div className="au-dash-footer-col">
-      <div className="au-dash-footer-col-h">{title}</div>
-      {items.map((it) => <Link key={it.to} className="au-dash-footer-link" to={it.to}>{it.label}</Link>)}
+    <div className="sp-dash-footer-col">
+      <div className="sp-dash-footer-col-h">{title}</div>
+      {items.map((it) => <Link key={it.to} className="sp-dash-footer-link" to={it.to}>{it.label}</Link>)}
       {children}
     </div>
   );
 }
 
-/* sidebar scan-usage meter (monthly scan-job cap). */
+/* sidebar scan-usage meter (monthly scan-job cap). No red/amber/green: at-limit ->
+   violet (needs-work), near-limit -> lav (attention), otherwise the brand primary. */
 function SideScanMeter({ scans, onUpgrade }) {
   if (!scans || scans.unlimited) return null;
   const pct = scans.limit ? Math.min(100, Math.round((scans.used / scans.limit) * 100)) : 0;
-  const color = pct >= 100 ? "var(--au-peach-d)" : pct >= 80 ? "var(--au-lemon-d)" : "var(--au-primary)";
+  const color = pct >= 100 ? "var(--sp-violet-d)" : pct >= 80 ? "var(--sp-lav-d)" : "var(--sp-primary)";
   return (
-    <div className="au-side-meter">
-      <div className="au-side-meter-top">
-        <span className="au-side-meter-lbl">Billable scans</span>
-        <span className="au-side-meter-n">{scans.used}/{scans.limit}</span>
+    <div className="sp-side-meter">
+      <div className="sp-side-meter-top">
+        <span className="sp-side-meter-lbl">Billable scans</span>
+        <span className="sp-side-meter-n">{scans.used}/{scans.limit}</span>
       </div>
-      <div className="au-side-meter-bar"><div style={{ width: `${pct}%`, background: color }} /></div>
-      {onUpgrade && <button className="au-side-meter-up" onClick={onUpgrade}>Upgrade →</button>}
+      <div className="sp-side-meter-bar"><div style={{ width: `${pct}%`, background: color }} /></div>
+      {onUpgrade && <button className="sp-side-meter-up" onClick={onUpgrade}>Upgrade →</button>}
     </div>
   );
 }

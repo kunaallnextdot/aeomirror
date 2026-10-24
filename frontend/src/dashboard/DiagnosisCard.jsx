@@ -12,15 +12,17 @@
    for why a given step is/isn't populated for that section's real backend data).
 
    Reuses the EXACT CSS classes RecommendationCard/the report's existing cards already
-   use (`au-rep-card`, `au-rep-fx-h`, `au-rep-fx-ul`, `au-rep-ai-why`, `au-tseo-badge`,
-   `au-rep-verify-link`, `au-ci-toggle`) — one visual language, not a new one. */
+   use (`sp-rep-card`, `sp-rep-fx-h`, `sp-rep-fx-ul`, `sp-rep-ai-why`, `sp-tseo-badge`,
+   `sp-rep-verify-link`, `sp-ci-toggle`) — one visual language, not a new one. All defined
+   in ReportView.spectrum.css, which this component relies on transitively (same pattern
+   as RecommendationCard — see ReportView.jsx's own comment). */
 import React, { useState } from "react";
 import { Link } from "react-router-dom";
 import { AlertTriangle, History, Sparkles } from "lucide-react";
 
 const SEVERITY_COLOR = {
-  Critical: "var(--au-peach-d)", High: "var(--au-peach-d)",
-  Medium: "var(--au-lemon-d)", Low: "var(--au-muted)",
+  Critical: "var(--sp-violet-d)", High: "var(--sp-violet-d)",
+  Medium: "var(--sp-lav-d)", Low: "var(--sp-muted)",
 };
 
 const EVIDENCE_PREVIEW_LIMIT = 3;
@@ -55,20 +57,20 @@ export default function DiagnosisCard({
   const rest = evList.slice(EVIDENCE_PREVIEW_LIMIT);
 
   return (
-    <div className="au-rep-card">
-      <div className="au-rep-card-b" style={{ padding: "12px 14px" }}>
+    <div className="sp-rep-card">
+      <div className="sp-rep-card-b" style={{ padding: "12px 14px" }}>
         {(title || badge || severity) && (
-          <div className="au-tseo-row" style={{ marginBottom: problem ? 4 : 0 }}>
+          <div className="sp-tseo-row" style={{ marginBottom: problem ? 4 : 0 }}>
             {(badge || severity) && (
-              <span className="au-tseo-badge" style={{ background: SEVERITY_COLOR[severity] || "var(--au-muted)" }}>
+              <span className="sp-tseo-badge" style={{ background: SEVERITY_COLOR[severity] || "var(--sp-muted)" }}>
                 {badge || severity}
               </span>
             )}
-            {title && <span className="au-rep-card-t">{title}</span>}
+            {title && <span className="sp-rep-card-t">{title}</span>}
           </div>
         )}
 
-        {problem && <p className="au-rep-desc">{problem}</p>}
+        {problem && <p className="sp-rep-desc">{problem}</p>}
 
         {/* Fix-first: the actionable steps (what to fix / how) come immediately after
             the problem statement — visually dominant, ahead of supporting explanation
@@ -77,38 +79,38 @@ export default function DiagnosisCard({
             FIX IT -> WHY IT MATTERS -> EVIDENCE). No step's content changed, only order. */}
         {fix && (
           <>
-            <div className="au-rep-fx-h au-rep-fx-h-prominent">How to fix</div>
-            <p className="au-rep-desc au-rep-fix-prominent">{fix}</p>
+            <div className="sp-rep-fx-h sp-rep-fx-h-prominent">How to fix</div>
+            <p className="sp-rep-desc sp-rep-fix-prominent">{fix}</p>
           </>
         )}
 
         {implementation && (
           <>
-            <div className="au-rep-fx-h">Implementation</div>
-            <pre className="au-code">{implementation}</pre>
+            <div className="sp-rep-fx-h">Implementation</div>
+            <pre className="sp-code">{implementation}</pre>
           </>
         )}
 
         {whyItMatters && (
-          <div className="au-rep-ai-why">
-            <div className="au-rep-ai-why-h"><Sparkles size={12} /> Why it matters</div>
+          <div className="sp-rep-ai-why">
+            <div className="sp-rep-ai-why-h"><Sparkles size={12} /> Why it matters</div>
             <p>{whyItMatters}</p>
           </div>
         )}
 
         {preview.length > 0 && (
           <>
-            <div className="au-rep-fx-h">Evidence</div>
-            <ul className="au-rep-fx-ul">
+            <div className="sp-rep-fx-h">Evidence</div>
+            <ul className="sp-rep-fx-ul">
               {preview.map((e, i) => <li key={i}><AlertTriangle size={11} /> <span>{e}</span></li>)}
             </ul>
             {rest.length > 0 && !showAllEvidence && (
-              <button type="button" className="au-ci-toggle" onClick={() => setShowAllEvidence(true)}>
+              <button type="button" className="sp-ci-toggle" onClick={() => setShowAllEvidence(true)}>
                 Show {rest.length} more
               </button>
             )}
             {showAllEvidence && rest.length > 0 && (
-              <ul className="au-rep-fx-ul" style={{ marginTop: 6 }}>
+              <ul className="sp-rep-fx-ul" style={{ marginTop: 6 }}>
                 {rest.map((e, i) => <li key={i}><AlertTriangle size={11} /> <span>{e}</span></li>)}
               </ul>
             )}
@@ -121,7 +123,7 @@ export default function DiagnosisCard({
       </div>
 
       {verifyHref && (
-        <div className="au-rep-verify-link">
+        <div className="sp-rep-verify-link">
           <Link to={verifyHref}><History size={12} /> Verify after re-scan</Link>
         </div>
       )}
@@ -139,14 +141,14 @@ export default function DiagnosisCard({
 export function SupportingEvidenceNote({ recommendationTitle, items, onJump }) {
   if (!items || items.length === 0) return null;
   return (
-    <div className="au-rep-card">
-      <div className="au-rep-card-b" style={{ padding: "12px 14px" }}>
-        <p className="au-rep-desc" style={{ marginBottom: 6 }}>
-          Already covered by the <button type="button" className="au-ci-toggle" style={{ display: "inline" }} onClick={onJump}>
+    <div className="sp-rep-card">
+      <div className="sp-rep-card-b" style={{ padding: "12px 14px" }}>
+        <p className="sp-rep-desc" style={{ marginBottom: 6 }}>
+          Already covered by the <button type="button" className="sp-ci-toggle" style={{ display: "inline" }} onClick={onJump}>
             &quot;{recommendationTitle}&quot; recommendation
           </button> above — shown here as supporting evidence.
         </p>
-        <ul className="au-rep-fx-ul">
+        <ul className="sp-rep-fx-ul">
           {items.map((e, i) => <li key={i}><AlertTriangle size={11} /> <span>{e}</span></li>)}
         </ul>
       </div>

@@ -10,6 +10,7 @@
 import React, { useState, useEffect } from "react";
 import { Check, Eye, EyeOff, CheckCircle2, Info, AlertTriangle, Loader2 } from "lucide-react";
 import { passwordStrength } from "../auth/ui.jsx";
+import Logo from "../shared/Logo.jsx";
 import "./aurora.css";
 
 const cx = (...c) => c.filter(Boolean).join(" ");
@@ -335,7 +336,7 @@ export function AuAuthShell({ title, subtitle, children, footer }) {
   return (
     <div className="au-auth-wrap">
       <div className="au-auth-card">
-        <div className="au-auth-brand"><_AuRadarIcon size={18} /> AEOMirror</div>
+        <div className="au-auth-brand"><Logo variant="lockup" size={18} /></div>
         <div className="au-auth-h">{title}</div>
         {subtitle && <div className="au-auth-sub">{subtitle}</div>}
         {children}

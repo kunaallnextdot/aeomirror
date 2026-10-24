@@ -6,31 +6,32 @@ import {
 } from "lucide-react";
 import { billing, startCheckout, ScanError } from "../api.js";
 import { fmtDate } from "./ui.jsx";
-import { Shell, AuroraSkeletonPage, AuroraError } from "./aurora.jsx";
+import { Shell, SpectrumSkeletonPage, SpectrumError } from "../shared/spectrum.jsx";
 import { useAuth } from "../auth/AuthContext.jsx";
 import { useUpgrade } from "./UpgradeModal.jsx";
 
 const money = (cents, cur = "usd") => cents === 0 ? "Free" : `$${(cents / 100).toFixed(0)}`;
 const PLAN_ICON = { free: Gauge, report: FileText, pro: Crown };
 
-/* A single usage meter (used/limit + bar), teal → amber (>=80%) → red (100%). */
+/* A single usage meter (used/limit + bar), primary blue → attention lav (>=80%) →
+   needs-work violet (100%) — no red/amber/green anywhere. */
 function Meter({ label, q }) {
   if (!q) return null;
   if (q.unlimited) {
     return (
-      <div className="au-bill-meter-top"><span className="au-bill-meter-lbl">{label}</span>
-        <span className="au-bill-meter-n">Unlimited</span></div>
+      <div className="sp-bill-meter-top"><span className="sp-bill-meter-lbl">{label}</span>
+        <span className="sp-bill-meter-n">Unlimited</span></div>
     );
   }
   const pct = q.limit ? Math.min(100, Math.round((q.used / q.limit) * 100)) : 0;
-  const color = pct >= 100 ? "var(--au-peach-d)" : pct >= 80 ? "var(--au-lemon-d)" : "var(--au-primary)";
+  const color = pct >= 100 ? "var(--sp-violet-d)" : pct >= 80 ? "var(--sp-lav-d)" : "var(--sp-primary)";
   return (
     <div>
-      <div className="au-bill-meter-top">
-        <span className="au-bill-meter-lbl">{label}</span>
-        <span className="au-bill-meter-n">{q.used}/{q.limit}</span>
+      <div className="sp-bill-meter-top">
+        <span className="sp-bill-meter-lbl">{label}</span>
+        <span className="sp-bill-meter-n">{q.used}/{q.limit}</span>
       </div>
-      <div className="au-bill-meter"><div style={{ width: `${pct}%`, background: color }} /></div>
+      <div className="sp-bill-meter"><div style={{ width: `${pct}%`, background: color }} /></div>
     </div>
   );
 }
@@ -71,8 +72,8 @@ export default function BillingView() {
     finally { setBusy(false); }
   };
 
-  if (error) return <AuroraError message={error} onRetry={load} />;
-  if (!data) return <AuroraSkeletonPage />;
+  if (error) return <SpectrumError message={error} onRetry={load} />;
+  if (!data) return <SpectrumSkeletonPage />;
 
   const { sub, plans, invoices, payments } = data;
   const plan = sub.plan;
@@ -81,17 +82,17 @@ export default function BillingView() {
   const isPro = plan === "pro";
 
   return (
-    <div className="aurora-screen"><Shell>
+    <div className="spectrum-screen"><Shell>
       <div style={{ position: "relative", zIndex: 1 }}>
-        {notice && <div className="au-bill-notice">{notice}</div>}
+        {notice && <div className="sp-bill-notice">{notice}</div>}
 
         {/* current plan + usage */}
-        <div className="au-grid2" style={{ marginBottom: 16 }}>
-          <div className="au-panel">
-            <div className="au-bill-stat-l"><Crown size={13} /> Current plan</div>
-            <div className="au-bill-plan-name">{isPro ? "Pro" : "Free"}</div>
+        <div className="sp-grid2" style={{ marginBottom: 16 }}>
+          <div className="sp-panel">
+            <div className="sp-bill-stat-l"><Crown size={13} /> Current plan</div>
+            <div className="sp-bill-plan-name">{isPro ? "Pro" : "Free"}</div>
             {subscription && (
-              <div className="au-dim" style={{ fontSize: 12.5 }}>
+              <div className="sp-dim" style={{ fontSize: 12.5 }}>
                 {subscription.cancel_at_period_end
                   ? <>Cancels on {fmtDate(subscription.current_period_end)}</>
                   : subscription.status === "active"
@@ -102,17 +103,17 @@ export default function BillingView() {
             {isPro && subscription && (
               <div style={{ marginTop: 12, display: "flex", gap: 8 }}>
                 {subscription.cancel_at_period_end
-                  ? <button className="au-btn au-accent au-sm" disabled={busy} onClick={() => manage(billing.resume, "Subscription resumed.")}><RefreshCw size={13} /> Resume</button>
-                  : <button className="au-btn au-ghost au-sm" disabled={busy} onClick={() => manage(billing.cancel, "Subscription will cancel at period end.")}>Cancel subscription</button>}
+                  ? <button className="sp-btn sp-gradient sp-sm" disabled={busy} onClick={() => manage(billing.resume, "Subscription resumed.")}><RefreshCw size={13} /> Resume</button>
+                  : <button className="sp-btn sp-ghost sp-sm" disabled={busy} onClick={() => manage(billing.cancel, "Subscription will cancel at period end.")}>Cancel subscription</button>}
               </div>
             )}
           </div>
-          <div className="au-panel">
-            <div className="au-bill-stat-l"><Gauge size={13} /> Usage this month</div>
+          <div className="sp-panel">
+            <div className="sp-bill-stat-l"><Gauge size={13} /> Usage this month</div>
             {isPro ? (
-              <div className="au-bill-usage-unlim">Unlimited <span className="au-dim">· Pro plan</span></div>
+              <div className="sp-bill-usage-unlim">Unlimited <span className="sp-dim">· Pro plan</span></div>
             ) : (
-              <div className="au-bill-meters">
+              <div className="sp-bill-meters">
                 <Meter label="Scans" q={usageAll.scans} />
                 <Meter label="Monitors" q={usageAll.monitors} />
                 <Meter label="Comparisons" q={usageAll.compares} />
@@ -122,53 +123,53 @@ export default function BillingView() {
         </div>
 
         {/* plans */}
-        <div className="au-panel-h" style={{ margin: "6px 0 12px" }}>Plans</div>
-        <div className="au-bill-plans">
+        <div className="sp-panel-h" style={{ margin: "6px 0 12px" }}>Plans</div>
+        <div className="sp-bill-plans">
           {plans.map((p) => {
             const Icon = PLAN_ICON[p.code] || Zap;
             const isCurrent = (p.code === "pro" && isPro) || (p.code === "free" && !isPro);
             return (
-              <div key={p.code} className={`au-bill-card ${p.code === "pro" ? "au-featured" : ""}`}>
-                <div className="au-bill-card-h"><Icon size={16} /> {p.name}</div>
-                <div className="au-bill-price">{money(p.price_cents)}<span className="au-dim">{p.interval === "month" ? "/mo" : p.interval === "one_time" ? " once" : ""}</span></div>
-                <div className="au-dim" style={{ fontSize: 12, marginBottom: 12 }}>{p.description}</div>
+              <div key={p.code} className={`sp-bill-card ${p.code === "pro" ? "sp-featured" : ""}`}>
+                <div className="sp-bill-card-h"><Icon size={16} /> {p.name}</div>
+                <div className="sp-bill-price">{money(p.price_cents)}<span className="sp-dim">{p.interval === "month" ? "/mo" : p.interval === "one_time" ? " once" : ""}</span></div>
+                <div className="sp-dim" style={{ fontSize: 12, marginBottom: 12 }}>{p.description}</div>
                 {p.code === "pro" && (
-                  <div className="au-bill-hero">
-                    <div className="au-bill-hero-l"><Zap size={13} /> 15 scan jobs — up to 750 pages/month</div>
-                    <div className="au-bill-hero-l"><Sparkles size={13} /> AI-written reports &amp; content insights</div>
+                  <div className="sp-bill-hero">
+                    <div className="sp-bill-hero-l"><Zap size={13} /> 15 scan jobs — up to 750 pages/month</div>
+                    <div className="sp-bill-hero-l"><Sparkles size={13} /> AI-written reports &amp; content insights</div>
                   </div>
                 )}
-                <ul className="au-bill-feats">{(p.features || []).map((f, i) => <li key={i}><Check size={12} /> {f}</li>)}</ul>
+                <ul className="sp-bill-feats">{(p.features || []).map((f, i) => <li key={i}><Check size={12} /> {f}</li>)}</ul>
                 {p.code === "pro" && (isCurrent
-                  ? <div className="au-bill-current-tag">Your plan</div>
-                  : <button className="au-btn au-accent au-block" disabled={busy} onClick={upgrade}>{busy ? "Processing…" : "Upgrade to Pro"}</button>)}
-                {p.code === "free" && isCurrent && <div className="au-bill-current-tag">Your plan</div>}
-                {p.code === "report" && <div className="au-dim" style={{ fontSize: 11.5 }}>Purchased per report from any scan's report page.</div>}
+                  ? <div className="sp-bill-current-tag">Your plan</div>
+                  : <button className="sp-btn sp-gradient sp-block" disabled={busy} onClick={upgrade}>{busy ? "Processing…" : "Upgrade to Pro"}</button>)}
+                {p.code === "free" && isCurrent && <div className="sp-bill-current-tag">Your plan</div>}
+                {p.code === "report" && <div className="sp-dim" style={{ fontSize: 11.5 }}>Purchased per report from any scan's report page.</div>}
               </div>
             );
           })}
         </div>
 
         {/* invoices */}
-        <div className="au-panel" style={{ marginTop: 16 }}>
-          <div className="au-panel-h"><FileText size={14} /> Invoices <span className="au-sub">{invoices.length}</span></div>
-          {invoices.length === 0 ? <div className="au-dim" style={{ fontSize: 12.5 }}>No invoices yet.</div> : (
-            <table className="au-bill-table"><thead><tr><th>Number</th><th>Amount</th><th>Status</th><th>Date</th></tr></thead>
+        <div className="sp-panel" style={{ marginTop: 16 }}>
+          <div className="sp-panel-h"><FileText size={14} /> Invoices <span className="sp-sub">{invoices.length}</span></div>
+          {invoices.length === 0 ? <div className="sp-dim" style={{ fontSize: 12.5 }}>No invoices yet.</div> : (
+            <table className="sp-bill-table"><thead><tr><th>Number</th><th>Amount</th><th>Status</th><th>Date</th></tr></thead>
               <tbody>{invoices.map((i) => (
-                <tr key={i.id}><td className="au-mono">{i.number}</td><td>${(i.amount_cents / 100).toFixed(2)}</td><td>{i.status}</td><td className="au-dim">{fmtDate(i.issued_at || i.created_at)}</td></tr>
+                <tr key={i.id}><td className="sp-mono">{i.number}</td><td>${(i.amount_cents / 100).toFixed(2)}</td><td>{i.status}</td><td className="sp-dim">{fmtDate(i.issued_at || i.created_at)}</td></tr>
               ))}</tbody>
             </table>
           )}
         </div>
 
         {/* payment history */}
-        <div className="au-panel" style={{ marginTop: 16 }}>
-          <div className="au-panel-h"><CreditCard size={14} /> Payment history <span className="au-sub">{payments.length}</span></div>
-          {payments.length === 0 ? <div className="au-dim" style={{ fontSize: 12.5 }}>No payments yet.</div> : (
-            <table className="au-bill-table"><thead><tr><th>Description</th><th>Amount</th><th>Status</th><th>Date</th></tr></thead>
+        <div className="sp-panel" style={{ marginTop: 16 }}>
+          <div className="sp-panel-h"><CreditCard size={14} /> Payment history <span className="sp-sub">{payments.length}</span></div>
+          {payments.length === 0 ? <div className="sp-dim" style={{ fontSize: 12.5 }}>No payments yet.</div> : (
+            <table className="sp-bill-table"><thead><tr><th>Description</th><th>Amount</th><th>Status</th><th>Date</th></tr></thead>
               <tbody>{payments.map((p) => (
                 <tr key={p.id}><td>{p.description || p.kind}</td><td>${(p.amount_cents / 100).toFixed(2)}</td>
-                  <td><span className={`au-bill-pay ${p.status}`}>{p.status}</span></td><td className="au-dim">{fmtDate(p.created_at)}</td></tr>
+                  <td><span className={`sp-bill-pay ${p.status}`}>{p.status}</span></td><td className="sp-dim">{fmtDate(p.created_at)}</td></tr>
               ))}</tbody>
             </table>
           )}

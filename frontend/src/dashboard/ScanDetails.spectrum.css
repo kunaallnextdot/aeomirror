@@ -1,0 +1,167 @@
+/* Spectrum styling for the Scan Details screen (/app/scans/:scanId).
+   Screen-scoped `sp-sd-*` classes for the parts with NO direct shared primitive
+   (signal-analysis accordion, bulk pages table, evidence rows, Pro-lock teaser, live
+   progress). Token-for-token port of ScanDetails.aurora.css's `au-sd-*` rules onto
+   `--sp-*`; the Aurora original is LEFT INTACT. Loaded only when ScanDetails renders.
+
+   NOTE: <RecommendationCard> (imported from ReportView.jsx) is fully Spectrum-classed —
+   it renders `.sp-rep-card-b`, so the `.sp-sd-fix .sp-rep-card-b` override below targets
+   that real class directly (no Aurora CSS import needed for it here anymore). */
+
+/* toolbar */
+.sp-sd-toolbar{display:flex;align-items:center;justify-content:space-between;gap:8px;
+  flex-wrap:wrap;margin-bottom:16px;position:relative;z-index:1}
+.sp-sd-toolbar-r{display:flex;gap:8px;flex-wrap:wrap}
+
+/* header */
+.sp-sd-headcell{display:flex;align-items:center;gap:22px;flex-wrap:wrap}
+.sp-sd-domain{font-family:var(--sp-font-heading);font-size:20px;font-weight:700;
+  letter-spacing:-.02em;color:var(--sp-ink);word-break:break-word}
+.sp-sd-headmeta{display:flex;gap:8px;align-items:center;margin:8px 0;flex-wrap:wrap}
+.sp-sd-meta{font-family:var(--sp-font-numeric);font-size:11.5px;color:var(--sp-muted)}
+.sp-sd-tallies{display:flex;gap:18px}
+.sp-sd-tally{text-align:center}
+.sp-sd-tally-n{font-family:var(--sp-font-numeric);font-size:24px;font-weight:500;line-height:1}
+.sp-sd-tally-l{font-size:11px;color:var(--sp-muted);margin-top:4px}
+.sp-sd-dim{color:var(--sp-muted);font-size:12px}
+
+/* stacked panels */
+.sp-sd-stack{display:flex;flex-direction:column;gap:16px;position:relative;z-index:1}
+.sp-sd-panel-h{display:flex;align-items:baseline;gap:10px;font-family:var(--sp-font-heading);
+  font-size:15px;font-weight:700;color:var(--sp-ink);margin-bottom:14px}
+.sp-sd-panel-h .sp-sd-sub{font-family:var(--sp-font-numeric);font-size:12px;color:var(--sp-muted);font-weight:400}
+
+/* signal-analysis accordion (no shared archetype — token-styled) */
+.sp-sd-list{display:flex;flex-direction:column;gap:8px}
+.sp-sd-sig{background:var(--sp-solid);border:1px solid var(--sp-line);border-radius:var(--sp-r-s);overflow:hidden}
+.sp-sd-sig-head{display:flex;align-items:center;gap:11px;width:100%;background:none;border:0;
+  cursor:pointer;padding:13px 15px;font-family:inherit;text-align:left}
+.sp-sd-sig-head:hover{background:rgba(11,16,36,.02)}
+.sp-sd-sig-head:focus-visible{outline:2px solid var(--sp-primary);outline-offset:-2px}
+.sp-sd-dot{width:9px;height:9px;border-radius:50%;flex:none}
+.sp-sd-sig-name{flex:1;min-width:0;font-size:14px;font-weight:600;color:var(--sp-ink)}
+.sp-sd-score{font-family:var(--sp-font-numeric);font-size:13px;width:28px;text-align:right;font-weight:500}
+.sp-sd-chev{color:var(--sp-muted);transition:transform .2s;flex:none}
+.sp-sd-sig-body{padding:2px 15px 15px 35px;display:flex;flex-direction:column;gap:12px}
+.sp-sd-bh{font-family:var(--sp-font-numeric);font-size:10px;letter-spacing:.07em;text-transform:uppercase;
+  color:var(--sp-muted);margin-bottom:6px}
+.sp-sd-ul{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px}
+.sp-sd-ul li{display:flex;align-items:flex-start;gap:8px;font-size:13px;color:var(--sp-ink-2);line-height:1.5}
+.sp-sd-ul li svg{margin-top:2px;flex:none}
+.sp-sd-clean{display:flex;align-items:center;gap:7px;color:var(--sp-blue-d);font-size:12.5px}
+.sp-sd-found{display:flex;flex-wrap:wrap;gap:6px}
+.sp-sd-found-chip{font-family:var(--sp-font-numeric);font-size:11px;color:var(--sp-cyan-d);
+  background:var(--sp-t-cyan);padding:3px 9px;border-radius:8px}
+.sp-sd-ev{display:flex;flex-direction:column;gap:4px}
+.sp-sd-ev-row{display:flex;gap:12px;font-size:12.5px}
+.sp-sd-ev-k{color:var(--sp-muted)}
+/* Wraps <RecommendationCard> (from ReportView.jsx — the ONE fix_template renderer,
+   reused verbatim, not re-implemented). Its own .au-rep-card-b already has 16px side
+   padding meant for a bare top-level card; here it nests inside .sp-sd-sig-body (which
+   already indents 35px), so that inner padding is zeroed to avoid double-indenting —
+   everything else about its appearance (impact grid, fix headers, code block) is
+   untouched, matching ReportView's Recommendations section exactly. */
+.sp-sd-fix{border-top:1px solid var(--sp-line-2);padding-top:10px}
+.sp-sd-fix .sp-rep-card-b{padding:0}
+.sp-sd-ev-v{font-family:var(--sp-font-numeric);color:var(--sp-ink-2);text-align:right;margin-left:auto;
+  max-width:60%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+/* Fix Verification (Scan -> Fix -> Re-scan -> Verify). Reuses .sp-sd-bh/.sp-sd-ul/
+   .sp-sd-ev* for the resolved/remaining/new-issue lists and evidence rows so it reads
+   as the SAME visual language as the rest of the signal card, not a separate feature. */
+.sp-sd-verify{border-top:1px solid var(--sp-line-2);padding-top:10px}
+.sp-sd-verify-toggle{display:inline-flex;align-items:center;gap:6px;background:none;border:0;
+  padding:0;cursor:pointer;font:inherit;font-size:12px;font-weight:600;color:var(--sp-primary)}
+.sp-sd-verify-toggle:hover{text-decoration:underline}
+.sp-sd-verify-toggle:focus-visible{outline:2px solid var(--sp-primary);outline-offset:2px;border-radius:4px}
+.sp-sd-verify-body{margin-top:10px;display:flex;flex-direction:column;gap:10px}
+.sp-sd-verify-cta{display:flex;flex-direction:column;align-items:flex-start;gap:8px}
+.sp-sd-verify-pick{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.sp-sd-verify-pick .sp-select{flex:1;min-width:200px}
+.sp-sd-verify-nc{display:flex;align-items:center;gap:6px;color:var(--sp-muted);font-size:12.5px}
+.sp-sd-verify-result{border:1px solid var(--sp-line);border-radius:var(--sp-r-s);padding:11px 13px;
+  display:flex;flex-direction:column;gap:9px;background:var(--sp-page)}
+.sp-sd-verify-ok{border-left:3px solid var(--sp-blue-d)}
+.sp-sd-verify-warn{border-left:3px solid var(--sp-lav-d)}
+.sp-sd-verify-bad{border-left:3px solid var(--sp-violet-d)}
+.sp-sd-verify-info{border-left:3px solid var(--sp-muted)}
+.sp-sd-verify-h{display:flex;align-items:center;gap:7px;font-weight:700;font-size:13.5px;color:var(--sp-ink)}
+.sp-sd-verify-ok .sp-sd-verify-h svg{color:var(--sp-blue-d)}
+.sp-sd-verify-warn .sp-sd-verify-h svg{color:var(--sp-lav-d)}
+.sp-sd-verify-bad .sp-sd-verify-h svg{color:var(--sp-violet-d)}
+.sp-sd-verify-info .sp-sd-verify-h svg{color:var(--sp-muted)}
+.sp-sd-verify-ba{display:flex;flex-wrap:wrap;gap:6px 14px;font-size:12px;color:var(--sp-ink-2)}
+.sp-sd-verify-ba b{color:var(--sp-ink);font-family:var(--sp-font-numeric)}
+.sp-sd-verify-list{display:flex;flex-direction:column;gap:6px}
+/* the before->after evidence value can be longer than a single plain value — wrap
+   instead of the base .sp-sd-ev-v's nowrap+ellipsis truncation. */
+.sp-sd-verify-list .sp-sd-ev-v{white-space:normal;text-align:left;max-width:100%;overflow-wrap:break-word}
+.sp-sd-verify-list .sp-sd-ev-row{flex-direction:column;gap:2px}
+/* Phase 8 — minimal verification history (only shown when >1 record exists for this
+   signal); each row is a real persisted record, never a synthesized entry. */
+.sp-sd-verify-history{border-top:1px solid var(--sp-line-2);padding-top:8px;
+  display:flex;flex-direction:column;gap:5px}
+.sp-sd-verify-hrow{display:flex;gap:12px;flex-wrap:wrap;font-size:12px;color:var(--sp-ink-2)}
+@media(max-width:480px){
+  .sp-sd-verify-pick{flex-direction:column;align-items:stretch}
+  .sp-sd-verify-pick .sp-select{min-width:0}
+  .sp-sd-verify-hrow{flex-direction:column;gap:2px}
+}
+
+/* bulk pages table (no shared archetype — token-styled) */
+.sp-sd-best{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:12px}
+.sp-sd-tablewrap{overflow-x:auto;border:1px solid var(--sp-line);border-radius:var(--sp-r-s)}
+.sp-sd-table{width:100%;border-collapse:collapse;font-size:13px}
+.sp-sd-table th{font-family:var(--sp-font-numeric);font-size:10px;letter-spacing:.06em;text-transform:uppercase;
+  color:var(--sp-muted);text-align:left;padding:11px 14px;border-bottom:1px solid var(--sp-line);white-space:nowrap;font-weight:500}
+.sp-sd-table td{padding:11px 14px;border-bottom:1px solid var(--sp-line-2);vertical-align:middle;color:var(--sp-ink-2)}
+.sp-sd-table tbody tr:last-child td{border-bottom:0}
+.sp-sd-table tbody tr:hover{background:rgba(11,16,36,.02)}
+.sp-sd-url{font-weight:600;color:var(--sp-ink)}
+.sp-sd-th-sort{cursor:pointer}
+.sp-sd-topissue{color:var(--sp-muted);max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sp-sd-td-right{text-align:right}
+
+/* Pro-lock (no shared archetype — token-styled) */
+.sp-sd-lockbanner{display:flex;align-items:center;gap:10px;background:var(--sp-t-lav);
+  color:var(--sp-lav-d);border-radius:var(--sp-r-s);padding:10px 14px;font-size:12.5px;margin-bottom:12px}
+.sp-sd-lockbanner button{margin-left:auto}
+.sp-sd-lockwrap{position:relative;margin-top:12px;border-radius:var(--sp-r-s);overflow:hidden}
+.sp-sd-blur{filter:blur(6px);opacity:.5;pointer-events:none}
+.sp-sd-lock-overlay{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;
+  justify-content:center;gap:8px;text-align:center;padding:20px;
+  background:linear-gradient(180deg,rgba(251,252,253,.4),rgba(251,252,253,.92))}
+.sp-sd-lock-t{font-family:var(--sp-font-heading);font-weight:700;font-size:15px;color:var(--sp-ink)}
+.sp-sd-lock-s{font-size:12.5px;color:var(--sp-muted);max-width:360px}
+
+/* live progress + terminal states (centred cards) */
+.sp-sd-center{text-align:center;padding:40px 24px;position:relative;z-index:1}
+.sp-sd-ill{width:54px;height:54px;border-radius:50%;display:grid;place-items:center;margin:0 auto 16px;
+  background:var(--sp-t-blue);color:var(--sp-blue-d)}
+.sp-sd-ill.sp-sd-ill-bad{background:var(--sp-t-violet);color:var(--sp-violet-d)}
+.sp-sd-ct{font-family:var(--sp-font-heading);font-size:18px;font-weight:700;color:var(--sp-ink)}
+.sp-sd-cs{font-size:13px;color:var(--sp-muted);margin:6px 0 18px}
+.sp-sd-prog{max-width:520px;margin:0 auto;text-align:left}
+.sp-sd-prog-label{font-family:var(--sp-font-numeric);font-size:12px;color:var(--sp-muted);margin-top:10px}
+.sp-sd-prog-url{font-family:var(--sp-font-numeric);font-size:11.5px;color:var(--sp-muted);margin-top:4px;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* indeterminate variant of the shared primitive .sp-pgf (no indeterminate variant exists) */
+.sp-sd-indet{width:40% !important;animation:sp-sd-indet 1.1s ease-in-out infinite}
+@keyframes sp-sd-indet{0%{margin-left:-40%}100%{margin-left:100%}}
+
+/* loading skeleton rows */
+.sp-sd-skrows{display:flex;flex-direction:column;gap:10px}
+
+/* best/worst chips */
+.sp-sd-bestchip{display:inline-flex;align-items:center;gap:5px;font-size:12px;font-weight:600;
+  padding:5px 11px;border-radius:var(--sp-r-pill)}
+.sp-sd-bestchip.good{background:var(--sp-t-blue);color:var(--sp-blue-d)}
+.sp-sd-bestchip.bad{background:var(--sp-t-violet);color:var(--sp-violet-d)}
+
+/* local error box for Fix Verification's "real failure" message — no shared sp-alert-
+   style archetype fits a bare inline error line here (sp-alert-error is a bordered,
+   icon-led block meant for a full-width form alert), so this is a small token-styled
+   local class, same pattern as the other no-archetype rules in this file. Equivalent to
+   AnswerTracking.aurora.css's `.au-at-err` (a different, still-unmigrated screen's class
+   this file never referenced for real — not renamed/touched there). */
+.sp-sd-err{background:var(--sp-t-violet);color:var(--sp-violet-d);border-radius:var(--sp-r-s);padding:9px 12px;font-size:12.5px;margin:10px 0}

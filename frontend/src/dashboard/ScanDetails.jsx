@@ -1,29 +1,31 @@
-/* Scan Details (/app/scans/:scanId) — MIGRATED to the Aurora design system.
+/* Scan Details (/app/scans/:scanId) — MIGRATED to the Spectrum design system.
    Data flow, hooks, effects and handlers are byte-for-byte unchanged from the pre-Aurora
-   version; only JSX + class names changed (dark d-* classes -> Aurora primitives + au-sd-*).
-   Route-level loading + error states are exported here (ScanDetailLoading / ScanDetailNotFound)
-   so the route can render them in Aurora too, without touching the shared ui.jsx primitives.
-   Out of scope (still dark, flagged): <ContentInsightsCard> is a separate component. */
+   version; only JSX + class names changed (Aurora au-* classes -> Spectrum primitives +
+   sp-sd-*). Route-level loading + error states are exported here (ScanDetailLoading /
+   ScanDetailNotFound) so the route can render them in Spectrum too, without touching the
+   shared ui.jsx primitives.
+   Out of scope (still dark, flagged): <ContentInsightsCard> is a separate component.
+   <RecommendationCard> and <VerificationBadge> (from ReportView.jsx/VerificationBadge.jsx)
+   are both fully Spectrum-classed now, so no Aurora CSS import is needed for them here. */
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import {
-  ChevronLeft, ChevronDown, AlertTriangle, Wrench, Check, RefreshCw, FileText, Radar,
+  ChevronLeft, ChevronDown, AlertTriangle, Wrench, Check, RefreshCw, FileText,
   ArrowUp, ArrowDown, Lock, History, CheckCircle2, XCircle, MinusCircle,
 } from "lucide-react";
+import Logo from "../shared/Logo.jsx";
 import { fmtDate, fmtDuration } from "./ui.jsx";
 import { getScanStatus, getReport, createVerification, getVerifications, ScanError } from "../api.js";
 import { useUpgrade } from "./UpgradeModal.jsx";
 import { ContentInsightsCard } from "./ContentInsights.jsx";
 import { RecommendationCard } from "./ReportView.jsx";
 import VerificationBadge from "./VerificationBadge.jsx";
-import { Shell, Cell, Button, Tag, Ring, ProgressBar, Skeleton } from "./aurora.jsx";
-import "./ScanDetails.aurora.css";
-import "./ReportView.aurora.css";   // reuses .au-rep-card-b/.au-rep-fx-*/.au-code etc. verbatim —
-                                     // see RecommendationCard, the ONE fix-template renderer.
+import { Shell, Cell, Button, Tag, Ring, ProgressBar, Skeleton } from "../shared/spectrum.jsx";
+import "./ScanDetails.spectrum.css";
 
 const STATUS_VARIANT = { pass: "ok", warn: "warning", fail: "critical" };
-const auStatusColor = (s) => s === "pass" ? "var(--au-mint-d)" : s === "warn" ? "var(--au-lemon-d)"
-  : s === "fail" ? "var(--au-peach-d)" : "var(--au-muted)";
+const spStatusColor = (s) => s === "pass" ? "var(--sp-blue-d)" : s === "warn" ? "var(--sp-lav-d)"
+  : s === "fail" ? "var(--sp-violet-d)" : "var(--sp-muted)";
 const scoreStatus = (v) => (v >= 75 ? "pass" : v >= 45 ? "warn" : "fail");
 
 function fmtEvidence(v) {
@@ -136,11 +138,11 @@ export default function ScanDetails({ scan, onBack, onRerun, busy, canRun = true
   const headStatus = scoreStatus(headScore);
 
   return (
-    <div className="aurora-screen">
+    <div className="spectrum-screen">
       <Shell>
-        <div className="au-sd-toolbar">
+        <div className="sp-sd-toolbar">
           <Button variant="ghost" onClick={onBack}><ChevronLeft size={14} /> Back to scans</Button>
-          <div className="au-sd-toolbar-r">
+          <div className="sp-sd-toolbar-r">
             {onReport && (
               <Button variant="ghost" onClick={onReport}><FileText size={13} /> View full report</Button>
             )}
@@ -152,26 +154,26 @@ export default function ScanDetails({ scan, onBack, onRerun, busy, canRun = true
           </div>
         </div>
 
-        <div className="au-sd-stack">
-          <Cell solid className="au-sd-headcell">
+        <div className="sp-sd-stack">
+          <Cell solid className="sp-sd-headcell">
             <span role="img" aria-label={`AI readiness score ${headScore} of 100 — ${headStatus}`}>
               <Ring value={headScore} size={96} stroke={8} />
             </span>
             <div style={{ flex: 1, minWidth: 220 }}>
-              <div className="au-sd-domain">{scan.domain || scan.url}</div>
-              <div className="au-sd-headmeta">
+              <div className="sp-sd-domain">{scan.domain || scan.url}</div>
+              <div className="sp-sd-headmeta">
                 <Tag variant={STATUS_VARIANT[headStatus]}>{headStatus.toUpperCase()}</Tag>
-                {bulk && <span className="au-sd-dim">average across {bulk.page_count} page{bulk.page_count === 1 ? "" : "s"}</span>}
+                {bulk && <span className="sp-sd-dim">average across {bulk.page_count} page{bulk.page_count === 1 ? "" : "s"}</span>}
               </div>
-              <div className="au-sd-meta">
+              <div className="sp-sd-meta">
                 scanner {scan.scanner_version || "-"} · rubric {scan.rubric_version} · {fmtDate(scan.scanned_at)} · {fmtDuration(scan.duration_ms)}
               </div>
             </div>
             {!bulk && (
-              <div className="au-sd-tallies">
-                <AuTally n={counts.pass || 0} label="Passed" status="pass" />
-                <AuTally n={counts.warn || 0} label="Warnings" status="warn" />
-                <AuTally n={counts.fail || 0} label="Failures" status="fail" />
+              <div className="sp-sd-tallies">
+                <SpTally n={counts.pass || 0} label="Passed" status="pass" />
+                <SpTally n={counts.warn || 0} label="Warnings" status="warn" />
+                <SpTally n={counts.fail || 0} label="Failures" status="fail" />
               </div>
             )}
           </Cell>
@@ -183,38 +185,38 @@ export default function ScanDetails({ scan, onBack, onRerun, busy, canRun = true
 
           {!bulk && (
             <Cell solid>
-              <div className="au-sd-panel-h">Diagnosis <span className="au-sd-sub">10 checks</span></div>
+              <div className="sp-sd-panel-h">Diagnosis <span className="sp-sd-sub">10 checks</span></div>
               {/* Same existing Free/Pro report gate as ReportView's Recommendations section
                   (server-trimmed via gate_recommendations — never bypassed, never a blurred
                   fake). Only appears when the ALREADY-FETCHED report says some fixes were
                   left out for this tier; the basic issue/evidence/recommendation each signal
                   card shows below is never affected by this gate. */}
               {lockedFixCount > 0 && (
-                <div className="au-sd-lockbanner">
+                <div className="sp-sd-lockbanner">
                   <Lock size={13} />
                   <span>{lockedFixCount} more detailed fix{lockedFixCount === 1 ? "" : "es"} available in the full report.</span>
                   <Button variant="accent" onClick={() => openUpgrade("report", { scanId: scan.scan_id })}>Unlock</Button>
                 </div>
               )}
-              <div className="au-sd-list">
+              <div className="sp-sd-list">
                 {sections.map((s) => {
                   const isOpen = !!open[s.id];
-                  const col = auStatusColor(s.status);
+                  const col = spStatusColor(s.status);
                   const clean = !(s.issues?.length) && !(s.recommendations?.length);
                   const evEntries = Object.entries(s.evidence || {}).filter(([k]) => k !== "detected_types");
                   const richRec = recsById[s.id];
                   return (
-                    <div key={s.id} className="au-sd-sig">
-                      <button className="au-sd-sig-head" onClick={() => toggle(s.id)} aria-expanded={isOpen}>
-                        <span className="au-sd-dot" style={{ background: col }} aria-hidden="true" />
-                        <span className="au-sd-sig-name">{s.label}</span>
+                    <div key={s.id} className="sp-sd-sig">
+                      <button className="sp-sd-sig-head" onClick={() => toggle(s.id)} aria-expanded={isOpen}>
+                        <span className="sp-sd-dot" style={{ background: col }} aria-hidden="true" />
+                        <span className="sp-sd-sig-name">{s.label}</span>
                         <Tag variant={STATUS_VARIANT[s.status] || "info"}>{String(s.status).toUpperCase()}</Tag>
-                        <span className="au-sd-score" style={{ color: col }}>{s.score}</span>
+                        <span className="sp-sd-score" style={{ color: col }}>{s.score}</span>
                         <VerificationBadge verification={verificationsBySignal[s.id]?.[0]} />
-                        <ChevronDown size={15} className="au-sd-chev" style={{ transform: isOpen ? "rotate(180deg)" : "none" }} />
+                        <ChevronDown size={15} className="sp-sd-chev" style={{ transform: isOpen ? "rotate(180deg)" : "none" }} />
                       </button>
                       {isOpen && (
-                        <div className="au-sd-sig-body">
+                        <div className="sp-sd-sig-body">
                           {/* Problem -> Fix -> Implementation -> Why it matters -> Evidence —
                               the SAME product-wide fix-first hierarchy DiagnosisCard/
                               RecommendationCard use everywhere else (ReportView.jsx). Problem
@@ -229,36 +231,36 @@ export default function ScanDetails({ scan, onBack, onRerun, busy, canRun = true
                               grouped with the native Evidence block at the end, not ahead of
                               the fix. */}
                           {s.issues?.length > 0 && (
-                            <div><div className="au-sd-bh">What&apos;s wrong</div>
-                              <ul className="au-sd-ul">{s.issues.map((it, i) => <li key={i}><AlertTriangle size={11} style={{ color: "var(--au-lemon-d)" }} /> <span>{it}</span></li>)}</ul></div>
+                            <div><div className="sp-sd-bh">What&apos;s wrong</div>
+                              <ul className="sp-sd-ul">{s.issues.map((it, i) => <li key={i}><AlertTriangle size={11} style={{ color: "var(--sp-lav-d)" }} /> <span>{it}</span></li>)}</ul></div>
                           )}
-                          {clean && <div className="au-sd-clean"><Check size={12} /> No issues found.</div>}
+                          {clean && <div className="sp-sd-clean"><Check size={12} /> No issues found.</div>}
 
                           {richRec ? (
-                            <div className="au-sd-fix">
+                            <div className="sp-sd-fix">
                               <RecommendationCard r={richRec} ins={aiById[richRec.id]} showProblem={false} />
                             </div>
                           ) : s.recommendations?.length > 0 ? (
-                            <div><div className="au-sd-bh">How to fix it</div>
-                              <ul className="au-sd-ul">{s.recommendations.map((r, i) => <li key={i}><Wrench size={11} style={{ color: "var(--au-primary)" }} /> <span>{r}</span></li>)}</ul></div>
+                            <div><div className="sp-sd-bh">How to fix it</div>
+                              <ul className="sp-sd-ul">{s.recommendations.map((r, i) => <li key={i}><Wrench size={11} style={{ color: "var(--sp-primary)" }} /> <span>{r}</span></li>)}</ul></div>
                           ) : !clean && reportLoaded && (
-                            <div className="au-sd-dim" style={{ fontSize: 12.5 }}>This check has no implementation example — see the issue above for what to address.</div>
+                            <div className="sp-sd-dim" style={{ fontSize: 12.5 }}>This check has no implementation example — see the issue above for what to address.</div>
                           )}
 
                           {s.evidence?.detected_types?.length > 0 && (
-                            <div><div className="au-sd-bh">Found</div>
-                              <div className="au-sd-found">{s.evidence.detected_types.map((t) => (
-                                <span key={t} className="au-sd-found-chip">{t}</span>
+                            <div><div className="sp-sd-bh">Found</div>
+                              <div className="sp-sd-found">{s.evidence.detected_types.map((t) => (
+                                <span key={t} className="sp-sd-found-chip">{t}</span>
                               ))}</div></div>
                           )}
                           {evEntries.length > 0 ? (
-                            <div><div className="au-sd-bh">Evidence</div>
-                              <div className="au-sd-ev">{evEntries.map(([k, v]) => (
-                                <div key={k} className="au-sd-ev-row"><span className="au-sd-ev-k">{k}</span><span className="au-sd-ev-v">{fmtEvidence(v)}</span></div>
+                            <div><div className="sp-sd-bh">Evidence</div>
+                              <div className="sp-sd-ev">{evEntries.map(([k, v]) => (
+                                <div key={k} className="sp-sd-ev-row"><span className="sp-sd-ev-k">{k}</span><span className="sp-sd-ev-v">{fmtEvidence(v)}</span></div>
                               ))}</div></div>
                           ) : !clean && (
-                            <div><div className="au-sd-bh">Evidence</div>
-                              <div className="au-sd-dim" style={{ fontSize: 12.5 }}>Evidence unavailable for this check.</div></div>
+                            <div><div className="sp-sd-bh">Evidence</div>
+                              <div className="sp-sd-dim" style={{ fontSize: 12.5 }}>Evidence unavailable for this check.</div></div>
                           )}
 
                           {/* Fix -> Implement -> Re-scan -> Verify. Only offered where there is
@@ -333,17 +335,17 @@ function FixVerificationPanel({ signalId, label, baselineScanId, candidates, rec
   };
 
   return (
-    <div className="au-sd-verify">
-      <button className="au-sd-verify-toggle" onClick={() => setExpanded((v) => !v)} aria-expanded={expanded}>
+    <div className="sp-sd-verify">
+      <button className="sp-sd-verify-toggle" onClick={() => setExpanded((v) => !v)} aria-expanded={expanded}>
         <History size={12} /> {expanded ? "Hide verification" : latest ? "Verification" : "Verify after re-scan"}
       </button>
       {expanded && (
-        <div className="au-sd-verify-body">
+        <div className="sp-sd-verify-body">
           {latest && <VerificationResult result={latest} recommendation={recommendation} />}
           {showHistory && <VerificationHistory records={history} />}
           {candidates.length === 0 ? (
-            <div className="au-sd-verify-cta">
-              <div className="au-sd-dim" style={{ fontSize: 12.5 }}>
+            <div className="sp-sd-verify-cta">
+              <div className="sp-sd-dim" style={{ fontSize: 12.5 }}>
                 Re-scan your website after implementing this fix. AEOMirror will compare the
                 new scan with the previous evidence — implement the fix, then run a new scan
                 to verify the change.
@@ -356,8 +358,8 @@ function FixVerificationPanel({ signalId, label, baselineScanId, candidates, rec
             </div>
           ) : (
             <>
-              <div className="au-sd-verify-pick">
-                <select className="au-select" aria-label={`Pick a scan to verify ${label} against`}
+              <div className="sp-sd-verify-pick">
+                <select className="sp-select" aria-label={`Pick a scan to verify ${label} against`}
                         value={selectedId} onChange={(e) => { setSelectedId(e.target.value); setNotComparable(false); }}>
                   {candidates.map((c) => (
                     <option key={c.id} value={c.id}>{fmtDate(c.scan_time)} · score {c.overall_score ?? "—"}</option>
@@ -367,9 +369,9 @@ function FixVerificationPanel({ signalId, label, baselineScanId, candidates, rec
                   {!busy && <History size={13} />} {latest ? "Verify again" : "Verify"}
                 </Button>
               </div>
-              {error && <div className="au-at-err">{error}</div>}
+              {error && <div className="sp-sd-err">{error}</div>}
               {notComparable && (
-                <div className="au-sd-verify-nc"><AlertTriangle size={12} /> These scans cannot be compared reliably.</div>
+                <div className="sp-sd-verify-nc"><AlertTriangle size={12} /> These scans cannot be compared reliably.</div>
               )}
             </>
           )}
@@ -381,15 +383,15 @@ function FixVerificationPanel({ signalId, label, baselineScanId, candidates, rec
 
 function VerificationHistory({ records }) {
   return (
-    <div className="au-sd-verify-history">
-      <div className="au-sd-bh">Verification history</div>
+    <div className="sp-sd-verify-history">
+      <div className="sp-sd-bh">Verification history</div>
       {records.map((r) => {
         const copy = VERIFY_COPY[r.verification_status];
         return (
-          <div key={r.id} className="au-sd-verify-hrow">
-            <span className="au-sd-dim">{fmtDate(r.created_at)}</span>
+          <div key={r.id} className="sp-sd-verify-hrow">
+            <span className="sp-sd-dim">{fmtDate(r.created_at)}</span>
             <span>{r.score_before} → {r.score_after}</span>
-            <span style={{ color: copy?.tone ? `var(--au-${copy.tone === "ok" ? "mint" : copy.tone === "bad" ? "peach" : copy.tone === "warn" ? "lemon" : "muted"}-d)` : undefined }}>
+            <span style={{ color: copy?.tone ? `var(--sp-${copy.tone === "ok" ? "blue" : copy.tone === "bad" ? "violet" : copy.tone === "warn" ? "lav" : "muted"}-d)` : undefined }}>
               {copy?.title || r.verification_status}
             </span>
           </div>
@@ -403,64 +405,64 @@ function VerificationResult({ result, recommendation }) {
   const copy = VERIFY_COPY[result.verification_status];
   const Icon = copy?.icon || MinusCircle;
   return (
-    <div className={`au-sd-verify-result au-sd-verify-${copy?.tone || "info"}`}>
-      <div className="au-sd-verify-h"><Icon size={14} /> {copy?.title || result.verification_status}</div>
-      <div className="au-sd-verify-ba">
+    <div className={`sp-sd-verify-result sp-sd-verify-${copy?.tone || "info"}`}>
+      <div className="sp-sd-verify-h"><Icon size={14} /> {copy?.title || result.verification_status}</div>
+      <div className="sp-sd-verify-ba">
         <span>Before <b>{String(result.status_before).toUpperCase()} · {result.score_before}</b></span>
-        <span className="au-sd-dim">→</span>
+        <span className="sp-sd-dim">→</span>
         <span>After <b>{String(result.status_after).toUpperCase()} · {result.score_after}</b></span>
-        <span className="au-sd-dim">
+        <span className="sp-sd-dim">
           Score change: {result.score_delta > 0 ? "+" : ""}{result.score_delta}
         </span>
       </div>
 
       {result.resolved_issues.length > 0 && (
-        <div className="au-sd-verify-list">
-          <div className="au-sd-bh">Resolved</div>
-          <ul className="au-sd-ul">{result.resolved_issues.map((it, i) => (
-            <li key={i}><Check size={11} style={{ color: "var(--au-mint-d)" }} /> <span>{it}</span></li>
+        <div className="sp-sd-verify-list">
+          <div className="sp-sd-bh">Resolved</div>
+          <ul className="sp-sd-ul">{result.resolved_issues.map((it, i) => (
+            <li key={i}><Check size={11} style={{ color: "var(--sp-blue-d)" }} /> <span>{it}</span></li>
           ))}</ul>
         </div>
       )}
       {result.remaining_issues.length > 0 && (
-        <div className="au-sd-verify-list">
-          <div className="au-sd-bh">Still needs attention</div>
-          <ul className="au-sd-ul">{result.remaining_issues.map((it, i) => (
-            <li key={i}><AlertTriangle size={11} style={{ color: "var(--au-lemon-d)" }} /> <span>{it}</span></li>
+        <div className="sp-sd-verify-list">
+          <div className="sp-sd-bh">Still needs attention</div>
+          <ul className="sp-sd-ul">{result.remaining_issues.map((it, i) => (
+            <li key={i}><AlertTriangle size={11} style={{ color: "var(--sp-lav-d)" }} /> <span>{it}</span></li>
           ))}</ul>
         </div>
       )}
       {result.new_issues.length > 0 && (
-        <div className="au-sd-verify-list">
-          <div className="au-sd-bh">New issue detected in the verification scan</div>
-          <ul className="au-sd-ul">{result.new_issues.map((it, i) => (
-            <li key={i}><AlertTriangle size={11} style={{ color: "var(--au-peach-d)" }} /> <span>{it}</span></li>
+        <div className="sp-sd-verify-list">
+          <div className="sp-sd-bh">New issue detected in the verification scan</div>
+          <ul className="sp-sd-ul">{result.new_issues.map((it, i) => (
+            <li key={i}><AlertTriangle size={11} style={{ color: "var(--sp-violet-d)" }} /> <span>{it}</span></li>
           ))}</ul>
         </div>
       )}
       {result.evidence_changes.length > 0 && (
-        <div className="au-sd-verify-list">
-          <div className="au-sd-bh">Evidence</div>
-          <div className="au-sd-ev">{result.evidence_changes.map((c) => (
-            <div key={c.key} className="au-sd-ev-row">
-              <span className="au-sd-ev-k">{c.key}</span>
-              <span className="au-sd-ev-v">{fmtEvidence(c.before)} → {fmtEvidence(c.after)}</span>
+        <div className="sp-sd-verify-list">
+          <div className="sp-sd-bh">Evidence</div>
+          <div className="sp-sd-ev">{result.evidence_changes.map((c) => (
+            <div key={c.key} className="sp-sd-ev-row">
+              <span className="sp-sd-ev-k">{c.key}</span>
+              <span className="sp-sd-ev-v">{fmtEvidence(c.before)} → {fmtEvidence(c.after)}</span>
             </div>
           ))}</div>
         </div>
       )}
       {result.verification_status === "regressed" && recommendation && (
-        <div className="au-sd-dim" style={{ fontSize: 12.5 }}>See the fix above for the recommended action.</div>
+        <div className="sp-sd-dim" style={{ fontSize: 12.5 }}>See the fix above for the recommended action.</div>
       )}
     </div>
   );
 }
 
-function AuTally({ n, label, status }) {
+function SpTally({ n, label, status }) {
   return (
-    <div className="au-sd-tally">
-      <div className="au-sd-tally-n" style={{ color: auStatusColor(status) }}>{n}</div>
-      <div className="au-sd-tally-l">{label}</div>
+    <div className="sp-sd-tally">
+      <div className="sp-sd-tally-n" style={{ color: spStatusColor(status) }}>{n}</div>
+      <div className="sp-sd-tally-l">{label}</div>
     </div>
   );
 }
@@ -503,26 +505,26 @@ function BulkScanProgress({ scan, onBack, onDone }) {
   const current = prog?.current_url;
 
   return (
-    <div className="aurora-screen">
+    <div className="spectrum-screen">
       <Shell>
-        <div className="au-sd-toolbar">
+        <div className="sp-sd-toolbar">
           <Button variant="ghost" onClick={onBack}><ChevronLeft size={14} /> Back to scans</Button>
         </div>
         <Cell solid>
-          <div className="au-sd-center">
-            <div className="au-sd-ill"><Radar size={26} className="spin-slow" /></div>
-            <div className="au-sd-ct">Scanning your URLs…</div>
-            <div className="au-sd-cs">Bulk scan in progress</div>
+          <div className="sp-sd-center">
+            <div className="sp-sd-ill"><Logo variant="icon" size={26} className="spin-slow" /></div>
+            <div className="sp-sd-ct">Scanning your URLs…</div>
+            <div className="sp-sd-cs">Bulk scan in progress</div>
 
-            <div className="au-sd-prog">
+            <div className="sp-sd-prog">
               {pct == null
-                ? <div className="au-pg" role="progressbar" aria-label="Bulk scan in progress"><div className="au-pgf au-sd-indet" /></div>
+                ? <div className="sp-pg" role="progressbar" aria-label="Bulk scan in progress"><div className="sp-pgf sp-sd-indet" /></div>
                 : <ProgressBar value={pct} />}
-              <div className="au-sd-prog-label">
+              <div className="sp-sd-prog-label">
                 {total ? `Scanning ${done} of ${total} pages…` : `Scanning ${done} page${done === 1 ? "" : "s"}…`}
-                {failed > 0 && <span className="au-sd-dim"> · {failed} unreachable</span>}
+                {failed > 0 && <span className="sp-sd-dim"> · {failed} unreachable</span>}
               </div>
-              {current && <div className="au-sd-prog-url">{pagePath(current)}</div>}
+              {current && <div className="sp-sd-prog-url">{pagePath(current)}</div>}
             </div>
           </div>
         </Cell>
@@ -535,16 +537,16 @@ function BulkScanProgress({ scan, onBack, onDone }) {
 function BulkScanFailed({ scan, onBack, onRetry }) {
   const msg = scan.error || "The bulk scan could not be completed.";
   return (
-    <div className="aurora-screen">
+    <div className="spectrum-screen">
       <Shell>
-        <div className="au-sd-toolbar">
+        <div className="sp-sd-toolbar">
           <Button variant="ghost" onClick={onBack}><ChevronLeft size={14} /> Back to scans</Button>
         </div>
         <Cell solid>
-          <div className="au-sd-center">
-            <div className="au-sd-ill au-sd-ill-bad"><AlertTriangle size={26} /></div>
-            <div className="au-sd-ct">Scan failed</div>
-            <div className="au-sd-cs">{msg}</div>
+          <div className="sp-sd-center">
+            <div className="sp-sd-ill sp-sd-ill-bad"><AlertTriangle size={26} /></div>
+            <div className="sp-sd-ct">Scan failed</div>
+            <div className="sp-sd-cs">{msg}</div>
             {onRetry && <Button variant="accent" onClick={onRetry}><RefreshCw size={15} /> Retry bulk scan</Button>}
           </div>
         </Cell>
@@ -579,45 +581,45 @@ function BulkPages({ bulk, scanId }) {
 
   return (
     <Cell solid>
-      <div className="au-sd-panel-h">
+      <div className="sp-sd-panel-h">
         Pages scanned
-        <span className="au-sd-sub">
+        <span className="sp-sd-sub">
           {bulk.page_count} of {bulk.requested ?? pages.length} URL{(bulk.requested ?? pages.length) === 1 ? "" : "s"} scored · avg {bulk.avg_score ?? "—"}
-          {bulk.truncated && <span className="au-sd-dim"> · partial (time budget reached)</span>}
+          {bulk.truncated && <span className="sp-sd-dim"> · partial (time budget reached)</span>}
         </span>
       </div>
 
-      <div className="au-sd-best">
-        {bulk.best && <span className="au-sd-bestchip good"><ArrowUp size={12} /> Best {bulk.best.score} · {urlLabel(bulk.best.url)}</span>}
-        {bulk.worst && <span className="au-sd-bestchip bad"><ArrowDown size={12} /> Worst {bulk.worst.score} · {urlLabel(bulk.worst.url)}</span>}
+      <div className="sp-sd-best">
+        {bulk.best && <span className="sp-sd-bestchip good"><ArrowUp size={12} /> Best {bulk.best.score} · {urlLabel(bulk.best.url)}</span>}
+        {bulk.worst && <span className="sp-sd-bestchip bad"><ArrowDown size={12} /> Worst {bulk.worst.score} · {urlLabel(bulk.worst.url)}</span>}
       </div>
 
       {locked && (
-        <div className="au-sd-lockbanner">
+        <div className="sp-sd-lockbanner">
           <Lock size={13} />
           <span>Scores shown for all pages — detailed breakdowns are a Pro feature.</span>
           <Button variant="accent" onClick={unlock}>Unlock</Button>
         </div>
       )}
 
-      <div className="au-sd-tablewrap">
-        <table className="au-sd-table">
+      <div className="sp-sd-tablewrap">
+        <table className="sp-sd-table">
           <thead><tr>
             <th>URL</th>
-            <th className="au-sd-th-sort" onClick={() => setSort(sort === "score-asc" ? "score-desc" : "score-asc")}>
+            <th className="sp-sd-th-sort" onClick={() => setSort(sort === "score-asc" ? "score-desc" : "score-asc")}>
               Score {sort.startsWith("score") ? (sort === "score-asc" ? "▲" : "▼") : ""}
             </th>
-            <th>Status</th><th>Top issue</th><th className="au-sd-td-right">Details</th>
+            <th>Status</th><th>Top issue</th><th className="sp-sd-td-right">Details</th>
           </tr></thead>
           <tbody>
             {rows.map((p) => {
               if (p.error) {
                 return (
                   <tr key={p.url}>
-                    <td><span className="au-sd-url">{urlLabel(p.url)}</span></td>
-                    <td className="au-sd-dim">—</td>
+                    <td><span className="sp-sd-url">{urlLabel(p.url)}</span></td>
+                    <td className="sp-sd-dim">—</td>
                     <td><Tag variant="critical">ERROR</Tag></td>
-                    <td className="au-sd-meta" colSpan={2}>{p.error}</td>
+                    <td className="sp-sd-meta" colSpan={2}>{p.error}</td>
                   </tr>
                 );
               }
@@ -625,11 +627,11 @@ function BulkPages({ bulk, scanId }) {
               const st = p.status_label || scoreStatus(p.overall_score);
               return (
                 <tr key={p.url}>
-                  <td><span className="au-sd-url">{urlLabel(p.url)}</span></td>
+                  <td><span className="sp-sd-url">{urlLabel(p.url)}</span></td>
                   <td><span role="img" aria-label={`Score ${p.overall_score} of 100`}><Ring value={p.overall_score} size={30} /></span></td>
                   <td><Tag variant={STATUS_VARIANT[st] || "info"}>{String(st).toUpperCase()}</Tag></td>
-                  <td className="au-sd-topissue">{p.top_issue || "—"}</td>
-                  <td className="au-sd-td-right">
+                  <td className="sp-sd-topissue">{p.top_issue || "—"}</td>
+                  <td className="sp-sd-td-right">
                     {locked
                       ? <Button variant="ghost" onClick={unlock} title="Detailed reports are a Pro feature"><Lock size={12} /> Details</Button>
                       : <Button variant="ghost" onClick={() => setOpenUrl(isOpen ? null : p.url)}>{isOpen ? "Hide" : "View details"}</Button>}
@@ -645,19 +647,19 @@ function BulkPages({ bulk, scanId }) {
 
       {openPage && (
         <div style={{ marginTop: 12 }}>
-          <div className="au-sd-panel-h" style={{ fontSize: 13 }}>{urlLabel(openPage.url)} · signals</div>
-          <div className="au-sd-list">
+          <div className="sp-sd-panel-h" style={{ fontSize: 13 }}>{urlLabel(openPage.url)} · signals</div>
+          <div className="sp-sd-list">
             {(openPage.sections_summary || []).map((s) => {
-              const col = auStatusColor(s.status);
+              const col = spStatusColor(s.status);
               return (
-                <div key={s.id} className="au-sd-sig" style={{ display: "flex", alignItems: "flex-start", gap: 10, padding: "9px 12px", flexWrap: "wrap" }}>
-                  <span className="au-sd-dot" style={{ background: col, marginTop: 4 }} aria-hidden="true" />
-                  <span className="au-sd-sig-name" style={{ flex: 1, minWidth: 140 }}>{s.label}</span>
+                <div key={s.id} className="sp-sd-sig" style={{ display: "flex", alignItems: "flex-start", gap: 10, padding: "9px 12px", flexWrap: "wrap" }}>
+                  <span className="sp-sd-dot" style={{ background: col, marginTop: 4 }} aria-hidden="true" />
+                  <span className="sp-sd-sig-name" style={{ flex: 1, minWidth: 140 }}>{s.label}</span>
                   <Tag variant={STATUS_VARIANT[s.status] || "info"}>{String(s.status).toUpperCase()}</Tag>
-                  <span className="au-sd-score" style={{ color: col }}>{s.score}</span>
+                  <span className="sp-sd-score" style={{ color: col }}>{s.score}</span>
                   {s.issues?.length > 0 && (
-                    <ul className="au-sd-ul" style={{ flexBasis: "100%", marginTop: 4 }}>
-                      {s.issues.map((it, i) => <li key={i}><AlertTriangle size={11} style={{ color: "var(--au-lemon-d)" }} /> <span>{it}</span></li>)}
+                    <ul className="sp-sd-ul" style={{ flexBasis: "100%", marginTop: 4 }}>
+                      {s.issues.map((it, i) => <li key={i}><AlertTriangle size={11} style={{ color: "var(--sp-lav-d)" }} /> <span>{it}</span></li>)}
                     </ul>
                   )}
                 </div>
@@ -677,42 +679,42 @@ function BulkPages({ bulk, scanId }) {
    client, so there is nothing to un-blur in the DOM. */
 function LockedSectionsTeaser({ onUnlock }) {
   return (
-    <div className="au-sd-lockwrap">
-      <div className="au-sd-blur au-sd-list" aria-hidden="true">
+    <div className="sp-sd-lockwrap">
+      <div className="sp-sd-blur sp-sd-list" aria-hidden="true">
         {Array.from({ length: 6 }).map((_, i) => (
-          <div key={i} className="au-sd-sig" style={{ display: "flex", alignItems: "center", gap: 10, padding: "12px 14px" }}>
-            <span className="au-sd-dot" style={{ background: "var(--au-line-2)" }} />
-            <span className="au-sd-sig-name" style={{ flex: 1 }}>Full signal breakdown</span>
+          <div key={i} className="sp-sd-sig" style={{ display: "flex", alignItems: "center", gap: 10, padding: "12px 14px" }}>
+            <span className="sp-sd-dot" style={{ background: "var(--sp-line-2)" }} />
+            <span className="sp-sd-sig-name" style={{ flex: 1 }}>Full signal breakdown</span>
             <Tag variant="info">••••</Tag>
-            <span className="au-sd-score" style={{ color: "var(--au-muted)" }}>••</span>
+            <span className="sp-sd-score" style={{ color: "var(--sp-muted)" }}>••</span>
           </div>
         ))}
       </div>
-      <div className="au-sd-lock-overlay">
-        <div className="au-sd-lock-t">Detailed page reports are a Pro feature</div>
-        <div className="au-sd-lock-s">See the full signal breakdown for every page — issues, fixes and evidence.</div>
+      <div className="sp-sd-lock-overlay">
+        <div className="sp-sd-lock-t">Detailed page reports are a Pro feature</div>
+        <div className="sp-sd-lock-s">See the full signal breakdown for every page — issues, fixes and evidence.</div>
         <Button variant="accent" onClick={onUnlock}><Lock size={14} /> Unlock detailed reports</Button>
       </div>
     </div>
   );
 }
 
-/* Route-level LOADING state (Aurora) — replaces the shared <TableSkeleton> for this route
+/* Route-level LOADING state (Spectrum) — replaces the shared <TableSkeleton> for this route
    only, so the shared primitive stays untouched for other screens. */
 export function ScanDetailLoading() {
   return (
-    <div className="aurora-screen">
+    <div className="spectrum-screen">
       <Shell>
-        <div className="au-sd-toolbar"><Skeleton w={130} h={30} /></div>
-        <div className="au-sd-stack">
-          <Cell solid className="au-sd-headcell">
+        <div className="sp-sd-toolbar"><Skeleton w={130} h={30} /></div>
+        <div className="sp-sd-stack">
+          <Cell solid className="sp-sd-headcell">
             <Skeleton w={96} h={96} style={{ borderRadius: "50%" }} />
             <div style={{ flex: 1, minWidth: 220, display: "grid", gap: 10 }}>
               <Skeleton w="45%" h={22} /><Skeleton w="70%" h={12} />
             </div>
           </Cell>
           <Cell solid>
-            <div className="au-sd-skrows">{Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} h={46} />)}</div>
+            <div className="sp-sd-skrows">{Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} h={46} />)}</div>
           </Cell>
         </div>
       </Shell>
@@ -720,18 +722,18 @@ export function ScanDetailLoading() {
   );
 }
 
-/* Route-level ERROR / not-found state (Aurora) — copy matches the shared NotFoundState
+/* Route-level ERROR / not-found state (Spectrum) — copy matches the shared NotFoundState
    verbatim (title + label + back link); only the skin changes. */
 export function ScanDetailNotFound({ label }) {
   return (
-    <div className="aurora-screen">
+    <div className="spectrum-screen">
       <Shell>
         <Cell solid>
-          <div className="au-sd-center">
-            <div className="au-sd-ill au-sd-ill-bad"><AlertTriangle size={26} /></div>
-            <div className="au-sd-ct">Not found or no access</div>
-            <div className="au-sd-cs">{label || "This item doesn’t exist, or it belongs to another workspace."}</div>
-            <Link className="au-btn au-accent" to="/app/dashboard">Back to dashboard</Link>
+          <div className="sp-sd-center">
+            <div className="sp-sd-ill sp-sd-ill-bad"><AlertTriangle size={26} /></div>
+            <div className="sp-sd-ct">Not found or no access</div>
+            <div className="sp-sd-cs">{label || "This item doesn’t exist, or it belongs to another workspace."}</div>
+            <Link className="sp-btn sp-gradient" to="/app/dashboard">Back to dashboard</Link>
           </div>
         </Cell>
       </Shell>

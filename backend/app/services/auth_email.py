@@ -35,9 +35,14 @@ def _send(email: str, subject: str, text_body: str, html_body: str,
                                       kind=kind, log_prefix="auth_email") == "sent"
 
 
+def _logo() -> str:
+    return (f"<p style=\"margin:0 0 20px\"><img src=\"{settings.app_base_url}/brand/lockup-480.png\" "
+            f"alt=\"AEOMirror\" width=\"160\" style=\"display:block;height:auto;border:0\"/></p>")
+
+
 def _wrap(body_html: str) -> str:
     return (f"<div style=\"font-family:system-ui,sans-serif;line-height:1.6;"
-            f"color:#0B0F14\">{body_html}</div>")
+            f"color:#0B0F14\">{_logo()}{body_html}</div>")
 
 
 def _btn(url: str, label: str) -> str:

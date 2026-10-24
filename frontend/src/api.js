@@ -564,6 +564,9 @@ export function listCrawlUrls(monitorId, jobId, params) {
 export function listCrawlTemplates(monitorId, jobId) {
   return request(`/monitors/${encodeURIComponent(monitorId)}/crawl-jobs/${encodeURIComponent(jobId)}/templates`);
 }
+export function getSiteProfile(monitorId, jobId) {
+  return request(`/monitors/${encodeURIComponent(monitorId)}/crawl-jobs/${encodeURIComponent(jobId)}/site-profile`);
+}
 export function listUrlFindings(monitorId, jobId, params) {
   return request(`/monitors/${encodeURIComponent(monitorId)}/crawl-jobs/${encodeURIComponent(jobId)}/findings${_qs(params)}`);
 }

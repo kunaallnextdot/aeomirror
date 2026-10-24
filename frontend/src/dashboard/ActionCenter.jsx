@@ -5,8 +5,12 @@
 
    Data sources (see actionSources.js for the normalization/dedup/priority logic):
    - GET /reports/{scan_id}          — recommendations, technical_seo, content_intelligence,
-                                        phase4 (schema/entity/links), crawl_graph (all
-                                        already embedded in ONE cached payload)
+                                        phase4 (schema/entity/links), crawl_graph, and
+                                        url_intelligence (the URL Intelligence Engine's own
+                                        crawl findings, live-merged in by
+                                        reports/service.py — see its own docstring for why
+                                        that one key is never part of the cached payload)
+                                        — all in ONE request
    - GET /reports/{scan_id}/answer-simulation — the Answer Simulator's most recently
                                         PERSISTED run summary (read-only, never triggers a
                                         new simulation, never touches individual question
@@ -19,13 +23,11 @@ import React, { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { ChevronDown, ListChecks, CheckCircle2, ExternalLink, Sparkles, History } from "lucide-react";
 import { getReport, getReportAnswerSimulation, getVerifications, ScanError } from "../api.js";
-import { RecommendationCard, AU_PRIORITY } from "./ReportView.jsx";
+import { RecommendationCard, SP_PRIORITY } from "./ReportView.jsx";
 import { buildActionItems, computeLockedActionCount } from "./actionSources.js";
 import VerificationBadge from "./VerificationBadge.jsx";
-import { Shell, Cell, Button, Skeleton } from "./aurora.jsx";
-import "./ActionCenter.aurora.css";
-import "./ReportView.aurora.css";   // reuses .au-rep-card-b/.au-rep-fx-* via RecommendationCard
-import "./ScanDetails.aurora.css";  // reuses .au-sd-lockbanner/.au-sd-bh/.au-sd-ul verbatim
+import { Shell, Cell, Button, Skeleton } from "../shared/spectrum.jsx";
+import "./ActionCenter.spectrum.css";
 
 const PRIORITY_ORDER = ["Critical", "High", "Medium", "Low"];
 const PREVIEW_LIMIT = 6;   // no existing product limit for this list; 5-7 is the ticket's
@@ -79,6 +81,7 @@ export default function ActionCenter({ scanId }) {
     answerSimulation: answerSim,
     phase4: report?.phase4,
     crawlGraph: report?.crawl_graph,
+    urlIntelligence: report?.url_intelligence,
     scanId,
   }), [report, answerSim, scanId]);
 
@@ -89,14 +92,14 @@ export default function ActionCenter({ scanId }) {
   // nothing is deleted, the finding/evidence stays fully visible on demand, it's just no
   // longer counted/sorted as if it still needed action. An item with no verifySignalId
   // (nothing real to verify against) is always active — verified status is never guessed.
-  const activeItems = useMemo(
-    () => items.filter((it) => !(it.verifySignalId && verificationBySignal[it.verifySignalId]?.verification_status === "verified")),
-    [items, verificationBySignal],
-  );
-  const verifiedItems = useMemo(
-    () => items.filter((it) => it.verifySignalId && verificationBySignal[it.verifySignalId]?.verification_status === "verified"),
-    [items, verificationBySignal],
-  );
+  // A source can also carry ITS OWN self-contained verification (today: URL
+  // Intelligence's `item.verified`, set from UrlFinding.verification_status — a
+  // different, per-URL evidence diff than the scan-signal Verification table
+  // verifySignalId keys into) — either path demotes an item the same way.
+  const isVerified = (it) =>
+    it.verified || (it.verifySignalId && verificationBySignal[it.verifySignalId]?.verification_status === "verified");
+  const activeItems = useMemo(() => items.filter((it) => !isVerified(it)), [items, verificationBySignal]);
+  const verifiedItems = useMemo(() => items.filter(isVerified), [items, verificationBySignal]);
 
   const counts = useMemo(() => {
     const c = { Critical: 0, High: 0, Medium: 0, Low: 0 };
@@ -111,53 +114,53 @@ export default function ActionCenter({ scanId }) {
   const lockedCount = computeLockedActionCount(report);
 
   if (loading) return <ActionCenterSkeleton />;
-  if (error) return <div className="aurora-screen"><Shell><Cell solid><div className="au-card-center" role="alert"><div className="au-card-s">{error}</div></div></Cell></Shell></div>;
+  if (error) return <div className="spectrum-screen"><Shell><Cell solid><div className="sp-card-center" role="alert"><div className="sp-card-s">{error}</div></div></Cell></Shell></div>;
   if (!scanId) return <NoReportYetAC />;
 
   return (
-    <div className="aurora-screen">
+    <div className="spectrum-screen">
       <Shell>
         <Cell solid>
-          <div className="au-ac-head">
-            <div className="au-ac-eyebrow"><ListChecks size={13} /> Action Center</div>
+          <div className="sp-ac-head">
+            <div className="sp-ac-eyebrow"><ListChecks size={13} /> Action Center</div>
             {total > 0 ? (
-              <div className="au-ac-headline">
+              <div className="sp-ac-headline">
                 Your latest scan found {total} problem{total === 1 ? "" : "s"} to fix.
               </div>
             ) : (
-              <div className="au-ac-headline">You&apos;re in good shape.</div>
+              <div className="sp-ac-headline">You&apos;re in good shape.</div>
             )}
           </div>
           {total === 0 && (
-            <div className="au-ac-clean">
+            <div className="sp-ac-clean">
               <CheckCircle2 size={16} />
               <span>No high-priority issues were detected in your latest scan.</span>
             </div>
           )}
           {total > 0 && (
-            <div className="au-ac-counts">
+            <div className="sp-ac-counts">
               {PRIORITY_ORDER.filter((p) => counts[p] > 0).map((p) => (
-                <div key={p} className="au-ac-count">
-                  <div className="au-ac-count-n" style={{ color: AU_PRIORITY[p] }}>{counts[p]}</div>
-                  <div className="au-ac-count-l">{p}</div>
+                <div key={p} className="sp-ac-count">
+                  <div className="sp-ac-count-n" style={{ color: SP_PRIORITY[p] }}>{counts[p]}</div>
+                  <div className="sp-ac-count-l">{p}</div>
                 </div>
               ))}
             </div>
           )}
-          <Link className="au-btn au-ghost" style={{ marginTop: 10 }} to={`/app/scans/${encodeURIComponent(scanId)}`}>
+          <Link className="sp-btn sp-ghost" style={{ marginTop: 10 }} to={`/app/scans/${encodeURIComponent(scanId)}`}>
             View report
           </Link>
         </Cell>
 
         {total > 0 && (
           <Cell solid style={{ marginTop: 14 }}>
-            <div className="au-panel-h">Needs attention</div>
+            <div className="sp-panel-h">Needs attention</div>
             {lockedCount > 0 && (
-              <div className="au-sd-lockbanner" style={{ marginBottom: 10 }}>
+              <div className="sp-sd-lockbanner" style={{ marginBottom: 10 }}>
                 {lockedCount} more problem{lockedCount === 1 ? "" : "s"} found — full diagnosis is a Pro feature.
               </div>
             )}
-            <div className="au-ac-list">
+            <div className="sp-ac-list">
               {visibleItems.map((item) => (
                 <ActionCard key={item.id} item={item} scanId={scanId}
                             expanded={expandedId === item.id}
@@ -167,7 +170,7 @@ export default function ActionCenter({ scanId }) {
               ))}
             </div>
             {!showAll && activeItems.length > PREVIEW_LIMIT && (
-              <button className="au-ac-viewall" onClick={() => setShowAll(true)}>
+              <button className="sp-ac-viewall" onClick={() => setShowAll(true)}>
                 View all {activeItems.length} actions
               </button>
             )}
@@ -176,15 +179,15 @@ export default function ActionCenter({ scanId }) {
 
         {verifiedItems.length > 0 && (
           <Cell solid style={{ marginTop: 14 }}>
-            <button type="button" className="au-ac-verified-toggle"
+            <button type="button" className="sp-ac-verified-toggle"
                     onClick={() => setShowVerified((s) => !s)} aria-expanded={showVerified}>
-              <CheckCircle2 size={14} style={{ color: "var(--au-mint-d)" }} />
+              <CheckCircle2 size={14} style={{ color: "var(--sp-blue-d)" }} />
               <span>{verifiedItems.length} verified fixed</span>
-              <span className="au-ac-verified-sub">— confirmed by a later scan, kept here for reference</span>
-              <ChevronDown size={14} className="au-ac-chev" style={{ transform: showVerified ? "rotate(180deg)" : "none", marginLeft: "auto" }} />
+              <span className="sp-ac-verified-sub">— confirmed by a later scan, kept here for reference</span>
+              <ChevronDown size={14} className="sp-ac-chev" style={{ transform: showVerified ? "rotate(180deg)" : "none", marginLeft: "auto" }} />
             </button>
             {showVerified && (
-              <div className="au-ac-list" style={{ marginTop: 10 }}>
+              <div className="sp-ac-list" style={{ marginTop: 10 }}>
                 {verifiedItems.map((item) => (
                   <ActionCard key={item.id} item={item} scanId={scanId}
                               expanded={expandedId === item.id}
@@ -204,24 +207,29 @@ export default function ActionCenter({ scanId }) {
 
 function ActionCard({ item, scanId, expanded, onToggle, ins, verification, verified }) {
   return (
-    <div className={verified ? "au-ac-card au-ac-card-verified" : "au-ac-card"}>
-      <button className="au-ac-card-h" onClick={onToggle} aria-expanded={expanded}>
-        <span className="au-rep-pri" style={{ background: AU_PRIORITY[item.priority] }}>{item.priority}</span>
-        <span className="au-ac-card-t">{item.title}</span>
+    <div className={verified ? "sp-ac-card sp-ac-card-verified" : "sp-ac-card"}>
+      <button className="sp-ac-card-h" onClick={onToggle} aria-expanded={expanded}>
+        <span className="sp-rep-pri" style={{ background: SP_PRIORITY[item.priority] }}>{item.priority}</span>
+        <span className="sp-ac-card-t">{item.title}</span>
         <VerificationBadge verification={verification} />
-        <span className="au-ac-card-src">{item.source}</span>
-        <ChevronDown size={15} className="au-ac-chev" style={{ transform: expanded ? "rotate(180deg)" : "none" }} />
+        <span className="sp-ac-card-src">{item.source}</span>
+        <ChevronDown size={15} className="sp-ac-chev" style={{ transform: expanded ? "rotate(180deg)" : "none" }} />
       </button>
       {!expanded ? (
-        <div className="au-ac-preview">
-          {item.problem && <p className="au-ac-problem">{item.problem}</p>}
+        <div className="sp-ac-preview">
+          {item.problem && <p className="sp-ac-problem">{item.problem}</p>}
           {item.evidencePreview?.length > 0 && (
-            <div className="au-ac-ev-preview">Evidence: {item.evidencePreview.join(" · ")}</div>
+            <div className="sp-ac-ev-preview">Evidence: {item.evidencePreview.join(" · ")}</div>
           )}
-          {item.fixText && <div className="au-ac-fix-preview">Fix: {item.fixText}</div>}
-          <div className="au-ac-actions">
-            <Button variant="accent" onClick={onToggle}>See fix</Button>
-            <Link className="au-ac-openlink" to={item.destination.to}>
+          {item.fixText && <div className="sp-ac-fix-preview">Fix: {item.fixText}</div>}
+          {item.overlapsWith?.length > 0 && (
+            <div className="sp-ac-overlap" title="Different sources flagged the same page — review together, they may share a root cause.">
+              Also flagged on this page by: {item.overlapsWith.map((o) => o.source).join(", ")}
+            </div>
+          )}
+          <div className="sp-ac-actions">
+            <Button variant="gradient" onClick={onToggle}>See fix</Button>
+            <Link className="sp-ac-openlink" to={item.destination.to}>
               {item.destination.label} <ExternalLink size={11} />
             </Link>
           </div>
@@ -229,44 +237,49 @@ function ActionCard({ item, scanId, expanded, onToggle, ins, verification, verif
       ) : item.kind === "recommendation" ? (
         <>
           <RecommendationCard r={item.raw} ins={ins} />
-          <div className="au-ac-actions" style={{ padding: "0 16px 14px" }}>
-            <Link className="au-ac-openlink" to={item.destination.to}>
+          <div className="sp-ac-actions" style={{ padding: "0 16px 14px" }}>
+            <Link className="sp-ac-openlink" to={item.destination.to}>
               Open in Scan Details <ExternalLink size={11} />
             </Link>
           </div>
         </>
       ) : (
-        <div className="au-ac-preview">
-          {item.problem && <p className="au-ac-problem">{item.problem}</p>}
+        <div className="sp-ac-preview">
+          {item.problem && <p className="sp-ac-problem">{item.problem}</p>}
           {item.why && (
-            <div className="au-rep-ai-why" style={{ marginTop: 8 }}>
-              <div className="au-rep-ai-why-h"><Sparkles size={12} /> Why it matters</div>
+            <div className="sp-rep-ai-why" style={{ marginTop: 8 }}>
+              <div className="sp-rep-ai-why-h"><Sparkles size={12} /> Why it matters</div>
               <p>{item.why}</p>
             </div>
           )}
           {(item.fullEvidence || item.evidencePreview || []).length > 0 && (
-            <div className="au-ac-ev-full">
-              <div className="au-sd-bh">Evidence</div>
-              <ul className="au-sd-ul">
+            <div className="sp-ac-ev-full">
+              <div className="sp-sd-bh">Evidence</div>
+              <ul className="sp-sd-ul">
                 {(item.fullEvidence || item.evidencePreview).map((e, i) => <li key={i}><span>{e}</span></li>)}
               </ul>
             </div>
           )}
           {item.fixText && (
-            <div className="au-ac-ev-full">
-              <div className="au-sd-bh">Fix</div>
+            <div className="sp-ac-ev-full">
+              <div className="sp-sd-bh">Fix</div>
               <p style={{ margin: 0 }}>{item.fixText}</p>
             </div>
           )}
-          <div className="au-ac-actions">
-            <Link className="au-ac-openlink" to={item.destination.to}>
+          {item.overlapsWith?.length > 0 && (
+            <div className="sp-ac-overlap">
+              Also flagged on this page by: {item.overlapsWith.map((o) => o.source).join(", ")}
+            </div>
+          )}
+          <div className="sp-ac-actions">
+            <Link className="sp-ac-openlink" to={item.destination.to}>
               {item.destination.label} <ExternalLink size={11} />
             </Link>
             {/* Only offered when the source object carries a real scanner signal id
                 (verifySignalId) — never guessed for a source with no such link back
                 to a re-scannable signal (e.g. content intelligence, crawl graph). */}
             {item.verifySignalId && (
-              <Link className="au-ac-openlink" to={`/app/scans/${encodeURIComponent(scanId)}`}>
+              <Link className="sp-ac-openlink" to={`/app/scans/${encodeURIComponent(scanId)}`}>
                 <History size={11} /> Verify after re-scan
               </Link>
             )}
@@ -279,7 +292,7 @@ function ActionCard({ item, scanId, expanded, onToggle, ins, verification, verif
 
 function ActionCenterSkeleton() {
   return (
-    <div className="aurora-screen"><Shell>
+    <div className="spectrum-screen"><Shell>
       <Cell solid>
         <Skeleton w="55%" h={22} /><Skeleton w="80%" h={14} style={{ marginTop: 10 }} />
       </Cell>
@@ -294,10 +307,10 @@ function ActionCenterSkeleton() {
 
 function NoReportYetAC() {
   return (
-    <div className="aurora-screen"><Shell>
-      <Cell solid><div className="au-card-center">
-        <div className="au-card-t">No report yet</div>
-        <div className="au-card-s">Run your first scan to see what needs attention.</div>
+    <div className="spectrum-screen"><Shell>
+      <Cell solid><div className="sp-card-center">
+        <div className="sp-card-t">No report yet</div>
+        <div className="sp-card-s">Run your first scan to see what needs attention.</div>
       </div></Cell>
     </Shell></div>
   );

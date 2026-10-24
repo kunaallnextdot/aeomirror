@@ -1,0 +1,453 @@
+/* Spectrum design-system PRIMITIVES (migration Phase 3).
+   Every class is `sp-`-prefixed (the prototype's bare names like .top/.cell/.big/.sub/
+   .brand would collide with existing app classes) and every colour/radius/shadow/font
+   uses the Phase-1 `--sp-*` tokens installed in src/App.jsx. Nothing here is wired into
+   a screen yet; classes are unused outside these primitives + the dev-only
+   /ui-kit-spectrum route, so this file is inert for every existing screen. */
+
+/* ---------- 1. Shell: 4 blurred tint blobs, blur 70px, opacity .72, slow drift ---------- */
+.sp-shell-root{position:relative;overflow:hidden} /* overflow:hidden here (not a future
+  wrapper) so the blobs can never cause horizontal scroll, wherever Shell mounts */
+.sp-aurora{position:absolute;inset:0;overflow:hidden;pointer-events:none;z-index:0}
+.sp-blob{position:absolute;border-radius:50%;filter:blur(70px);opacity:.72}
+.sp-b1{width:520px;height:520px;background:var(--sp-t-cyan);top:-160px;left:-120px;animation:sp-drift1 17s ease-in-out infinite}
+.sp-b2{width:460px;height:460px;background:var(--sp-t-indigo);top:-120px;right:-100px;animation:sp-drift2 21s ease-in-out infinite}
+.sp-b3{width:420px;height:420px;background:var(--sp-t-blue);bottom:-180px;left:38%;animation:sp-drift1 19s ease-in-out infinite reverse}
+.sp-b4{width:340px;height:340px;background:var(--sp-t-violet);bottom:-140px;right:-60px}
+@keyframes sp-drift1{0%,100%{transform:translate(0,0)}50%{transform:translate(50px,40px)}}
+@keyframes sp-drift2{0%,100%{transform:translate(0,0)}50%{transform:translate(-46px,34px)}}
+.sp-shell{position:relative;z-index:1}
+
+/* ---------- 2. TopNav — glass bar ---------- */
+.sp-top{display:flex;align-items:center;gap:26px;padding:18px 30px;
+  background:rgba(255,255,255,.68);backdrop-filter:blur(18px);border-bottom:1px solid var(--sp-line)}
+.sp-brand{display:flex;align-items:center;flex:none}
+.sp-tnav{display:flex;gap:2px;flex-wrap:wrap}
+.sp-tn{font-size:14px;font-weight:500;color:var(--sp-ink-2);padding:8px 14px;border-radius:var(--sp-r-pill);
+  transition:.16s;background:none;border:0;cursor:pointer;font-family:inherit;text-decoration:none}
+.sp-tn:hover{background:rgba(255,255,255,.8);color:var(--sp-ink)}
+.sp-tn.on{background:var(--sp-ink);color:#fff;font-weight:600}
+.sp-tn:focus-visible{outline:2px solid var(--sp-primary);outline-offset:2px}
+.sp-tright{margin-left:auto;display:flex;align-items:center;gap:10px}
+.sp-credit{display:flex;align-items:center;gap:9px;background:rgba(255,255,255,.8);
+  border:1px solid var(--sp-line);border-radius:var(--sp-r-pill);padding:7px 14px;font-size:12.5px;color:var(--sp-muted)}
+.sp-credit b{font-family:var(--sp-font-numeric);color:var(--sp-ink);font-weight:500}
+.sp-avatar{width:34px;height:34px;border-radius:50%;background:var(--sp-grad);
+  color:#fff;display:grid;place-items:center;font-weight:700;font-size:13px;font-family:var(--sp-font-heading)}
+
+/* ---------- 3. PageHead ---------- */
+.sp-head{display:flex;align-items:flex-end;gap:20px;flex-wrap:wrap;margin-bottom:26px}
+.sp-eb{font-family:var(--sp-font-numeric);font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;
+  color:var(--sp-primary);display:block;margin-bottom:9px}
+.sp-head h1{font-family:var(--sp-font-heading);font-size:34px;line-height:1.08;font-weight:700;letter-spacing:-.025em;margin:0;color:var(--sp-ink)}
+.sp-head p{margin:9px 0 0;color:var(--sp-muted);font-size:15px}
+.sp-pulse{display:inline-flex;align-items:center;gap:8px;background:var(--sp-glass);backdrop-filter:blur(10px);
+  border:1px solid var(--sp-line);border-radius:var(--sp-r-pill);padding:8px 15px;font-size:12.5px;color:var(--sp-ink-2);margin-left:auto}
+.sp-pulse i{width:8px;height:8px;border-radius:50%;background:var(--sp-primary);position:relative}
+.sp-pulse i::after{content:"";position:absolute;inset:-5px;border-radius:50%;border:2px solid var(--sp-primary);
+  opacity:0;animation:sp-ping 2s ease-out infinite}
+@keyframes sp-ping{0%{transform:scale(.5);opacity:.7}100%{transform:scale(1.6);opacity:0}}
+
+/* ---------- 4. Bento + Cell — 6-col, 16px gap, spans 2/3/4/6, collapse <1000px ---------- */
+.sp-bento{display:grid;grid-template-columns:repeat(6,1fr);gap:16px}
+.sp-cell{background:var(--sp-glass);backdrop-filter:blur(20px);border:1px solid rgba(255,255,255,.55);
+  transition:transform .22s var(--sp-ease),box-shadow .22s var(--sp-ease);
+  border-radius:var(--sp-r-m);padding:22px;box-shadow:var(--sp-sh-s)}
+.sp-cell.sp-solid{background:var(--sp-solid)}
+.sp-c2{grid-column:span 2}.sp-c3{grid-column:span 3}.sp-c4{grid-column:span 4}.sp-c6{grid-column:span 6}
+@media(max-width:1000px){.sp-c2,.sp-c3,.sp-c4{grid-column:span 6}}
+.sp-tint-cyan{background:var(--sp-t-cyan)}.sp-tint-blue{background:var(--sp-t-blue)}
+.sp-tint-indigo{background:var(--sp-t-indigo)}.sp-tint-violet{background:var(--sp-t-violet)}
+.sp-tint-lav{background:var(--sp-t-lav)}
+
+/* ---------- 5. Metric ---------- */
+.sp-lbl{font-family:var(--sp-font-numeric);font-size:10px;letter-spacing:.13em;text-transform:uppercase;
+  color:var(--sp-muted);display:block;margin-bottom:14px}
+.sp-big{font-family:var(--sp-font-heading);font-size:46px;font-weight:700;line-height:1;letter-spacing:-.045em;color:var(--sp-ink)}
+.sp-grad-text{background:var(--sp-grad);-webkit-background-clip:text;background-clip:text;color:transparent}
+.sp-sub{font-size:12.5px;color:var(--sp-muted);margin-top:9px}
+.sp-chg{display:inline-flex;align-items:center;gap:3px;font-family:var(--sp-font-numeric);font-size:11.5px;
+  padding:4px 8px;border-radius:8px;margin-left:9px;vertical-align:8px;background:rgba(255,255,255,.75)}
+.sp-chg.sp-u{color:var(--sp-blue-d)}.sp-chg.sp-d{color:var(--sp-violet-d)}
+
+/* ---------- 6. Tag / Chip — mono 10px uppercase .07em, 9px radius ----------
+   healthy -> blue pair, warning -> lav pair, needs-work -> violet pair, neutral -> grey. */
+.sp-tag{display:inline-flex;align-items:center;font-family:var(--sp-font-numeric);font-size:10px;
+  letter-spacing:.07em;text-transform:uppercase;padding:5px 10px;border-radius:9px;font-weight:500}
+.sp-tag.sp-healthy{background:var(--sp-t-blue);color:var(--sp-blue-d)}
+.sp-tag.sp-warning{background:var(--sp-t-lav);color:var(--sp-lav-d)}
+.sp-tag.sp-needs-work{background:var(--sp-t-violet);color:var(--sp-violet-d)}
+.sp-tag.sp-neutral{background:var(--sp-t-grey);color:var(--sp-muted)}
+
+/* ---------- 7. Button — pill radius. ink | gradient | ghost ---------- */
+.sp-btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;border:0;cursor:pointer;text-decoration:none;
+  font-family:var(--sp-font-body);font-weight:600;font-size:13.5px;padding:9px 18px;border-radius:var(--sp-r-pill);
+  transition:transform .16s,box-shadow .16s,background .16s;line-height:1.1}
+.sp-btn.sp-ink{background:var(--sp-ink);color:#fff}
+.sp-btn.sp-ink:hover:not(:disabled){transform:translateY(-1px);box-shadow:0 10px 22px rgba(27,92,245,.24)}
+.sp-btn.sp-gradient{background:var(--sp-grad);color:#fff}
+.sp-btn.sp-gradient:hover:not(:disabled){transform:translateY(-1px);box-shadow:0 10px 24px rgba(27,92,245,.32)}
+.sp-btn.sp-ghost{background:transparent;color:var(--sp-ink-2)}
+.sp-btn.sp-ghost:hover:not(:disabled){background:var(--sp-t-blue);color:var(--sp-primary)}
+.sp-btn:disabled{opacity:.5;cursor:not-allowed}
+.sp-btn:active:not(:disabled){transform:translateY(0) scale(.98)}
+.sp-btn:focus-visible{outline:2px solid var(--sp-primary);outline-offset:2px}
+.sp-btn-spin{width:14px;height:14px;border-radius:50%;border:2px solid currentColor;border-right-color:transparent;
+  animation:sp-spin .7s linear infinite;flex:none}
+@keyframes sp-spin{to{transform:rotate(360deg)}}
+
+/* ---------- 8. Ring — 62px, 8px stroke, round cap, -90deg, dasharray 283, 1.4s ---------- */
+.sp-ring{position:relative;flex:none}
+.sp-ring svg{transform:rotate(-90deg)}
+.sp-ring-bg{fill:none;stroke:var(--sp-line)}
+.sp-ring-fg{fill:none;stroke-linecap:round;stroke-dasharray:283;
+  transition:stroke-dashoffset 1.4s cubic-bezier(.2,.9,.28,1)}
+.sp-ring-v{position:absolute;inset:0;display:grid;place-items:center;font-family:var(--sp-font-heading);font-weight:700;color:var(--sp-ink)}
+
+/* ---------- 9. ProgressBar — 6px track, 99px radius, brand gradient fill, .7s ---------- */
+.sp-pg{height:6px;background:rgba(11,16,36,.07);border-radius:99px;overflow:hidden}
+.sp-pgf{height:100%;width:0;border-radius:99px;transition:width .7s ease;background:var(--sp-grad)}
+
+/* ---------- 10. Skeleton — shimmer, 400% bg-size, 1.5s, blue-tinted midpoint ---------- */
+.sp-skel{border-radius:10px;background:linear-gradient(90deg,rgba(27,92,245,.05) 25%,rgba(27,92,245,.12) 37%,rgba(27,92,245,.05) 63%);
+  background-size:400% 100%;animation:sp-shim 1.5s ease infinite}
+@keyframes sp-shim{0%{background-position:100% 50%}100%{background-position:0 50%}}
+
+/* ---------- 11. StepList — idle / active (spinning border) / done (filled + tick) ---------- */
+.sp-steps{display:flex;flex-direction:column;gap:4px}
+.sp-st{display:flex;align-items:center;gap:13px;padding:13px 16px;border-radius:var(--sp-r-s);transition:.3s}
+.sp-st.sp-act{background:rgba(255,255,255,.85);box-shadow:var(--sp-sh-s)}
+.sp-sti{width:22px;height:22px;border-radius:50%;flex:none;border:2px solid rgba(11,16,36,.14);
+  display:grid;place-items:center;transition:.3s;color:#fff}
+.sp-sti svg{width:11px;height:11px;opacity:0;transition:opacity .25s}
+.sp-st.sp-done .sp-sti{background:var(--sp-primary);border-color:var(--sp-primary)}
+.sp-st.sp-done .sp-sti svg{opacity:1}
+.sp-st.sp-act .sp-sti{border-color:var(--sp-primary);border-right-color:transparent;animation:sp-spin .8s linear infinite}
+.sp-stx{font-size:14px;color:var(--sp-muted);font-weight:500;transition:color .3s}
+.sp-st.sp-act .sp-stx,.sp-st.sp-done .sp-stx{color:var(--sp-ink)}
+.sp-stt{margin-left:auto;font-family:var(--sp-font-numeric);font-size:11.5px;color:var(--sp-muted)}
+
+/* ---------- 12. EngineCard — 30px icon tile, status pill, body slot, mono footer ---------- */
+.sp-jc{background:var(--sp-solid);border-radius:var(--sp-r-m);padding:18px;border:1px solid var(--sp-line);
+  box-shadow:var(--sp-sh-s);display:flex;flex-direction:column;gap:12px}
+.sp-jc-h{display:flex;align-items:center;gap:10px}
+.sp-jc-ic{width:30px;height:30px;border-radius:10px;display:grid;place-items:center;
+  font-family:var(--sp-font-heading);font-weight:700;font-size:12px;color:#fff;flex:none}
+.sp-jc-n{font-weight:600;font-size:14px;color:var(--sp-ink)}
+.sp-jc-s{font-family:var(--sp-font-numeric);font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;
+  margin-left:auto;padding:4px 9px;border-radius:8px;font-weight:500}
+.sp-jc-s.sp-yes{background:var(--sp-t-blue);color:var(--sp-blue-d)}
+.sp-jc-s.sp-no{background:var(--sp-t-violet);color:var(--sp-violet-d)}
+.sp-jc-s.sp-pending{background:var(--sp-t-grey);color:var(--sp-muted)}
+.sp-jc-q{font-size:13px;line-height:1.6;color:var(--sp-ink-2);flex:1}
+.sp-jc-f{display:flex;align-items:center;gap:7px;font-family:var(--sp-font-numeric);font-size:11px;color:var(--sp-muted);
+  border-top:1px solid var(--sp-line-2);padding-top:11px}
+.sp-typing{display:flex;gap:4px;align-items:center;padding:3px 0}
+.sp-typing i{width:6px;height:6px;border-radius:50%;background:var(--sp-muted);opacity:.4;animation:sp-blink 1.3s ease-in-out infinite}
+.sp-typing i:nth-child(2){animation-delay:.18s}
+.sp-typing i:nth-child(3){animation-delay:.36s}
+@keyframes sp-blink{0%,100%{opacity:.25;transform:translateY(0)}45%{opacity:1;transform:translateY(-3px)}}
+
+/* reveal helper (opt-in; sp-reveal keyframe itself lives on :root in App.jsx, Phase 1) */
+.sp-rv{opacity:0;transform:translateY(20px) scale(.985);animation:sp-reveal .66s cubic-bezier(.2,.9,.28,1) forwards}
+
+/* dev-only /ui-kit-spectrum page ground */
+.sp-kit{position:relative;min-height:100vh;background:var(--sp-page);color:var(--sp-ink);
+  font-family:var(--sp-font-body);font-size:15px;line-height:1.5}
+.sp-kit-body{position:relative;z-index:1;padding:34px 30px 60px;max-width:1180px;margin:0 auto}
+.sp-kit-sec{margin:34px 0 14px;font-family:var(--sp-font-heading);font-size:18px;font-weight:700;color:var(--sp-ink)}
+.sp-kit-row{display:flex;flex-wrap:wrap;gap:14px;align-items:center}
+
+/* keyboard focus (a11y) — branded ring on every focusable control against the glass/
+   tinted surfaces, mirroring aurora.css's identical rule. Scoped to .sp-kit because
+   that's the only place Spectrum markup renders today; Phase 5 should add its own
+   screen-wrapper class to this selector list, same as Aurora's screens did one at a
+   time (see aurora.css's ":focus-visible (a11y, Phase 14 final pass)" block). */
+.sp-kit :focus-visible{outline:2px solid var(--sp-primary);outline-offset:2px}
+
+/* ============================================================================
+   SHARED APP CLASSES (migration Phase 7). Spectrum port of aurora.css's generic
+   building blocks (panels, toolbars, form controls, tables, empty/error cards,
+   icon buttons, settings cluster, upgrade modal, share panel, auth chrome) reused
+   across every migrated screen — consolidated here exactly like Aurora's own
+   version, not duplicated per screen. No red/amber/green: positive/success/
+   featured -> blue, danger/negative -> violet, warning/pending -> lav,
+   info/neutral -> cyan (a 5th hue, distinct from the other three statuses). ==== */
+.sp-panel{background:var(--sp-solid);border:1px solid var(--sp-line);border-radius:var(--sp-r-m);
+  padding:20px;box-shadow:var(--sp-sh-s);transition:transform .22s var(--sp-ease),box-shadow .22s var(--sp-ease)}
+.sp-cell:hover,.sp-panel:hover{transform:translateY(-2px);box-shadow:var(--sp-sh)}
+.sp-panel-h{display:flex;align-items:baseline;gap:10px;font-family:var(--sp-font-heading);font-size:15px;
+  font-weight:700;color:var(--sp-ink);margin-bottom:14px}
+.sp-panel-h .sp-sub{font-family:var(--sp-font-numeric);font-size:12px;color:var(--sp-muted);font-weight:400}
+.sp-stack{display:flex;flex-direction:column;gap:16px;position:relative;z-index:1}
+.sp-dim{color:var(--sp-muted)}
+.sp-mono{font-family:var(--sp-font-numeric)}
+
+/* toolbar + form controls */
+.sp-toolbar{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:16px;position:relative;z-index:1}
+.sp-search{display:flex;align-items:center;gap:8px;background:var(--sp-solid);border:1px solid var(--sp-line);
+  border-radius:var(--sp-r-pill);padding:9px 15px;color:var(--sp-muted)}
+.sp-search input{border:0;background:none;outline:none;color:var(--sp-ink);font:inherit;font-size:13.5px;flex:1;min-width:0}
+.sp-search input::placeholder{color:var(--sp-muted)}
+.sp-select{background:var(--sp-solid);border:1px solid var(--sp-line);border-radius:var(--sp-r-pill);
+  color:var(--sp-ink-2);font:inherit;font-size:13px;padding:9px 14px;cursor:pointer}
+.sp-field{display:block;margin-bottom:14px}
+.sp-field-l{display:block;font-family:var(--sp-font-numeric);font-size:10.5px;letter-spacing:.06em;
+  text-transform:uppercase;color:var(--sp-muted);margin-bottom:6px}
+.sp-field-hint{font-size:11.5px;color:var(--sp-muted);margin-top:5px}
+.sp-input{width:100%;background:var(--sp-solid);border:1px solid var(--sp-line);border-radius:var(--sp-r-s);
+  color:var(--sp-ink);font:inherit;font-size:14px;padding:11px 13px}
+.sp-input::placeholder{color:var(--sp-muted)}
+.sp-input:focus,.sp-select:focus,.sp-search:focus-within{outline:2px solid var(--sp-primary);outline-offset:1px}
+
+/* data table */
+.sp-tablewrap{overflow-x:auto;border:1px solid var(--sp-line);border-radius:var(--sp-r-m);background:var(--sp-solid)}
+.sp-table{width:100%;border-collapse:collapse;font-size:13px}
+.sp-table th{font-family:var(--sp-font-numeric);font-size:10px;letter-spacing:.06em;text-transform:uppercase;
+  color:var(--sp-muted);text-align:left;padding:12px 14px;border-bottom:1px solid var(--sp-line);white-space:nowrap;font-weight:500}
+.sp-table td{padding:11px 14px;border-bottom:1px solid var(--sp-line-2);vertical-align:middle;color:var(--sp-ink-2)}
+.sp-table tbody tr:last-child td{border-bottom:0}
+.sp-table tbody tr:hover{background:rgba(11,16,36,.02)}
+.sp-url{font-weight:600;color:var(--sp-ink)}
+.sp-num{font-family:var(--sp-font-numeric)}
+
+/* icon button */
+.sp-iconbtn{display:inline-flex;align-items:center;gap:5px;justify-content:center;min-width:30px;height:30px;
+  padding:0 9px;border-radius:9px;border:1px solid var(--sp-line);background:var(--sp-solid);color:var(--sp-ink-2);
+  cursor:pointer;transition:border-color .15s,color .15s;font:inherit;font-size:12px}
+.sp-iconbtn:hover:not(:disabled){border-color:var(--sp-primary);color:var(--sp-primary)}
+.sp-iconbtn:disabled{opacity:.5;cursor:not-allowed}
+.sp-iconbtn:focus-visible{outline:2px solid var(--sp-primary);outline-offset:2px}
+.sp-iconbtn.sp-danger:hover:not(:disabled){border-color:var(--sp-violet-d);color:var(--sp-violet-d)}
+
+/* centred empty / error / status card */
+.sp-card-center{text-align:center;padding:44px 24px;position:relative;z-index:1}
+.sp-ill{width:56px;height:56px;border-radius:50%;display:grid;place-items:center;margin:0 auto 16px;
+  background:var(--sp-t-blue);color:var(--sp-blue-d)}
+.sp-ill.sp-ill-bad{background:var(--sp-t-violet);color:var(--sp-violet-d)}
+.sp-ill.sp-ill-warn{background:var(--sp-t-lav);color:var(--sp-lav-d)}
+.sp-card-t{font-family:var(--sp-font-heading);font-size:20px;font-weight:700;color:var(--sp-ink);margin-bottom:8px}
+.sp-card-s{font-size:13.5px;color:var(--sp-muted);max-width:440px;margin:0 auto 20px;line-height:1.6}
+
+/* compact bullet row for short empty-state copy */
+.sp-empty-bullets{list-style:none;display:flex;flex-wrap:wrap;justify-content:center;gap:5px 16px;
+  margin:8px 0 0;padding:0}
+.sp-empty-bullets li{font-size:12.5px;color:var(--sp-ink-2)}
+.sp-empty-bullets li::before{content:"•";color:var(--sp-primary);margin-right:6px}
+
+/* score bar (report categories, meters) */
+.sp-bar-row{display:flex;align-items:center;gap:10px;margin:6px 0}
+.sp-bar-l{flex:none;width:150px;font-size:13px;color:var(--sp-ink-2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sp-bar-track{flex:1;height:8px;background:var(--sp-line);border-radius:99px;overflow:hidden}
+.sp-bar-fill{height:100%;border-radius:99px;transition:width .7s ease}
+.sp-bar-v{flex:none;width:40px;text-align:right;font-family:var(--sp-font-numeric);font-size:12px;color:var(--sp-muted)}
+
+/* code block */
+.sp-code{background:#0B1024;color:#CFE0FF;border-radius:var(--sp-r-s);padding:12px 14px;
+  font-family:var(--sp-font-numeric);font-size:12px;overflow-x:auto;white-space:pre-wrap;word-break:break-word}
+
+/* compact verification badge (VerificationBadge.jsx) — reused by Action Center,
+   ReportView and Scan Details. Status is never color-only: icon + text together.
+   No red/amber/green: ok -> blue, warn/attention -> lav, info/neutral -> grey, bad -> violet. */
+.sp-verify-badge{display:inline-flex;align-items:center;gap:4px;font-family:var(--sp-font-numeric);
+  font-size:10px;letter-spacing:.03em;padding:3px 8px;border-radius:999px;font-weight:600;flex:none}
+.sp-verify-ok{background:var(--sp-t-blue);color:var(--sp-blue-d)}
+.sp-verify-warn{background:var(--sp-t-lav);color:var(--sp-lav-d)}
+.sp-verify-info{background:var(--sp-line-2);color:var(--sp-muted)}
+.sp-verify-bad{background:var(--sp-t-violet);color:var(--sp-violet-d)}
+
+/* public shared-report chrome (/r/:token) */
+.sp-pub{min-height:100vh;background:var(--sp-page);color:var(--sp-ink);font-family:var(--sp-font-body);
+  display:flex;flex-direction:column}
+.sp-pub-bar{flex:none;display:flex;align-items:center;padding:16px 24px;border-bottom:1px solid var(--sp-line);
+  background:rgba(255,255,255,.68);backdrop-filter:blur(18px) saturate(1.1);position:sticky;top:0;z-index:20}
+.sp-pub-brand{display:inline-flex;align-items:center;gap:8px;color:var(--sp-ink-2);text-decoration:none;font-size:14px}
+.sp-pub-main{flex:1 0 auto;max-width:1180px;margin:0 auto;padding:24px;width:100%}
+.sp-pub-foot{flex:none;text-align:center;padding:28px 24px;border-top:1px solid var(--sp-line);color:var(--sp-muted)}
+.sp-pub-foot a{color:var(--sp-primary);text-decoration:none;font-size:13.5px;font-weight:600}
+
+/* chart containers + common-failures list */
+.sp-chart{height:220px}
+.sp-chart-empty{height:220px;display:grid;place-items:center;color:var(--sp-muted);font-size:12.5px}
+.sp-fails{display:flex;flex-direction:column;gap:8px}
+.sp-fail-row{display:flex;align-items:center;gap:12px;background:var(--sp-glass);border:1px solid var(--sp-line-2);
+  border-radius:var(--sp-r-s);padding:10px 12px}
+.sp-fail-rank{font-family:var(--sp-font-numeric);font-size:12px;color:var(--sp-muted);width:18px;flex:none}
+.sp-fail-txt{flex:1;min-width:0;font-size:13px;color:var(--sp-ink-2)}
+.sp-fail-pill{font-family:var(--sp-font-numeric);font-size:11.5px;color:var(--sp-primary);background:var(--sp-t-blue);
+  padding:3px 9px;border-radius:var(--sp-r-pill);flex:none}
+
+/* stat grid + small stat card */
+.sp-stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:14px;margin-bottom:18px}
+.sp-grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+@media(max-width:1000px){.sp-grid2{grid-template-columns:1fr}}
+.sp-statcard-l{display:flex;align-items:center;gap:7px;font-size:11.5px;color:var(--sp-muted)}
+.sp-statcard-v{font-family:var(--sp-font-heading);font-size:28px;font-weight:700;margin-top:8px;line-height:1;color:var(--sp-ink)}
+.sp-statcard-sub{font-size:11.5px;color:var(--sp-muted);margin-top:6px}
+
+/* Compare (/app/compare) */
+.sp-cmp-pick{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+@media(max-width:640px){.sp-cmp-pick{grid-template-columns:1fr}}
+.sp-cmp-diff{display:flex;align-items:flex-start;gap:8px;font-size:13px;padding:4px 0;color:var(--sp-ink-2)}
+.sp-up{color:var(--sp-blue-d)}.sp-down{color:var(--sp-violet-d)}.sp-flat{color:var(--sp-muted)}
+
+/* ============================================================================
+   SETTINGS CLUSTER — Billing / Profile / Team / Organization + the shared
+   UpgradeModal and SharePanel. Form primitives (sp-field/sp-input above) plus
+   auth-form controls, alerts, avatars, role badges, member rows, billing /
+   paywall / share-popover chrome. ============================================ */
+.sp-form{display:flex;flex-direction:column;gap:15px}
+.sp-form .sp-field{margin-bottom:0}
+.sp-input-wrap{position:relative;display:flex;align-items:center}
+.sp-eye{position:absolute;right:10px;background:none;border:none;color:var(--sp-muted);cursor:pointer;display:flex;padding:4px}
+.sp-eye:hover{color:var(--sp-ink-2)}
+.sp-pw-bars{display:flex;gap:4px;margin-top:2px}
+.sp-pw-bars span{height:4px;flex:1;background:var(--sp-line-2);border-radius:2px;transition:background .2s}
+.sp-check{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--sp-ink-2);cursor:pointer;user-select:none}
+.sp-check input{accent-color:var(--sp-primary);width:15px;height:15px}
+.sp-authlink{background:none;border:0;color:var(--sp-primary);cursor:pointer;font:inherit;padding:0;text-decoration:underline}
+
+/* alert */
+.sp-alert{display:flex;align-items:flex-start;gap:9px;padding:11px 13px;border-radius:var(--sp-r-s);font-size:13px;line-height:1.45}
+.sp-alert svg{flex:none;margin-top:1px}
+.sp-alert-error{background:var(--sp-t-violet);border:1px solid var(--sp-violet-d);color:var(--sp-violet-d)}
+.sp-alert-ok{background:var(--sp-t-blue);border:1px solid var(--sp-blue-d);color:var(--sp-blue-d)}
+.sp-alert-info{background:var(--sp-t-cyan);border:1px solid var(--sp-cyan-d);color:var(--sp-cyan-d)}
+
+/* avatar / role badge / "you" pill / member rows */
+.sp-role-badge{font-family:var(--sp-font-numeric);font-size:10.5px;font-weight:600;letter-spacing:.04em;
+  text-transform:uppercase;padding:3px 8px;border-radius:6px;border:1px solid var(--sp-line);color:var(--sp-muted)}
+.sp-role-owner{color:var(--sp-primary);border-color:var(--sp-primary)}
+.sp-role-admin{color:var(--sp-lav-d);border-color:var(--sp-lav-d)}
+.sp-pill-you{font-family:var(--sp-font-numeric);font-size:9.5px;background:var(--sp-t-blue);color:var(--sp-primary);
+  padding:1px 6px;border-radius:5px;font-weight:600;text-transform:uppercase;letter-spacing:.04em}
+.sp-mem-row{display:flex;align-items:center;gap:12px;padding:12px 0;border-bottom:1px solid var(--sp-line-2)}
+.sp-mem-row:last-child{border-bottom:none}
+.sp-mem-id{flex:1;min-width:0}
+.sp-mem-name{font-size:14px;font-weight:600;color:var(--sp-ink);display:flex;align-items:center;gap:8px}
+.sp-mem-email{font-size:12px;color:var(--sp-muted);margin-top:2px}
+
+/* button size / block / danger variants */
+.sp-btn.sp-sm{padding:6px 13px;font-size:12.5px}
+.sp-btn.sp-block{width:100%}
+.sp-btn.sp-danger{background:var(--sp-t-violet);color:var(--sp-violet-d)}
+.sp-btn.sp-danger:hover:not(:disabled){transform:translateY(-1px);box-shadow:0 8px 18px rgba(76,47,196,.22)}
+.sp-spin-icon{animation:sp-spin .8s linear infinite}
+
+/* billing */
+.sp-bill-notice{background:var(--sp-t-blue);color:var(--sp-primary);border-radius:var(--sp-r-s);padding:11px 14px;font-size:13px;margin-bottom:14px}
+.sp-bill-stat-l{display:flex;align-items:center;gap:7px;font-family:var(--sp-font-numeric);font-size:10px;
+  letter-spacing:.1em;text-transform:uppercase;color:var(--sp-muted)}
+.sp-bill-plan-name{font-family:var(--sp-font-heading);font-size:26px;font-weight:700;margin:8px 0 4px;color:var(--sp-ink)}
+.sp-bill-usage-unlim{font-size:18px;font-weight:700;margin:10px 0;color:var(--sp-ink)}
+.sp-bill-meters{display:flex;flex-direction:column;gap:14px;margin-top:4px}
+.sp-bill-meter-top{display:flex;justify-content:space-between;align-items:baseline;font-size:12.5px;margin-bottom:6px}
+.sp-bill-meter-lbl{color:var(--sp-ink-2)}
+.sp-bill-meter-n{font-family:var(--sp-font-numeric);color:var(--sp-ink)}
+.sp-bill-meter{height:8px;background:var(--sp-line);border-radius:5px;overflow:hidden}
+.sp-bill-meter>div{height:100%;border-radius:5px;transition:width .5s ease}
+.sp-bill-plans{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:14px}
+.sp-bill-card{border:1px solid var(--sp-line);border-radius:var(--sp-r-m);background:var(--sp-solid);
+  padding:18px;display:flex;flex-direction:column;box-shadow:var(--sp-sh-s)}
+.sp-bill-card.sp-featured{border-color:var(--sp-primary);box-shadow:0 0 0 1px var(--sp-primary) inset}
+.sp-bill-card-h{display:flex;align-items:center;gap:8px;font-family:var(--sp-font-heading);font-size:15px;font-weight:700;color:var(--sp-ink)}
+.sp-bill-card-h svg{color:var(--sp-primary)}
+.sp-bill-price{font-family:var(--sp-font-heading);font-size:28px;font-weight:700;margin:10px 0 2px;color:var(--sp-ink)}
+.sp-bill-price span{font-size:13px;font-weight:400;color:var(--sp-muted)}
+.sp-bill-hero{display:flex;flex-direction:column;gap:6px;margin:0 0 12px;padding:10px 12px;background:var(--sp-t-blue);border-radius:var(--sp-r-s)}
+.sp-bill-hero-l{display:flex;align-items:center;gap:7px;font-size:12.5px;font-weight:700;color:var(--sp-ink)}
+.sp-bill-hero-l svg{flex:none;color:var(--sp-primary)}
+.sp-bill-feats{list-style:none;margin:8px 0 14px;padding:0;display:flex;flex-direction:column;gap:7px;flex:1}
+.sp-bill-feats li{display:flex;align-items:flex-start;gap:7px;font-size:12.5px;color:var(--sp-ink-2);line-height:1.4}
+.sp-bill-feats li svg{margin-top:2px;flex:none;color:var(--sp-primary)}
+.sp-bill-current-tag{text-align:center;font-size:12.5px;font-weight:600;color:var(--sp-primary);border:1px solid var(--sp-primary);border-radius:8px;padding:8px}
+.sp-bill-table{width:100%;border-collapse:collapse;font-size:12.5px}
+.sp-bill-table th{text-align:left;color:var(--sp-muted);font-weight:500;font-size:11px;padding:8px 6px;
+  border-bottom:1px solid var(--sp-line);font-family:var(--sp-font-numeric)}
+.sp-bill-table td{padding:9px 6px;border-bottom:1px solid var(--sp-line-2);color:var(--sp-ink-2)}
+.sp-bill-table tr:last-child td{border-bottom:none}
+.sp-bill-pay{font-family:var(--sp-font-numeric);font-size:10.5px;font-weight:700;padding:2px 8px;border-radius:6px;
+  text-transform:capitalize;border:1px solid var(--sp-line);color:var(--sp-ink-2)}
+.sp-bill-pay.succeeded{color:var(--sp-blue-d);border-color:var(--sp-blue-d)}
+.sp-bill-pay.failed,.sp-bill-pay.refunded,.sp-bill-pay.disputed{color:var(--sp-violet-d);border-color:var(--sp-violet-d)}
+.sp-bill-pay.pending{color:var(--sp-lav-d);border-color:var(--sp-lav-d)}
+
+/* upgrade modal (rendered outside any .spectrum-screen — carries its own light surface) */
+.sp-up-overlay{position:fixed;inset:0;background:rgba(11,16,36,.42);backdrop-filter:blur(4px);z-index:100;
+  display:flex;align-items:center;justify-content:center;padding:20px}
+.sp-up-modal{position:relative;background:var(--sp-solid);border:1px solid var(--sp-line);border-radius:16px;
+  padding:26px;max-width:560px;width:100%;box-shadow:var(--sp-sh-l);font-family:var(--sp-font-body);color:var(--sp-ink)}
+.sp-up-x{position:absolute;top:14px;right:14px;background:none;border:none;color:var(--sp-muted);cursor:pointer;padding:4px;display:flex}
+.sp-up-x:hover{color:var(--sp-ink)}
+.sp-up-eyebrow{display:inline-flex;align-items:center;gap:6px;color:var(--sp-primary);font-size:11px;letter-spacing:.12em;
+  font-family:var(--sp-font-numeric);margin-bottom:12px}
+.sp-up-title{font-family:var(--sp-font-heading);font-size:22px;font-weight:700;margin:0 0 6px;color:var(--sp-ink)}
+.sp-up-sub{color:var(--sp-muted);font-size:13.5px;line-height:1.55;margin:0 0 20px}
+.sp-up-options{display:grid;grid-template-columns:1fr;gap:12px}
+.sp-up-options.sp-two{grid-template-columns:1fr 1fr}
+@media(max-width:560px){.sp-up-options.sp-two{grid-template-columns:1fr}}
+.sp-up-card{border:1px solid var(--sp-line);border-radius:12px;background:var(--sp-glass);padding:16px;display:flex;flex-direction:column}
+.sp-up-card.sp-featured{border-color:var(--sp-primary);box-shadow:0 0 0 1px var(--sp-primary) inset}
+.sp-up-card-h{display:flex;align-items:center;gap:8px;font-family:var(--sp-font-heading);font-size:15px;font-weight:700;color:var(--sp-ink)}
+.sp-up-card-h svg{color:var(--sp-primary)}
+.sp-up-price{font-family:var(--sp-font-heading);font-size:26px;font-weight:700;margin:8px 0 2px;color:var(--sp-ink)}
+.sp-up-price span{font-size:12.5px;font-weight:400;color:var(--sp-muted)}
+.sp-up-card-tag{font-size:12px;color:var(--sp-muted);margin-bottom:10px}
+.sp-up-feats{list-style:none;margin:0 0 14px;padding:0;display:flex;flex-direction:column;gap:6px;flex:1}
+.sp-up-feats li{display:flex;align-items:flex-start;gap:7px;font-size:12px;color:var(--sp-ink-2);line-height:1.4}
+.sp-up-feats li svg{margin-top:2px;flex:none;color:var(--sp-primary)}
+.sp-up-err{display:flex;align-items:center;gap:8px;margin-top:12px;color:var(--sp-violet-d);font-size:12.5px}
+.sp-up-later{display:block;margin:16px auto 0;background:none;border:none;color:var(--sp-muted);cursor:pointer;font-size:12.5px;font-family:var(--sp-font-body)}
+.sp-up-later:hover{color:var(--sp-ink-2)}
+
+/* share panel (rendered inside ReportView's .spectrum-screen) */
+.sp-sharewrap{position:relative;display:inline-block}
+.sp-share-btn.on{border-color:var(--sp-primary);color:var(--sp-primary);background:var(--sp-t-blue)}
+.sp-share-pop{position:absolute;right:0;top:calc(100% + 8px);z-index:30;width:320px;max-width:88vw;
+  background:var(--sp-solid);border:1px solid var(--sp-line);border-radius:12px;padding:14px;box-shadow:var(--sp-sh-l)}
+.sp-share-h{font-family:var(--sp-font-heading);font-size:13px;font-weight:700;margin-bottom:8px;color:var(--sp-ink)}
+.sp-share-url{display:flex;gap:6px}
+.sp-share-url input{flex:1;min-width:0;background:var(--sp-page);border:1px solid var(--sp-line);border-radius:8px;
+  padding:7px 9px;color:var(--sp-ink);font-size:12px;font-family:var(--sp-font-numeric)}
+.sp-share-meta{font-size:11.5px;margin-top:8px}
+.sp-share-warn{display:flex;align-items:center;gap:6px;margin-top:8px;font-size:11.5px;color:var(--sp-lav-d)}
+.sp-share-warn svg{flex:none}
+.sp-share-revoke{margin-top:10px;background:transparent;border:1px solid var(--sp-line);color:var(--sp-ink-2);
+  border-radius:8px;padding:6px 12px;font-size:12px;cursor:pointer;font-family:inherit}
+.sp-share-revoke:hover{color:var(--sp-violet-d);border-color:var(--sp-violet-d)}
+.sp-share-revoke:disabled{opacity:.6;cursor:default}
+.sp-share-note{font-size:11px;margin-top:10px;line-height:1.5}
+.sp-share-err{display:flex;align-items:center;gap:6px;margin-top:8px;font-size:12px;color:var(--sp-violet-d)}
+
+/* ============================================================================
+   AUTH PAGES — centered pre-auth card (login / register / forgot / reset /
+   verify / accept-invite). Renders its own light ground. =========================== */
+.sp-auth-wrap{min-height:calc(100vh - 41px);display:flex;align-items:center;justify-content:center;padding:40px 20px;
+  background:var(--sp-page);color:var(--sp-ink);font-family:var(--sp-font-body);font-size:15px;line-height:1.5}
+.sp-auth-card{width:100%;max-width:420px;background:var(--sp-solid);border:1px solid var(--sp-line);
+  border-radius:16px;padding:30px 28px;box-shadow:var(--sp-sh-l)}
+.sp-auth-brand{display:flex;align-items:center;margin-bottom:22px}
+.sp-auth-h{font-family:var(--sp-font-heading);font-size:23px;font-weight:700;letter-spacing:-.02em;color:var(--sp-ink)}
+.sp-auth-sub{color:var(--sp-muted);font-size:13.5px;margin:6px 0 22px;line-height:1.5}
+.sp-auth-foot{margin-top:20px;font-size:13px;color:var(--sp-muted);text-align:center}
+.sp-auth-row{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}
+
+/* ============================================================================
+   .spectrum-screen — the per-screen wrapper (Spectrum's equivalent of
+   aurora.css's .aurora-screen). overflow:hidden clips any Shell blobs mounted
+   inside a screen -> no horizontal scroll, same invariant as the landing page's
+   own Shell usage. One screen opts in at a time. ============================= */
+.spectrum-screen{position:relative;background:transparent;color:var(--sp-ink);
+  font-family:var(--sp-font-body);font-size:15px;line-height:1.5;border-radius:var(--sp-r-l);
+  padding:24px;overflow:hidden;animation:sp-reveal .5s var(--sp-ease) both}
+.spectrum-screen h1,.spectrum-screen h2,.spectrum-screen h3,.spectrum-screen h4{font-family:var(--sp-font-heading)}
+.spectrum-screen ::selection{background:var(--sp-t-blue)}
+@media(max-width:1000px){.spectrum-screen{padding:16px;border-radius:var(--sp-r-m)}}
+
+/* keyboard focus (a11y) — every focusable control inside any Spectrum surface,
+   same pattern as aurora.css's equivalent rule, extended as each screen migrates. */
+.sp-site :focus-visible,
+.spectrum-screen :focus-visible,
+.sp-dash :focus-visible,
+.sp-auth-wrap :focus-visible,
+.sp-up-overlay :focus-visible{outline:2px solid var(--sp-primary);outline-offset:2px}

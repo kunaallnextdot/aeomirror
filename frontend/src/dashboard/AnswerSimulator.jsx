@@ -9,9 +9,9 @@ import { Play, ChevronDown, ChevronRight, Sparkles, AlertTriangle, ExternalLink 
 import {
   getSimulatorQuestions, runAnswerSimulation, explainSimulatorQuestion, ScanError,
 } from "../api.js";
-import { Cell, Button, Skeleton } from "./aurora.jsx";
+import { Cell, Button, Skeleton } from "../shared/spectrum.jsx";
 import { useUpgrade } from "./UpgradeModal.jsx";
-import "./AnswerTracking.aurora.css";
+import "./AnswerTracking.spectrum.css";
 
 // Human-readable status — answers "is this question supported?" directly, rather
 // than the abstract High/Medium/Low the underlying `answerability` enum reads as.
@@ -21,8 +21,8 @@ const ANSWERABILITY_LABEL = {
   INSUFFICIENT_EVIDENCE: "Not enough evidence",
 };
 const ANSWERABILITY_COLOR = {
-  HIGH: "var(--au-mint-d)", MEDIUM: "var(--au-lemon-d)", LOW: "var(--au-peach-d)",
-  INSUFFICIENT_EVIDENCE: "var(--au-muted)",
+  HIGH: "var(--sp-blue-d)", MEDIUM: "var(--sp-lav-d)", LOW: "var(--sp-violet-d)",
+  INSUFFICIENT_EVIDENCE: "var(--sp-muted)",
 };
 const BATCH_PRESETS = [10, 25, 50];
 
@@ -132,7 +132,7 @@ export default function AnswerSimulator({ monitorId, canRun }) {
 
   if (!questions && !error) {
     return (
-      <Cell solid className="au-as-panel">
+      <Cell solid className="sp-as-panel">
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
           {Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} h={36} />)}
         </div>
@@ -141,39 +141,39 @@ export default function AnswerSimulator({ monitorId, canRun }) {
   }
 
   return (
-    <Cell solid className="au-as-panel">
-      <div className="au-panel-h">AEO Answer Simulator</div>
-      <div className="au-as-explainer">
+    <Cell solid className="sp-as-panel">
+      <div className="sp-panel-h">AEO Answer Simulator</div>
+      <div className="sp-as-explainer">
         Simulation uses your website&apos;s current content to estimate how well an AI
         answer can be supported. This is not a live measurement of ChatGPT, Claude,
         Gemini, or Perplexity responses.
       </div>
 
-      {error && <div className="au-at-err">{error}</div>}
+      {error && <div className="sp-at-err">{error}</div>}
 
       {allChoices.length === 0 ? (
-        <div className="au-dim" style={{ fontSize: 13, padding: "6px 2px" }}>
+        <div className="sp-dim" style={{ fontSize: 13, padding: "6px 2px" }}>
           No scan-derived questions yet — run a scan for this site, or add a custom
           question below.
         </div>
       ) : (
         <>
-          <ul className="au-as-questions">
+          <ul className="sp-as-questions">
             {allChoices.map((c) => (
-              <li key={c.text} className="au-as-question">
+              <li key={c.text} className="sp-as-question">
                 <label>
                   <input type="checkbox" checked={selected.has(c.text)}
                         onChange={() => toggle(c.text)} disabled={!canRun} />
-                  <span className="au-as-question-text">{c.text}</span>
-                  <span className="au-as-question-badge">{c.tracked ? "tracked" : c.source}</span>
+                  <span className="sp-as-question-text">{c.text}</span>
+                  <span className="sp-as-question-badge">{c.tracked ? "tracked" : c.source}</span>
                 </label>
               </li>
             ))}
           </ul>
           {canRun && (
-            <div className="au-as-presets">
+            <div className="sp-as-presets">
               {BATCH_PRESETS.map((n) => (
-                <button key={n} type="button" className="au-at-suggest-chip"
+                <button key={n} type="button" className="sp-at-suggest-chip"
                        onClick={() => selectPreset(n)} disabled={busy}>
                   Select {n}
                 </button>
@@ -185,32 +185,32 @@ export default function AnswerSimulator({ monitorId, canRun }) {
 
       {canRun && (
         <>
-          <div className="au-at-add">
-            <input className="au-input" placeholder="Add a custom question…" value={customText}
+          <div className="sp-at-add">
+            <input className="sp-input" placeholder="Add a custom question…" value={customText}
                   maxLength={2000} onChange={(e) => setCustomText(e.target.value)}
                   onKeyDown={(e) => e.key === "Enter" && addCustom()} />
-            <Button variant="accent" disabled={busy || !customText.trim()} onClick={addCustom}>Add</Button>
+            <Button variant="gradient" disabled={busy || !customText.trim()} onClick={addCustom}>Add</Button>
           </div>
 
-          <label className="au-as-llm-toggle">
+          <label className="sp-as-llm-toggle">
             <input type="checkbox" checked={requestLlmStep}
                   onChange={(e) => setRequestLlmStep(e.target.checked)} />
             Use the optional AI explanation step (Pro)
           </label>
 
-          <div className="au-at-runbar">
-            <Button variant="primary" loading={busy} disabled={busy || selected.size === 0} onClick={runSimulation}>
+          <div className="sp-at-runbar">
+            <Button variant="gradient" loading={busy} disabled={busy || selected.size === 0} onClick={runSimulation}>
               {!busy && <Play size={15} />} Run Simulation
             </Button>
-            <div className="au-at-est">{selected.size} question{selected.size === 1 ? "" : "s"} selected</div>
+            <div className="sp-at-est">{selected.size} question{selected.size === 1 ? "" : "s"} selected</div>
           </div>
         </>
       )}
 
       {run && (
-        <div className="au-as-results">
+        <div className="sp-as-results">
           {run.locked_count > 0 && (
-            <div className="au-at-note"><AlertTriangle size={13} /> {run.locked_count} question{run.locked_count === 1 ? "" : "s"} skipped
+            <div className="sp-at-note"><AlertTriangle size={13} /> {run.locked_count} question{run.locked_count === 1 ? "" : "s"} skipped
               — Free plan batch limit is {run.batch_limit}. Upgrade to Pro for larger batches.</div>
           )}
           {run.results.map((r) => (
@@ -248,63 +248,63 @@ function SimulationResultCard({ result, onExplain, busy }) {
   const evidenceCount = result.evidence.length;
 
   return (
-    <div className="au-as-card">
-      <button className="au-as-card-head" onClick={() => setExpanded((e) => !e)} aria-expanded={expanded}>
+    <div className="sp-as-card">
+      <button className="sp-as-card-head" onClick={() => setExpanded((e) => !e)} aria-expanded={expanded}>
         {expanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-        <span className="au-as-card-question">{result.question}</span>
+        <span className="sp-as-card-question">{result.question}</span>
         {/* Always visible, not just on expand/hover — this card is AEOMirror's own
             local simulation, never a real ChatGPT/Claude/Gemini/Perplexity answer
             (that's Provider Tracking, a separate section below). One small tag,
             never a loud banner. */}
-        <span className="au-as-sim-tag" title="AEOMirror's local simulation — not a live AI provider answer">Simulated</span>
-        <span className="au-at-tag" style={{ color: ANSWERABILITY_COLOR[level] }}>
+        <span className="sp-as-sim-tag" title="AEOMirror's local simulation — not a live AI provider answer">Simulated</span>
+        <span className="sp-at-tag" style={{ color: ANSWERABILITY_COLOR[level] }}>
           {ANSWERABILITY_LABEL[level] || level}
         </span>
       </button>
       {expanded && (
-        <div className="au-as-card-body">
-          {support && <div className="au-as-summary au-as-support">{support}</div>}
+        <div className="sp-as-card-body">
+          {support && <div className="sp-as-summary sp-as-support">{support}</div>}
 
           {hasGap ? (
-            <div className="au-as-missing">
-              <div className="au-at-block-h">What to fix</div>
+            <div className="sp-as-missing">
+              <div className="sp-at-block-h">What to fix</div>
               <ul>{result.missing_information.map((m, i) => <li key={i}>{m}</li>)}</ul>
               {/* Generic, non-topic-specific guidance only — never a fabricated,
                   topic-specific "opportunity" (e.g. never invents a page recommendation
                   the site's own content doesn't support). */}
-              <div className="au-as-fix">
-                <span className="au-at-block-h" style={{ marginBottom: 4 }}>Fix</span>
+              <div className="sp-as-fix">
+                <span className="sp-at-block-h" style={{ marginBottom: 4 }}>Fix</span>
                 Add a section that directly addresses this question, with a clear
                 heading and a concise answer near the top of the page.
               </div>
             </div>
           ) : level === "HIGH" && (
-            <div className="au-as-nofix"><span>Fix</span> No fix needed — this question is well supported.</div>
+            <div className="sp-as-nofix"><span>Fix</span> No fix needed — this question is well supported.</div>
           )}
 
           {evidenceCount > 0 && (
-            <div className="au-as-evidence">
-              <button type="button" className="au-ci-toggle" onClick={() => setShowEvidence((v) => !v)}>
+            <div className="sp-as-evidence">
+              <button type="button" className="sp-ci-toggle" onClick={() => setShowEvidence((v) => !v)}>
                 {showEvidence ? "Hide" : "View"} evidence ({evidenceCount} source{evidenceCount === 1 ? "" : "s"})
               </button>
               {showEvidence && (
-                <div className="au-as-evidence-grid" style={{ marginTop: 8 }}>
+                <div className="sp-as-evidence-grid" style={{ marginTop: 8 }}>
                   {result.evidence.map((e, i) => (
-                    <div key={i} className="au-as-ev-card">
-                      <div className="au-as-ev-head">
-                        <span className="au-as-ev-src">{fieldLabel(e.field)}</span>
-                        <a className="au-as-ev-link" href={e.url} target="_blank" rel="noopener noreferrer">
+                    <div key={i} className="sp-as-ev-card">
+                      <div className="sp-as-ev-head">
+                        <span className="sp-as-ev-src">{fieldLabel(e.field)}</span>
+                        <a className="sp-as-ev-link" href={e.url} target="_blank" rel="noopener noreferrer">
                           View source <ExternalLink size={10} />
                         </a>
                       </div>
-                      <div className="au-as-ev-url">{e.url}</div>
-                      <div className="au-as-ev-snip">“{e.snippet}”</div>
+                      <div className="sp-as-ev-url">{e.url}</div>
+                      <div className="sp-as-ev-snip">“{e.snippet}”</div>
                     </div>
                   ))}
                 </div>
               )}
               {result.locked_evidence_count > 0 && (
-                <div className="au-as-evidence-locked">
+                <div className="sp-as-evidence-locked">
                   {result.locked_evidence_count} more source{result.locked_evidence_count === 1 ? "" : "s"} — Pro
                 </div>
               )}
@@ -312,34 +312,34 @@ function SimulationResultCard({ result, onExplain, busy }) {
           )}
 
           {level === "INSUFFICIENT_EVIDENCE" && !result.llm_step_used && (
-            <Button variant="accent" disabled={busy} onClick={onExplain}>
+            <Button variant="gradient" disabled={busy} onClick={onExplain}>
               <Sparkles size={13} /> Explain why
             </Button>
           )}
 
           {/* Secondary detail — real, still available, never dominant. */}
-          <div className="au-as-secondary">
-            <div className="au-as-metrics">
-              <div className="au-as-metric">
+          <div className="sp-as-secondary">
+            <div className="sp-as-metrics">
+              <div className="sp-as-metric">
                 Evidence relevance
                 <b>{result.evidence_relevance_pct != null ? `${result.evidence_relevance_pct}%` : "—"}</b>
               </div>
-              <div className="au-as-metric">
+              <div className="sp-as-metric">
                 Topic alignment
                 <b>{result.topic_alignment_score != null ? `${result.topic_alignment_score}%` : "—"}</b>
               </div>
-              <div className="au-as-metric">
+              <div className="sp-as-metric">
                 Evidence coverage
                 <b>{result.evidence_coverage_pct != null ? `${result.evidence_coverage_pct}%` : "—"}</b>
               </div>
-              <div className="au-as-metric">
+              <div className="sp-as-metric">
                 Supported by
                 <b>{result.supported_url_count || 0} page{result.supported_url_count === 1 ? "" : "s"}</b>
               </div>
             </div>
-            <div className="au-as-brand">
+            <div className="sp-as-brand">
               Brand Mention: <b>{result.brand_mentioned === true ? "YES" : result.brand_mentioned === false ? "NO" : "—"}</b>
-              {result.llm_step_used && <span className="au-at-tag"><Sparkles size={11} /> AI-explained</span>}
+              {result.llm_step_used && <span className="sp-at-tag"><Sparkles size={11} /> AI-explained</span>}
             </div>
           </div>
         </div>

@@ -120,7 +120,7 @@ describe("AnswerTracking — cross-site isolation (bug fix regression)", () => {
     renderAT({ currentScanDomain: "webpulseindia.com" });
 
     await waitFor(() => expect(screen.getByTestId("answer-simulator")).toBeTruthy());
-    const indicator = document.querySelector(".au-at-context");
+    const indicator = document.querySelector(".sp-at-context");
     expect(indicator.textContent).toContain("webpulseindia.com");
   });
 
@@ -136,7 +136,7 @@ describe("AnswerTracking — cross-site isolation (bug fix regression)", () => {
     // even though currentScanDomain points elsewhere, an explicit id in the URL is authoritative
     expect(getMonitorAnswerTracking).toHaveBeenCalledWith("mon-webpulse");
     // Phase H: the mismatch is surfaced, never silently invisible, but never blocks the user
-    const warning = document.querySelector(".au-at-mismatch");
+    const warning = document.querySelector(".sp-at-mismatch");
     expect(warning.textContent).toContain("webpulseindia.com");
     expect(warning.textContent).toContain("thedocmirror.com");
   });
@@ -150,6 +150,6 @@ describe("AnswerTracking — cross-site isolation (bug fix regression)", () => {
     renderAT({ selectedMonitorId: "mon-webpulse", currentScanDomain: "webpulseindia.com" });
 
     await waitFor(() => expect(screen.getByTestId("answer-simulator")).toBeTruthy());
-    expect(document.querySelector(".au-at-mismatch")).toBeNull();
+    expect(document.querySelector(".sp-at-mismatch")).toBeNull();
   });
 });

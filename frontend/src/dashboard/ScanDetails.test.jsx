@@ -80,7 +80,7 @@ const REPORT = (recommendations, extra = {}) => ({
 // landing) — this only clicks to open when it isn't already, so it works the same
 // whether the signal auto-expanded or not, without ever accidentally toggling it shut.
 async function openSignal(label) {
-  const head = screen.getByText(label).closest(".au-sd-sig-head");
+  const head = screen.getByText(label).closest(".sp-sd-sig-head");
   if (head.getAttribute("aria-expanded") !== "true") fireEvent.click(head);
   return head;
 }
@@ -130,7 +130,7 @@ describe("ScanDetails — Problem/Evidence/Why/Fix", () => {
     // exactly ONE "Evidence" heading in the whole open signal panel — Scan Details'
     // own native block (already asserted above via "last_modified"/"2025-01-01") —
     // never a second one from RecommendationCard (showProblem=false here).
-    const body = head.parentElement.querySelector(".au-sd-sig-body");
+    const body = head.parentElement.querySelector(".sp-sd-sig-body");
     expect(within(body).getAllByText("Evidence").length).toBe(1);
   });
 
@@ -227,7 +227,7 @@ describe("ScanDetails — Problem/Evidence/Why/Fix", () => {
     getReport.mockResolvedValue(REPORT([]));
     render(<ScanDetails scan={SCAN([SITEMAP_PASS])} onBack={() => {}} onRerun={() => {}} />);
     await waitFor(() => expect(getReport).toHaveBeenCalled());
-    const head = screen.getByText("XML Sitemap").closest(".au-sd-sig-head");
+    const head = screen.getByText("XML Sitemap").closest(".sp-sd-sig-head");
     expect(head.getAttribute("aria-expanded")).toBe("false");
     fireEvent.click(head);
     expect(head.getAttribute("aria-expanded")).toBe("true");
@@ -241,9 +241,9 @@ describe("ScanDetails — Problem/Evidence/Why/Fix", () => {
     getReport.mockResolvedValue(REPORT([]));
     render(<ScanDetails scan={SCAN([FRESHNESS_FAIL, SITEMAP_PASS])} onBack={() => {}} onRerun={() => {}} />);
     await waitFor(() => expect(getReport).toHaveBeenCalled());
-    expect(screen.getByText("Freshness").closest(".au-sd-sig-head").getAttribute("aria-expanded")).toBe("true");
+    expect(screen.getByText("Freshness").closest(".sp-sd-sig-head").getAttribute("aria-expanded")).toBe("true");
     expect(screen.getByText("Important content appears outdated.")).toBeTruthy();   // visible with no click
-    expect(screen.getByText("XML Sitemap").closest(".au-sd-sig-head").getAttribute("aria-expanded")).toBe("false");
+    expect(screen.getByText("XML Sitemap").closest(".sp-sd-sig-head").getAttribute("aria-expanded")).toBe("false");
   });
 
   it("does not fetch the report for a bulk scan (no signal-analysis panel to enrich)", async () => {
@@ -278,7 +278,7 @@ describe("ScanDetails — Fix Verification V2 (persisted history, SCAN -> FIX ->
     render(<ScanDetails scan={SCAN(sections)} scans={scansList} onBack={() => {}} onRerun={() => {}} canRun />);
     // FAIL_SIGNAL has real issues, so it's already expanded by default — only click
     // to open if it genuinely isn't (never toggle an already-open signal shut).
-    const head = screen.getByText("Schema").closest(".au-sd-sig-head");
+    const head = screen.getByText("Schema").closest(".sp-sd-sig-head");
     if (head.getAttribute("aria-expanded") !== "true") fireEvent.click(head);
     fireEvent.click(screen.getByText("Verify after re-scan"));
   }
@@ -307,7 +307,7 @@ describe("ScanDetails — Fix Verification V2 (persisted history, SCAN -> FIX ->
     expect(screen.getByText("FAIL · 42")).toBeTruthy();
     expect(screen.getByText("PASS · 91")).toBeTruthy();
     expect(screen.getByText("Score change: +49")).toBeTruthy();
-    const resultBox = document.querySelector(".au-sd-verify-result");
+    const resultBox = document.querySelector(".sp-sd-verify-result");
     expect(within(resultBox).getByText("Organization schema missing")).toBeTruthy();
     expect(getVerifications).toHaveBeenCalledWith("s1");
   });
@@ -321,8 +321,8 @@ describe("ScanDetails — Fix Verification V2 (persisted history, SCAN -> FIX ->
     // "Partially improved" appears twice on screen by design: the compact header
     // badge (always visible once data loads) and the full panel's own title — scope
     // to the panel to avoid that expected duplication.
-    await waitFor(() => expect(document.querySelector(".au-sd-verify-result")).toBeTruthy());
-    expect(within(document.querySelector(".au-sd-verify-result")).getByText("Partially improved")).toBeTruthy();
+    await waitFor(() => expect(document.querySelector(".sp-sd-verify-result")).toBeTruthy());
+    expect(within(document.querySelector(".sp-sd-verify-result")).getByText("Partially improved")).toBeTruthy();
     expect(screen.getByText("Still needs attention")).toBeTruthy();
     expect(screen.queryByText("Verified after re-scan")).toBeNull();
   });
@@ -368,8 +368,8 @@ describe("ScanDetails — Fix Verification V2 (persisted history, SCAN -> FIX ->
       evidence_changes: [{ key: "organization_entity", before: "not_detected", after: "detected" }],
     })] });
     await openVerifyPanel();
-    await waitFor(() => expect(document.querySelector(".au-sd-verify-result")).toBeTruthy());
-    const resultBox = within(document.querySelector(".au-sd-verify-result"));
+    await waitFor(() => expect(document.querySelector(".sp-sd-verify-result")).toBeTruthy());
+    const resultBox = within(document.querySelector(".sp-sd-verify-result"));
     expect(resultBox.getByText("organization_entity")).toBeTruthy();
     expect(resultBox.getByText("not_detected → detected")).toBeTruthy();
   });
@@ -428,7 +428,7 @@ describe("ScanDetails — Fix Verification V2 (persisted history, SCAN -> FIX ->
     getVerifications.mockResolvedValue({ verifications: [VERIFICATION()] });
     render(<ScanDetails scan={SCAN([FAIL_SIGNAL])} scans={SCANS_LIST} onBack={() => {}} onRerun={() => {}} canRun />);
     await waitFor(() => expect(getVerifications).toHaveBeenCalled());
-    const head = screen.getByText("Schema").closest(".au-sd-sig-head");
+    const head = screen.getByText("Schema").closest(".sp-sd-sig-head");
     expect(within(head).getByText("Verified")).toBeTruthy();
   });
 
@@ -437,7 +437,7 @@ describe("ScanDetails — Fix Verification V2 (persisted history, SCAN -> FIX ->
     getReport.mockResolvedValue({ recommendations: [] });
     getVerifications.mockResolvedValue({ verifications: [] });
     render(<ScanDetails scan={SCAN([passSignal])} scans={SCANS_LIST} onBack={() => {}} onRerun={() => {}} canRun />);
-    fireEvent.click(screen.getByText("XML Sitemap").closest(".au-sd-sig-head"));
+    fireEvent.click(screen.getByText("XML Sitemap").closest(".sp-sd-sig-head"));
     await waitFor(() => expect(getReport).toHaveBeenCalled());
     expect(screen.queryByText("Verify after re-scan")).toBeNull();
   });

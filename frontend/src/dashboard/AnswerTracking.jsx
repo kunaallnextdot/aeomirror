@@ -1,7 +1,7 @@
-/* AI Answer Tracking — MIGRATED to Aurora. Data flow, hooks, effects, handlers, polling,
+/* AI Answer Tracking — MIGRATED to Spectrum. Data flow, hooks, effects, handlers, polling,
    and the exported helpers/components (groupByProvider, gapCountLabel, Leaderboard,
    ProviderGroup) are byte-for-byte unchanged; only JSX + class names + chart theming changed.
-   `.aurora-screen`-scoped. (Fixed a latent pre-existing bug: Trash2 was used but never
+   `.spectrum-screen`-scoped. (Fixed a latent pre-existing bug: Trash2 was used but never
    imported — now imported so the prompt delete button works.) */
 import React, { useCallback, useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
@@ -19,19 +19,19 @@ import {
 } from "../api.js";
 import { fmtDate } from "./ui.jsx";
 import { useAuth } from "../auth/AuthContext.jsx";
-import { Shell, Cell, Button, Skeleton } from "./aurora.jsx";
+import { Shell, Cell, Button, Skeleton } from "../shared/spectrum.jsx";
 import { AIVisibilityPanel } from "./AIVisibility.jsx";
 import AnswerSimulator from "./AnswerSimulator.jsx";
 import { useUpgrade } from "./UpgradeModal.jsx";
-import "./AnswerTracking.aurora.css";
+import "./AnswerTracking.spectrum.css";
 
 const RUN_STATUS_LABEL = {
   pending: "Pending", running: "Running", completed: "Completed",
   failed: "Failed", partial: "Partial",
 };
 const RUN_STATUS_COLOR = {
-  completed: "var(--au-mint-d)", partial: "var(--au-lemon-d)", failed: "var(--au-peach-d)",
-  running: "var(--au-primary)", pending: "var(--au-muted)",
+  completed: "var(--sp-blue-d)", partial: "var(--sp-lav-d)", failed: "var(--sp-violet-d)",
+  running: "var(--sp-primary)", pending: "var(--sp-muted)",
 };
 
 export default function AnswerTracking({ selectedMonitorId = null, selectedRunId = null, currentScanDomain = null }) {
@@ -87,21 +87,21 @@ export default function AnswerTracking({ selectedMonitorId = null, selectedRunId
   const domainMismatch = !!(active && currentScanDomain && active.domain !== currentScanDomain);
 
   return (
-    <div className="aurora-screen">
+    <div className="spectrum-screen">
       <Shell>
         <Explainer />
 
         {error && !monitors ? (
-          <Cell solid style={{ marginTop: 14 }}><div className="au-card-center" role="alert">
-            <div className="au-ill au-ill-bad"><AlertTriangle size={26} /></div>
-            <div className="au-card-s" style={{ marginBottom: 20 }}>{error}</div>
-            <Button variant="accent" onClick={load}>Retry</Button>
+          <Cell solid style={{ marginTop: 14 }}><div className="sp-card-center" role="alert">
+            <div className="sp-ill sp-ill-bad"><AlertTriangle size={26} /></div>
+            <div className="sp-card-s" style={{ marginBottom: 20 }}>{error}</div>
+            <Button variant="gradient" onClick={load}>Retry</Button>
           </div></Cell>
         ) : !monitors ? (
           <Cell solid style={{ marginTop: 14 }}><div style={{ display: "flex", flexDirection: "column", gap: 8 }}>{Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} h={44} />)}</div></Cell>
         ) : monitors.length === 0 ? (
           <Cell solid style={{ marginTop: 14 }}>
-            <div className="au-dim" style={{ padding: "10px 2px", fontSize: 13 }}>
+            <div className="sp-dim" style={{ padding: "10px 2px", fontSize: 13 }}>
               No sites yet. Add a site under <b>Monitoring</b> first — Answer Tracking prompts
               belong to a site.
             </div>
@@ -112,8 +112,8 @@ export default function AnswerTracking({ selectedMonitorId = null, selectedRunId
               // Compact context indicator — makes it immediately obvious which site's
               // data is on screen, so a cross-site mismatch (like the one this fixes)
               // is never silently invisible again.
-              <div className="au-at-context">
-                Answer Tracking <span className="au-at-context-domain">{active.domain || active.normalized_url || active.url}</span>
+              <div className="sp-at-context">
+                Answer Tracking <span className="sp-at-context-domain">{active.domain || active.normalized_url || active.url}</span>
               </div>
             )}
 
@@ -121,14 +121,14 @@ export default function AnswerTracking({ selectedMonitorId = null, selectedRunId
               // The user explicitly navigated/selected this monitor — that choice is
               // never overridden — but it doesn't match their current scan's site, so
               // say so plainly rather than leaving it silently ambiguous.
-              <div className="au-at-mismatch">
+              <div className="sp-at-mismatch">
                 You are viewing Answer Tracking for <b>{active.domain}</b>, while this scan is for <b>{currentScanDomain}</b>.
               </div>
             )}
 
             {noDomainMatch && !active && (
               <Cell solid style={{ marginTop: 14 }}>
-                <div className="au-dim" style={{ padding: "10px 2px", fontSize: 13 }}>
+                <div className="sp-dim" style={{ padding: "10px 2px", fontSize: 13 }}>
                   No Answer Tracking site is set up yet for <b>{currentScanDomain}</b>. Add it under{" "}
                   <b>Monitoring</b>, or pick one of your existing tracked sites below.
                 </div>
@@ -136,9 +136,9 @@ export default function AnswerTracking({ selectedMonitorId = null, selectedRunId
             )}
 
             {showSelector && (
-              <div className="au-at-siteselect">
-                <label className="au-at-siteselect-h" htmlFor="at-site">Site</label>
-                <select id="at-site" className="au-select" value={selectedMonitorId || ""}
+              <div className="sp-at-siteselect">
+                <label className="sp-at-siteselect-h" htmlFor="at-site">Site</label>
+                <select id="at-site" className="sp-select" value={selectedMonitorId || ""}
                         onChange={(e) => e.target.value &&
                           navigate(`/app/answer-tracking/${encodeURIComponent(e.target.value)}`)}>
                   <option value="" disabled>Select a site…</option>
@@ -154,7 +154,7 @@ export default function AnswerTracking({ selectedMonitorId = null, selectedRunId
                                     selectedRunId={selectedRunId} canRun={canRun} />
               : showSelector && !noDomainMatch && (
                   <Cell solid style={{ marginTop: 14 }}>
-                    <div className="au-dim" style={{ fontSize: 13, padding: "6px 2px" }}>
+                    <div className="sp-dim" style={{ fontSize: 13, padding: "6px 2px" }}>
                       Select a site above to manage its prompts and see results.
                     </div>
                   </Cell>
@@ -168,7 +168,7 @@ export default function AnswerTracking({ selectedMonitorId = null, selectedRunId
 
 function Explainer() {
   return (
-    <div className="au-at-explainer">
+    <div className="sp-at-explainer">
       <Info size={15} />
       <span>
         The <b>AEO Answer Simulator</b> below estimates how well an AI answer can be supported
@@ -235,7 +235,7 @@ function SiteAnswerTracking({ monitorId, selectedRunId, canRun }) {
     } finally { setBusy(false); }
   };
 
-  if (error && !data) return <Cell solid style={{ marginTop: 14 }}><div className="au-at-err">{error}</div><Button variant="accent" onClick={load}>Retry</Button></Cell>;
+  if (error && !data) return <Cell solid style={{ marginTop: 14 }}><div className="sp-at-err">{error}</div><Button variant="gradient" onClick={load}>Retry</Button></Cell>;
   if (!data) return <Cell solid style={{ marginTop: 14 }}><div style={{ display: "flex", flexDirection: "column", gap: 8 }}>{Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} h={40} />)}</div></Cell>;
 
   const estimate = data.estimate;
@@ -249,20 +249,20 @@ function SiteAnswerTracking({ monitorId, selectedRunId, canRun }) {
     <>
       <AnswerSimulator monitorId={monitorId} canRun={canRun} />
 
-      <details className="au-at-premium">
-        <summary className="au-at-premium-summary">Provider Tracking (Premium)</summary>
-        <div className="au-at-premium-body">
-      <Cell solid className="au-at-detail">
-        <div className="au-at-detail-h">
+      <details className="sp-at-premium">
+        <summary className="sp-at-premium-summary">Provider Tracking (Premium)</summary>
+        <div className="sp-at-premium-body">
+      <Cell solid className="sp-at-detail">
+        <div className="sp-at-detail-h">
           <span>{data.site_name || data.brand_name || data.site_url}</span>
-          <span className="au-at-detail-sub">{data.prompts.length}/{data.max_prompts} prompts</span>
+          <span className="sp-at-detail-sub">{data.prompts.length}/{data.max_prompts} prompts</span>
         </div>
 
-        {error && <div className="au-at-err">{error}</div>}
+        {error && <div className="sp-at-err">{error}</div>}
 
-        <ul className="au-at-prompts">
+        <ul className="sp-at-prompts">
           {data.prompts.length === 0 && (
-            <li className="au-dim" style={{ fontSize: 13 }}>No prompts yet — add one below.</li>
+            <li className="sp-dim" style={{ fontSize: 13 }}>No prompts yet — add one below.</li>
           )}
           {data.prompts.map((p) => (
             <PromptRow key={p.id} p={p} canRun={canRun}
@@ -273,54 +273,54 @@ function SiteAnswerTracking({ monitorId, selectedRunId, canRun }) {
 
         {canRun && (
           <>
-            <div className="au-at-add">
-              <input className="au-input" placeholder={atMax ? "Prompt limit reached" : "Add a prompt…"}
+            <div className="sp-at-add">
+              <input className="sp-input" placeholder={atMax ? "Prompt limit reached" : "Add a prompt…"}
                      value={text} maxLength={2000} disabled={atMax}
                      onChange={(e) => setText(e.target.value)}
                      onKeyDown={(e) => e.key === "Enter" && add()} />
-              <Button variant="accent" disabled={busy || atMax || !text.trim()} onClick={() => add()}>
+              <Button variant="gradient" disabled={busy || atMax || !text.trim()} onClick={() => add()}>
                 <Plus size={15} /> Add
               </Button>
             </div>
             {!atMax && suggestions.length > 0 && (
-              <div className="au-at-suggest">
-                <span className="au-at-suggest-h">Try one:</span>
+              <div className="sp-at-suggest">
+                <span className="sp-at-suggest-h">Try one:</span>
                 {suggestions.map((s) => (
-                  <button key={s} className="au-at-suggest-chip" disabled={busy} onClick={() => add(s)}>
+                  <button key={s} className="sp-at-suggest-chip" disabled={busy} onClick={() => add(s)}>
                     <Plus size={12} /> {s}
                   </button>
                 ))}
               </div>
             )}
-            <div className="au-at-guide">
+            <div className="sp-at-guide">
               Track <b>category queries</b> a buyer would ask — where you’d want to appear:
-              <span className="au-at-guide-good">“best {"<category>"} tools for {"<audience>"}”</span>
-              <span className="au-at-guide-good">“{"<category>"} software compared”</span>
+              <span className="sp-at-guide-good">“best {"<category>"} tools for {"<audience>"}”</span>
+              <span className="sp-at-guide-good">“{"<category>"} software compared”</span>
               Avoid general-knowledge questions unrelated to your category
-              <span className="au-at-guide-bad">“what is agentic AI?”</span>
+              <span className="sp-at-guide-bad">“what is agentic AI?”</span>
               — those show 0% with noisy, irrelevant competitors.
             </div>
           </>
         )}
         {atMax && (
-          <div className="au-at-note">
+          <div className="sp-at-note">
             This site has the maximum of {data.max_prompts} prompts. Remove one to add another.
           </div>
         )}
 
         {canRun && (
-          <div className="au-at-runbar">
-            <Button variant="primary" loading={busy} disabled={busy || noProviders || estCalls === 0} onClick={run}>
+          <div className="sp-at-runbar">
+            <Button variant="gradient" loading={busy} disabled={busy || noProviders || estCalls === 0} onClick={run}>
               {!busy && <Play size={15} />} Run now
             </Button>
-            <div className="au-at-est">
+            <div className="sp-at-est">
               {noProviders ? (
-                <span className="au-at-est-warn">No providers configured — a run would make 0 calls.</span>
+                <span className="sp-at-est-warn">No providers configured — a run would make 0 calls.</span>
               ) : (
                 <>Estimated this run: <b>{estCalls}</b> provider call{estCalls === 1 ? "" : "s"}
                   {estimate?.providers?.length ? <> across {estimate.providers.join(", ")}</> : null}
                   {estCost != null && (
-                    <div className="au-at-est-cost">
+                    <div className="sp-at-est-cost">
                       answers <b>${(estimate.answer_cost_usd ?? 0).toFixed(2)}</b>
                       {" + "}analysis <b>${(estimate.extraction_cost_usd ?? 0).toFixed(2)}</b>
                       {" = "}<b>${estCost.toFixed(2)}</b> total
@@ -331,23 +331,23 @@ function SiteAnswerTracking({ monitorId, selectedRunId, canRun }) {
             </div>
           </div>
         )}
-        {runMsg && <div className={runMsg.ok ? "au-at-run-ok" : "au-at-run-err"}>{runMsg.text}</div>}
+        {runMsg && <div className={runMsg.ok ? "sp-at-run-ok" : "sp-at-run-err"}>{runMsg.text}</div>}
 
         {data.runs?.length > 0 && (
-          <div className="au-at-runs">
-            <div className="au-at-runs-h">Recent runs</div>
+          <div className="sp-at-runs">
+            <div className="sp-at-runs-h">Recent runs</div>
             {data.runs.map((r) => (
-              <Link key={r.id} className="au-at-run-row"
+              <Link key={r.id} className="sp-at-run-row"
                     to={`/app/answer-tracking/${encodeURIComponent(monitorId)}/runs/${encodeURIComponent(r.id)}`}>
-                <span className="au-at-run-status" style={{ color: RUN_STATUS_COLOR[r.status] }}>
+                <span className="sp-at-run-status" style={{ color: RUN_STATUS_COLOR[r.status] }}>
                   {RUN_STATUS_LABEL[r.status] || r.status}
                 </span>
-                <span className="au-at-run-meta">
+                <span className="sp-at-run-meta">
                   {r.total_calls} call{r.total_calls === 1 ? "" : "s"}
                   {r.failed_calls ? ` · ${r.failed_calls} failed` : ""}
                   {r.estimated_cost_usd != null ? ` · $${r.estimated_cost_usd.toFixed(2)}` : ""}
                 </span>
-                <span className="au-at-run-date">{fmtDate(r.completed_at || r.created_at)}</span>
+                <span className="sp-at-run-date">{fmtDate(r.completed_at || r.created_at)}</span>
               </Link>
             ))}
           </div>
@@ -372,28 +372,28 @@ function PromptRow({ p, canRun, onToggle, onRemove, onSaved, onError }) {
   };
 
   return (
-    <li className={`au-at-prompt ${p.is_active ? "" : "off"}`}>
+    <li className={`sp-at-prompt ${p.is_active ? "" : "off"}`}>
       {editing ? (
         <>
-          <input className="au-input" value={val} maxLength={2000} autoFocus
+          <input className="sp-input" value={val} maxLength={2000} autoFocus
                  onChange={(e) => setVal(e.target.value)}
                  onKeyDown={(e) => e.key === "Enter" && save()} />
-          <button className="au-iconbtn" onClick={save} title="Save" aria-label="Save"><Check size={14} /></button>
-          <button className="au-iconbtn" onClick={() => { setEditing(false); setVal(p.text); }} title="Cancel" aria-label="Cancel">
+          <button className="sp-iconbtn" onClick={save} title="Save" aria-label="Save"><Check size={14} /></button>
+          <button className="sp-iconbtn" onClick={() => { setEditing(false); setVal(p.text); }} title="Cancel" aria-label="Cancel">
             <X size={14} />
           </button>
         </>
       ) : (
         <>
-          <span className="au-at-prompt-text">{p.text}</span>
+          <span className="sp-at-prompt-text">{p.text}</span>
           {canRun && (
-            <div className="au-at-prompt-actions">
-              <button className="au-iconbtn" onClick={onToggle}
+            <div className="sp-at-prompt-actions">
+              <button className="sp-iconbtn" onClick={onToggle}
                       title={p.is_active ? "Deactivate" : "Activate"}>
                 {p.is_active ? "Active" : "Off"}
               </button>
-              <button className="au-iconbtn" onClick={() => setEditing(true)} title="Edit"><Pencil size={13} /></button>
-              <button className="au-iconbtn au-danger" onClick={onRemove} title="Remove"><Trash2 size={13} /></button>
+              <button className="sp-iconbtn" onClick={() => setEditing(true)} title="Edit"><Pencil size={13} /></button>
+              <button className="sp-iconbtn sp-danger" onClick={onRemove} title="Remove"><Trash2 size={13} /></button>
             </div>
           )}
         </>
@@ -404,12 +404,12 @@ function PromptRow({ p, canRun, onToggle, onRemove, onSaved, onError }) {
 
 
 /* ============================ Part B — results ============================ */
-const SENT_COLOR = { positive: "var(--au-mint-d)", neutral: "var(--au-muted)", negative: "var(--au-peach-d)" };
+const SENT_COLOR = { positive: "var(--sp-blue-d)", neutral: "var(--sp-muted)", negative: "var(--sp-violet-d)" };
 // A citation's real provenance — never let an LLM-extracted URL read as a provider-
 // reported fact (see backend/app/api/routes_answer_tracking.py's citation_source,
 // mirroring extraction.py's own `result.citations is None` branch exactly).
 const CITATION_SOURCE_LABEL = { provider: "Provider citation", llm_extracted: "Detected from answer" };
-const AXIS = { fill: "var(--au-muted)", fontSize: 10, fontFamily: "'DM Mono', monospace" };
+const AXIS = { fill: "var(--sp-muted)", fontSize: 10, fontFamily: "'DM Mono', monospace" };
 
 function pct(v) { return v == null ? "—" : `${v}%`; }
 
@@ -480,9 +480,9 @@ function ResultsPanel({ monitorId, runs, selectedRunId }) {
 
   if (!target) {
     return (
-      <Cell solid className="au-at-results">
-        <div className="au-panel-h">Results</div>
-        <div className="au-dim" style={{ fontSize: 13, padding: "6px 2px" }}>
+      <Cell solid className="sp-at-results">
+        <div className="sp-panel-h">Results</div>
+        <div className="sp-dim" style={{ fontSize: 13, padding: "6px 2px" }}>
           No runs yet. Run this set to see whether AI assistants mention and cite your brand.
         </div>
       </Cell>
@@ -504,41 +504,41 @@ function ResultsPanel({ monitorId, runs, selectedRunId }) {
     <>
       {/* Phase 3: negative-first AI Visibility framing, above the detailed run breakdown. */}
       {summary && !analysing && <AIVisibilityPanel runId={targetId} />}
-      <Cell solid className="au-at-results">
-      <div className="au-panel-h">Results <span className="au-sub">latest run</span></div>
+      <Cell solid className="sp-at-results">
+      <div className="sp-panel-h">Results <span className="sp-sub">latest run</span></div>
 
-      {error && <div className="au-at-err">{error}</div>}
+      {error && <div className="sp-at-err">{error}</div>}
       {analysing && (
-        <div className="au-at-analysing"><RefreshCw size={14} className="spin" /> Analysing responses…</div>
+        <div className="sp-at-analysing"><RefreshCw size={14} className="spin" /> Analysing responses…</div>
       )}
-      {failedExt && <div className="au-at-err">Analysis failed for this run. Try re-analysing it.</div>}
+      {failedExt && <div className="sp-at-err">Analysis failed for this run. Try re-analysing it.</div>}
 
       {summary && !analysing && (
         <>
           {summary.excluded_extraction_failures > 0 && (
-            <div className="au-at-note"><AlertTriangle size={13} /> {summary.excluded_extraction_failures} sample(s)
+            <div className="sp-at-note"><AlertTriangle size={13} /> {summary.excluded_extraction_failures} sample(s)
               excluded — extraction failed on them (not counted as “not mentioned”).</div>
           )}
 
           {/* headline */}
-          <div className="au-at-headline">
+          <div className="sp-at-headline">
             <div>
-              <div className="au-at-metric-v">{pct(summary.mention_rate)}
+              <div className="sp-at-metric-v">{pct(summary.mention_rate)}
                 {delta != null && <DeltaBadge d={delta} />}
               </div>
-              <div className="au-at-metric-l">Mention rate <span className="au-dim">· {summary.analyzed_count} samples</span></div>
+              <div className="sp-at-metric-l">Mention rate <span className="sp-dim">· {summary.analyzed_count} samples</span></div>
             </div>
             <div>
-              <div className="au-at-metric-v">{summary.citation_count}</div>
-              <div className="au-at-metric-l">Brand citations</div>
+              <div className="sp-at-metric-v">{summary.citation_count}</div>
+              <div className="sp-at-metric-l">Brand citations</div>
               {summary.citation_count === 0 && (
-                <div className="au-at-cite-why">{citationWhy(summary.citation_diagnosis)}</div>
+                <div className="sp-at-cite-why">{citationWhy(summary.citation_diagnosis)}</div>
               )}
             </div>
             {summary.average_position != null && (
               <div>
-                <div className="au-at-metric-v">#{summary.average_position}</div>
-                <div className="au-at-metric-l">Avg. position</div>
+                <div className="sp-at-metric-v">#{summary.average_position}</div>
+                <div className="sp-at-metric-l">Avg. position</div>
               </div>
             )}
           </div>
@@ -550,11 +550,11 @@ function ResultsPanel({ monitorId, runs, selectedRunId }) {
 
           {/* sentiment */}
           {Object.keys(summary.sentiment || {}).length > 0 && (
-            <div className="au-at-block">
-              <div className="au-at-block-h">Sentiment across mentions</div>
-              <div className="au-at-sent">
+            <div className="sp-at-block">
+              <div className="sp-at-block-h">Sentiment across mentions</div>
+              <div className="sp-at-sent">
                 {["positive", "neutral", "negative"].filter((k) => summary.sentiment[k]).map((k) => (
-                  <span key={k} className="au-at-sent-chip" style={{ color: SENT_COLOR[k] }}>
+                  <span key={k} className="sp-at-sent-chip" style={{ color: SENT_COLOR[k] }}>
                     {k}: {summary.sentiment[k]}
                   </span>
                 ))}
@@ -565,9 +565,9 @@ function ResultsPanel({ monitorId, runs, selectedRunId }) {
           {/* per-prompt table — the operational, prompt-level view: does your brand
               appear for THIS query, and the raw provider evidence behind that verdict.
               The aggregate "who's winning your category" leaderboard is in AI Visibility. */}
-          <div className="au-at-block">
-            <div className="au-at-block-h">By prompt <span className="au-dim">· {gapCountLabel(summary.per_prompt)}</span></div>
-            <div className="au-at-ptable">
+          <div className="sp-at-block">
+            <div className="sp-at-block-h">By prompt <span className="sp-dim">· {gapCountLabel(summary.per_prompt)}</span></div>
+            <div className="sp-at-ptable">
               {summary.per_prompt.map((row) => (
                 <PromptResultRow key={row.prompt_id} row={row}
                                  open={expanded === row.prompt_id}
@@ -579,16 +579,16 @@ function ResultsPanel({ monitorId, runs, selectedRunId }) {
 
           {/* cited URLs (full list is Pro — see backend gate_run_summary) */}
           {(summary.cited_urls.length > 0 || summary.locked_cited_url_count > 0) && (
-            <div className="au-at-block">
-              <div className="au-at-block-h">Cited brand URLs</div>
+            <div className="sp-at-block">
+              <div className="sp-at-block-h">Cited brand URLs</div>
               {summary.cited_urls.map((u) => (
-                <div key={u.url} className="au-at-url-row">
-                  <span className="au-at-url">{u.url}</span>
-                  <span className="au-at-url-n">{u.count}×</span>
+                <div key={u.url} className="sp-at-url-row">
+                  <span className="sp-at-url">{u.url}</span>
+                  <span className="sp-at-url-n">{u.count}×</span>
                 </div>
               ))}
               {summary.locked_cited_url_count > 0 && (
-                <button type="button" className="au-at-lb-clear" onClick={() => openUpgrade("ai_visibility")}>
+                <button type="button" className="sp-at-lb-clear" onClick={() => openUpgrade("ai_visibility")}>
                   {summary.locked_cited_url_count} cited URL{summary.locked_cited_url_count === 1 ? "" : "s"} — unlock with Pro
                 </button>
               )}
@@ -610,9 +610,9 @@ export function Leaderboard({ summary, filterEntity, onSelect }) {
   const minApp = summary.leaderboard_min_appearances;
   if (board.length === 0) {
     return (
-      <div className="au-at-block">
-        <div className="au-at-block-h">Who’s winning your category</div>
-        <div className="au-dim" style={{ fontSize: 12 }}>
+      <div className="sp-at-block">
+        <div className="sp-at-block-h">Who’s winning your category</div>
+        <div className="sp-dim" style={{ fontSize: 12 }}>
           No entity was recommended in at least {minApp} samples yet
           {excluded > 0
             ? ` — ${excluded} ${excluded === 1 ? "entity" : "entities"} appeared too rarely to rank.`
@@ -623,37 +623,37 @@ export function Leaderboard({ summary, filterEntity, onSelect }) {
   }
   const maxRate = Math.max(...board.map((e) => e.appearance_rate || 0), 1);
   return (
-    <div className="au-at-block">
-      <div className="au-at-block-h">Who’s winning your category
-        <span className="au-dim"> · click a row to filter prompts below</span></div>
-      <div className="au-at-lb">
-        <div className="au-at-lb-head">
-          <span className="au-at-lb-rank">#</span>
-          <span className="au-at-lb-name">Entity</span>
-          <span className="au-at-lb-delta" title="rank change vs previous run">Δ</span>
-          <span className="au-at-lb-bar" />
-          <span className="au-at-lb-rate">Rate</span>
-          <span className="au-at-lb-cov" title="distinct prompts it appears in">Prompts</span>
-          <span className="au-at-lb-h2h" title="prompts where it appears but you do not">Vs you</span>
+    <div className="sp-at-block">
+      <div className="sp-at-block-h">Who’s winning your category
+        <span className="sp-dim"> · click a row to filter prompts below</span></div>
+      <div className="sp-at-lb">
+        <div className="sp-at-lb-head">
+          <span className="sp-at-lb-rank">#</span>
+          <span className="sp-at-lb-name">Entity</span>
+          <span className="sp-at-lb-delta" title="rank change vs previous run">Δ</span>
+          <span className="sp-at-lb-bar" />
+          <span className="sp-at-lb-rate">Rate</span>
+          <span className="sp-at-lb-cov" title="distinct prompts it appears in">Prompts</span>
+          <span className="sp-at-lb-h2h" title="prompts where it appears but you do not">Vs you</span>
         </div>
         {board.map((e) => {
           const active = filterEntity && filterEntity.name === e.name;
           return (
             <button key={e.name} type="button"
-                    className={`au-at-lb-row${e.is_you ? " you" : ""}${active ? " active" : ""}`}
+                    className={`sp-at-lb-row${e.is_you ? " you" : ""}${active ? " active" : ""}`}
                     onClick={() => onSelect(e)}>
-              <span className="au-at-lb-rank">#{e.rank}</span>
-              <span className="au-at-lb-name">
-                {e.name}{e.is_you && <span className="au-at-lb-tag">you</span>}
+              <span className="sp-at-lb-rank">#{e.rank}</span>
+              <span className="sp-at-lb-name">
+                {e.name}{e.is_you && <span className="sp-at-lb-tag">you</span>}
               </span>
               <RankDelta d={e.rank_delta} />
-              <span className="au-at-lb-bar">
-                <span className="au-at-lb-fill"
+              <span className="sp-at-lb-bar">
+                <span className="sp-at-lb-fill"
                       style={{ width: `${Math.max(2, (e.appearance_rate || 0) / maxRate * 100)}%` }} />
               </span>
-              <span className="au-at-lb-rate">{pct(e.appearance_rate)}</span>
-              <span className="au-at-lb-cov">{e.prompt_coverage}</span>
-              <span className={`au-at-lb-h2h${e.head_to_head > 0 && !e.is_you ? " hot" : ""}`}>
+              <span className="sp-at-lb-rate">{pct(e.appearance_rate)}</span>
+              <span className="sp-at-lb-cov">{e.prompt_coverage}</span>
+              <span className={`sp-at-lb-h2h${e.head_to_head > 0 && !e.is_you ? " hot" : ""}`}>
                 {e.head_to_head > 0 ? e.head_to_head : "—"}
               </span>
             </button>
@@ -661,7 +661,7 @@ export function Leaderboard({ summary, filterEntity, onSelect }) {
         })}
       </div>
       {excluded > 0 && (
-        <div className="au-dim" style={{ fontSize: 11, marginTop: 6 }}>
+        <div className="sp-dim" style={{ fontSize: 11, marginTop: 6 }}>
           {excluded} more {excluded === 1 ? "entity" : "entities"} below the {minApp}-sample
           threshold not shown.
         </div>
@@ -672,21 +672,21 @@ export function Leaderboard({ summary, filterEntity, onSelect }) {
 
 /* Rank movement vs the previous run: up = toward #1 (good). Null when new or no prior run. */
 function RankDelta({ d }) {
-  if (d == null) return <span className="au-at-lb-delta flat">·</span>;
-  if (d === 0) return <span className="au-at-lb-delta flat"><Minus size={10} /></span>;
+  if (d == null) return <span className="sp-at-lb-delta flat">·</span>;
+  if (d === 0) return <span className="sp-at-lb-delta flat"><Minus size={10} /></span>;
   const up = d > 0;
   return (
-    <span className={`au-at-lb-delta ${up ? "up" : "down"}`}>
+    <span className={`sp-at-lb-delta ${up ? "up" : "down"}`}>
       {up ? <ArrowUpRight size={10} /> : <ArrowDownRight size={10} />}{Math.abs(d)}
     </span>
   );
 }
 
 function DeltaBadge({ d }) {
-  if (d === 0) return <span className="au-at-delta flat"><Minus size={12} /> 0</span>;
+  if (d === 0) return <span className="sp-at-delta flat"><Minus size={12} /> 0</span>;
   const up = d > 0;
   return (
-    <span className={`au-at-delta ${up ? "up" : "down"}`}>
+    <span className={`sp-at-delta ${up ? "up" : "down"}`}>
       {up ? <ArrowUpRight size={12} /> : <ArrowDownRight size={12} />}{Math.abs(d)}
     </span>
   );
@@ -695,18 +695,18 @@ function DeltaBadge({ d }) {
 function PromptResultRow({ row, open, onToggle, results }) {
   const group = results && results.prompts ? results.prompts.find((p) => p.prompt_id === row.prompt_id) : null;
   return (
-    <div className={`au-at-prow ${row.is_gap ? "gap" : ""}`}>
-      <button className="au-at-prow-head" onClick={onToggle}>
+    <div className={`sp-at-prow ${row.is_gap ? "gap" : ""}`}>
+      <button className="sp-at-prow-head" onClick={onToggle}>
         {open ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-        <span className="au-at-prow-text">{row.text}</span>
-        {row.irrelevant_hint && <span className="au-at-tag warn" title="No mentions and no category competitors">off-category?</span>}
-        <span className="au-at-prow-rate" style={{ color: row.is_gap ? "var(--au-peach-d)" : "var(--au-ink)" }}>
+        <span className="sp-at-prow-text">{row.text}</span>
+        {row.irrelevant_hint && <span className="sp-at-tag warn" title="No mentions and no category competitors">off-category?</span>}
+        <span className="sp-at-prow-rate" style={{ color: row.is_gap ? "var(--sp-violet-d)" : "var(--sp-ink)" }}>
           {pct(row.mention_rate)}
         </span>
-        <span className="au-at-prow-n">{row.mentions}/{row.samples}</span>
+        <span className="sp-at-prow-n">{row.mentions}/{row.samples}</span>
       </button>
       {open && (
-        <div className="au-at-prow-body">
+        <div className="sp-at-prow-body">
           {/* "Why not you — and what to do" now lives ONLY in the AI Visibility panel's
               Content gaps section above, so it isn't shown twice on this page. */}
           {row.irrelevant_hint && <InformationalHint />}
@@ -723,7 +723,7 @@ function PromptResultRow({ row, open, onToggle, results }) {
 /* CHANGE 4b — informational-prompt hint (never auto-disables/edits the prompt). */
 function InformationalHint() {
   return (
-    <div className="au-at-hint">
+    <div className="sp-at-hint">
       <b>Looks informational.</b> No provider recommended any brand for this question, so it can’t
       measure your visibility — it reads as an informational query, not a buying one. Try a
       category buying query instead, e.g. <i>“best {"<category>"} tools for {"<audience>"}”</i>.
@@ -799,53 +799,53 @@ export function ProviderGroup({ g, ctx }) {
   const [showRaw, setShowRaw] = useState(false);
   const shown = g.identical ? g.samples.slice(0, 1) : g.samples;   // identical => show one
   return (
-    <div className="au-at-verdict">
-      <div className="au-at-verdict-h">
+    <div className="sp-at-verdict">
+      <div className="sp-at-verdict-h">
         <b>{g.provider}</b>
         {g.allExtractionFailed
-          ? <span className="au-at-tag warn">extraction failed</span>
+          ? <span className="sp-at-tag warn">extraction failed</span>
           : g.namedCount > 0
-            ? <span className="au-at-tag ok">Named in {g.namedCount} of {g.total}</span>
-            : <span className="au-at-tag no">Not named in any of {g.total}</span>}
+            ? <span className="sp-at-tag ok">Named in {g.namedCount} of {g.total}</span>
+            : <span className="sp-at-tag no">Not named in any of {g.total}</span>}
         {g.total > 1 && (
           g.identical
-            ? <span className="au-at-tag" title="Both samples agreed">{g.total} identical responses</span>
-            : <span className="au-at-tag warn" title="Samples disagreed — an unstable position">responses differed</span>
+            ? <span className="sp-at-tag" title="Both samples agreed">{g.total} identical responses</span>
+            : <span className="sp-at-tag warn" title="Samples disagreed — an unstable position">responses differed</span>
         )}
-        {g.sentiment && <span className="au-at-tag" style={{ color: SENT_COLOR[g.sentiment] }}>{g.sentiment}</span>}
-        {g.position != null && <span className="au-at-tag">#{g.position}</span>}
-        {g.searchOff && <span className="au-at-tag warn" title="These samples ran without web search — citations may be unavailable">no web search</span>}
+        {g.sentiment && <span className="sp-at-tag" style={{ color: SENT_COLOR[g.sentiment] }}>{g.sentiment}</span>}
+        {g.position != null && <span className="sp-at-tag">#{g.position}</span>}
+        {g.searchOff && <span className="sp-at-tag warn" title="These samples ran without web search — citations may be unavailable">no web search</span>}
       </div>
       {g.namedCount > 0 && g.sentence && (
-        <div className="au-at-verdict-body"><div className="au-at-quote">“{g.sentence}”</div></div>
+        <div className="sp-at-verdict-body"><div className="sp-at-quote">“{g.sentence}”</div></div>
       )}
       {g.citations.length > 0 && (
-        <div className="au-at-verdict-body">
+        <div className="sp-at-verdict-body">
           {g.citations.map((c) => (
-            <div key={c.url} className="au-at-cite-row">
-              <a className="au-at-cite" href={c.url} target="_blank" rel="noreferrer">{c.url}</a>
-              <span className="au-at-cite-src">{CITATION_SOURCE_LABEL[c.source] || CITATION_SOURCE_LABEL.llm_extracted}</span>
+            <div key={c.url} className="sp-at-cite-row">
+              <a className="sp-at-cite" href={c.url} target="_blank" rel="noreferrer">{c.url}</a>
+              <span className="sp-at-cite-src">{CITATION_SOURCE_LABEL[c.source] || CITATION_SOURCE_LABEL.llm_extracted}</span>
             </div>
           ))}
         </div>
       )}
       {g.recommended.length > 0 ? (
-        <div className="au-at-verdict-body">
-          <div className="au-at-instead">
-            <span className="au-dim">{g.namedCount > 0 ? "Also recommended:" : "Recommended instead:"}</span>{" "}
+        <div className="sp-at-verdict-body">
+          <div className="sp-at-instead">
+            <span className="sp-dim">{g.namedCount > 0 ? "Also recommended:" : "Recommended instead:"}</span>{" "}
             {g.recommended.map((e, idx) => (
-              <span key={idx} className="au-at-chip">{idx + 1}. {e.name}</span>
+              <span key={idx} className="sp-at-chip">{idx + 1}. {e.name}</span>
             ))}
           </div>
         </div>
       ) : (g.namedCount === 0 && !g.allExtractionFailed && (
-        <div className="au-at-verdict-body"><EmptyRecommendation ctx={ctx} /></div>
+        <div className="sp-at-verdict-body"><EmptyRecommendation ctx={ctx} /></div>
       ))}
-      <button className="au-at-rawtoggle" onClick={() => setShowRaw((s) => !s)}>
+      <button className="sp-at-rawtoggle" onClick={() => setShowRaw((s) => !s)}>
         {showRaw ? "Hide" : "View"} full response{!g.identical && g.total > 1 ? "s" : ""}
       </button>
       {showRaw && (
-        <div className="au-at-verdict-samples">
+        <div className="sp-at-verdict-samples">
           {shown.map((r, i) => (
             <SampleVerdict key={i} r={r} ctx={ctx}
                            label={g.total > 1 && !g.identical ? `Response ${_LETTERS[i]}` : null} />
@@ -859,15 +859,15 @@ export function ProviderGroup({ g, ctx }) {
 /* CHANGE 3 — replaces the useless empty line, in priority order. */
 function EmptyRecommendation({ ctx }) {
   if (ctx?.hasGap) {
-    return <div className="au-dim" style={{ fontSize: 12 }}>
+    return <div className="sp-dim" style={{ fontSize: 12 }}>
       No brand recommended — see “Content gaps” in AI Visibility above for why and what to do.</div>;
   }
   if (ctx?.informational) {
-    return <div className="au-dim" style={{ fontSize: 12 }}>
+    return <div className="sp-dim" style={{ fontSize: 12 }}>
       No provider recommended a brand — this reads as an informational question, not a buying
       query, so it can’t show brand visibility.</div>;
   }
-  return <div className="au-dim" style={{ fontSize: 12 }}>No specific brands were recommended in this response.</div>;
+  return <div className="sp-dim" style={{ fontSize: 12 }}>No specific brands were recommended in this response.</div>;
 }
 
 /* One prompt×provider sample as a structured VERDICT. `label` is a human "Response A/B". */
@@ -875,37 +875,37 @@ function SampleVerdict({ r, label, ctx }) {
   const [showRaw, setShowRaw] = useState(false);
   const mentioned = r.brand_mentioned === true;
   return (
-    <div className="au-at-verdict">
-      <div className="au-at-verdict-h">
+    <div className="sp-at-verdict">
+      <div className="sp-at-verdict-h">
         <b>{r.provider}</b>
-        {label && <span className="au-dim"> · {label}</span>}
+        {label && <span className="sp-dim"> · {label}</span>}
         {r.extraction_failed
-          ? <span className="au-at-tag warn">extraction failed</span>
+          ? <span className="sp-at-tag warn">extraction failed</span>
           : mentioned
-            ? <span className="au-at-tag ok">MENTIONED</span>
-            : <span className="au-at-tag no">NOT MENTIONED</span>}
+            ? <span className="sp-at-tag ok">MENTIONED</span>
+            : <span className="sp-at-tag no">NOT MENTIONED</span>}
         {!r.extraction_failed && mentioned && r.sentiment
-          && <span className="au-at-tag" style={{ color: SENT_COLOR[r.sentiment] }}>{r.sentiment}</span>}
-        {!r.extraction_failed && mentioned && r.position != null && <span className="au-at-tag">#{r.position}</span>}
+          && <span className="sp-at-tag" style={{ color: SENT_COLOR[r.sentiment] }}>{r.sentiment}</span>}
+        {!r.extraction_failed && mentioned && r.position != null && <span className="sp-at-tag">#{r.position}</span>}
       </div>
       {!r.extraction_failed && mentioned && (
-        <div className="au-at-verdict-body">
-          {r.mention_context && <div className="au-at-quote">“{r.mention_context}”</div>}
+        <div className="sp-at-verdict-body">
+          {r.mention_context && <div className="sp-at-quote">“{r.mention_context}”</div>}
           {(r.brand_urls_cited || []).map((u) => (
-            <div key={u} className="au-at-cite-row">
-              <a className="au-at-cite" href={u} target="_blank" rel="noreferrer">{u}</a>
-              <span className="au-at-cite-src">{CITATION_SOURCE_LABEL[r.citation_source] || CITATION_SOURCE_LABEL.llm_extracted}</span>
+            <div key={u} className="sp-at-cite-row">
+              <a className="sp-at-cite" href={u} target="_blank" rel="noreferrer">{u}</a>
+              <span className="sp-at-cite-src">{CITATION_SOURCE_LABEL[r.citation_source] || CITATION_SOURCE_LABEL.llm_extracted}</span>
             </div>
           ))}
         </div>
       )}
       {!r.extraction_failed && !mentioned && (
-        <div className="au-at-verdict-body">
+        <div className="sp-at-verdict-body">
           {(r.recommended_entities || []).length > 0 ? (
-            <div className="au-at-instead">
-              <span className="au-dim">Recommended instead:</span>{" "}
+            <div className="sp-at-instead">
+              <span className="sp-dim">Recommended instead:</span>{" "}
               {r.recommended_entities.map((e, idx) => (
-                <span key={idx} className="au-at-chip">{idx + 1}. {e.name}</span>
+                <span key={idx} className="sp-at-chip">{idx + 1}. {e.name}</span>
               ))}
             </div>
           ) : (
@@ -913,7 +913,7 @@ function SampleVerdict({ r, label, ctx }) {
           )}
         </div>
       )}
-      <button className="au-at-rawtoggle" onClick={() => setShowRaw((s) => !s)}>
+      <button className="sp-at-rawtoggle" onClick={() => setShowRaw((s) => !s)}>
         {showRaw ? "Hide" : "View"} full response
       </button>
       {showRaw && <RawText text={r.raw_response} error={r.error} highlight={r.mention_context} />}
@@ -923,13 +923,13 @@ function SampleVerdict({ r, label, ctx }) {
 
 
 function RawText({ text, error, highlight }) {
-  if (error) return <div className="au-at-raw-t au-dim">No answer — {error}</div>;
-  if (!text) return <div className="au-at-raw-t au-dim">(empty)</div>;
+  if (error) return <div className="sp-at-raw-t sp-dim">No answer — {error}</div>;
+  if (!text) return <div className="sp-at-raw-t sp-dim">(empty)</div>;
   if (highlight && text.includes(highlight)) {
     const [before, after] = text.split(highlight);
-    return <div className="au-at-raw-t">{before}<mark className="au-at-mark">{highlight}</mark>{after}</div>;
+    return <div className="sp-at-raw-t">{before}<mark className="sp-at-mark">{highlight}</mark>{after}</div>;
   }
-  return <div className="au-at-raw-t">{text}</div>;
+  return <div className="sp-at-raw-t">{text}</div>;
 }
 
 function TrendChart({ trend }) {
@@ -942,20 +942,20 @@ function TrendChart({ trend }) {
   const anySearchChange = data.some((d) => d.searchChanged);
   const renderDot = ({ cx, cy, payload }) => (
     payload.changed
-      ? <rect x={cx - 4} y={cy - 4} width={8} height={8} fill="var(--au-lemon-d)" stroke="var(--au-solid)" strokeWidth={1.5} />
-      : <circle cx={cx} cy={cy} r={3} fill="var(--au-primary)" />
+      ? <rect x={cx - 4} y={cy - 4} width={8} height={8} fill="var(--sp-lav-d)" stroke="var(--sp-solid)" strokeWidth={1.5} />
+      : <circle cx={cx} cy={cy} r={3} fill="var(--sp-primary)" />
   );
   return (
-    <div className="au-at-block">
-      <div className="au-at-block-h">Trend <span className="au-dim">· ▪ marks a model{anySearchChange ? " or web-search" : ""} change</span></div>
-      <div className="au-at-chart">
+    <div className="sp-at-block">
+      <div className="sp-at-block-h">Trend <span className="sp-dim">· ▪ marks a model{anySearchChange ? " or web-search" : ""} change</span></div>
+      <div className="sp-at-chart">
         <ResponsiveContainer width="100%" height="100%">
           <LineChart data={data} margin={{ top: 8, right: 10, bottom: 0, left: -22 }}>
-            <CartesianGrid stroke="var(--au-line)" vertical={false} />
+            <CartesianGrid stroke="var(--sp-line)" vertical={false} />
             <XAxis dataKey="date" tick={AXIS} axisLine={false} tickLine={false} />
             <YAxis domain={[0, 100]} tick={AXIS} axisLine={false} tickLine={false} />
-            <Tooltip contentStyle={{ background: "var(--au-solid)", border: "1px solid var(--au-line)", borderRadius: 12, fontSize: 12, boxShadow: "var(--au-sh-s)" }} />
-            <Line type="monotone" dataKey="rate" stroke="var(--au-primary)" strokeWidth={2}
+            <Tooltip contentStyle={{ background: "var(--sp-solid)", border: "1px solid var(--sp-line)", borderRadius: 12, fontSize: 12, boxShadow: "var(--sp-sh-s)" }} />
+            <Line type="monotone" dataKey="rate" stroke="var(--sp-primary)" strokeWidth={2}
                   dot={renderDot} isAnimationActive={false} />
           </LineChart>
         </ResponsiveContainer>
