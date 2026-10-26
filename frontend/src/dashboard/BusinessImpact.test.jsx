@@ -5,6 +5,12 @@ import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
+// jsdom has no ResizeObserver — recharts' <ResponsiveContainer> (used by every
+// chart on this page, now always mounted, even with zero data) needs one.
+global.ResizeObserver = class {
+  observe() {} unobserve() {} disconnect() {}
+};
+
 vi.mock("../api.js", () => ({
   listMonitors: vi.fn(),
   getTrackingStatus: vi.fn(),
@@ -57,7 +63,7 @@ describe("BusinessImpact", () => {
     screen.getByText(/never blocks those/i);
   });
 
-  it("installed but zero sessions in range: an honest 'no data yet' state, not misleading zeros", async () => {
+  it("installed but zero sessions in range: a compact banner, with the full dashboard structure still visible showing real zeros", async () => {
     listMonitors.mockResolvedValue({ monitors: [MONITOR] });
     getTrackingStatus.mockResolvedValue({ site_id: "m1", installed: true, has_tracking_api_key: false });
     getBusinessImpactSummary.mockResolvedValue({
@@ -66,8 +72,52 @@ describe("BusinessImpact", () => {
       has_data: false, is_pro: true, ga4_connected: false,
     });
     render(<MemoryRouter><BusinessImpact /></MemoryRouter>);
-    await waitFor(() => screen.getByText(/no visits have been recorded yet/i));
-    expect(screen.queryByText(/website sessions/i)).toBeNull();
+    // Compact banner, never a full-width panel replacing the page.
+    await waitFor(() => screen.getByText(/No qualifying visits were recorded during this period yet/));
+    screen.getByText(/Try another date range/);
+    // The cards stay visible and show the real zero values — never hidden.
+    screen.getByText("Website sessions");
+    const sessionsCard = screen.getByText("Website sessions").closest(".sp-bi-stat");
+    expect(sessionsCard.textContent).toContain("0");
+    // The chart section also stays visible with its own empty state inline.
+    screen.getByText("Traffic over time");
+    screen.getByText("No traffic recorded for this period yet.");
+  });
+
+  it("Pro + zero data: the source-breakdown and landing-page sections stay visible with their own concise empty messages", async () => {
+    listMonitors.mockResolvedValue({ monitors: [MONITOR] });
+    getTrackingStatus.mockResolvedValue({ site_id: "m1", installed: true, has_tracking_api_key: false });
+    getBusinessImpactSummary.mockResolvedValue({
+      total_sessions: 0, ai_sessions: 0, ai_share_pct: null, ai_conversions: 0,
+      ai_conversion_rate_pct: null, ai_revenue_cents: 0, confirmed_bookings: 0, leads: 0,
+      has_data: false, is_pro: true, ga4_connected: false,
+    });
+    // channels/pages already default to [] in beforeEach.
+    render(<MemoryRouter><BusinessImpact /></MemoryRouter>);
+    await waitFor(() => screen.getByText("Traffic by source"));
+    screen.getByText("No traffic-source data recorded for this period yet.");
+    screen.getByText("Pages worth improving");
+    screen.getByText("Not enough landing-page data recorded for this period yet.");
+  });
+
+  it("an API failure shows the error state only — never stale cards or fabricated zeros from a prior successful load", async () => {
+    listMonitors.mockResolvedValue({ monitors: [MONITOR] });
+    getTrackingStatus.mockResolvedValue({ site_id: "m1", installed: true, has_tracking_api_key: false });
+    getBusinessImpactSummary.mockResolvedValueOnce({
+      total_sessions: 123, ai_sessions: 40, ai_share_pct: 32.5, ai_conversions: 2,
+      ai_conversion_rate_pct: 5, ai_revenue_cents: 500, confirmed_bookings: 1, leads: 1,
+      has_data: true, is_pro: true, ga4_connected: false,
+    });
+    render(<MemoryRouter><BusinessImpact /></MemoryRouter>);
+    await waitFor(() => screen.getByText("123"));   // first (successful) load rendered real data
+
+    // Now the next fetch (triggered by changing the date range) fails outright.
+    getBusinessImpactSummary.mockRejectedValueOnce(new Error("boom"));
+    fireEvent.click(screen.getByText("Last 7 days"));
+    await waitFor(() => screen.getByText("Could not load AI Business Impact data."));
+    // The previous successful numbers must not linger alongside the error.
+    expect(screen.queryByText("123")).toBeNull();
+    expect(screen.queryByText("Website sessions")).toBeNull();
   });
 
   it("renders real summary data, and locks conversion/revenue cards on free plan", async () => {
@@ -133,7 +183,7 @@ describe("BusinessImpact", () => {
     expect(screen.queryByText(/Last event received: none yet/)).toBeNull();
   });
 
-  it("shows a clear empty-state note for the traffic chart instead of silently rendering nothing", async () => {
+  it("keeps the traffic chart's own container+axes visible with an inline empty caption, never a panel replacing it", async () => {
     listMonitors.mockResolvedValue({ monitors: [MONITOR] });
     getTrackingStatus.mockResolvedValue({ site_id: "m1", installed: true, has_tracking_api_key: false });
     getBusinessImpactSummary.mockResolvedValue({
@@ -143,8 +193,10 @@ describe("BusinessImpact", () => {
     });
     getBusinessImpactTrafficOverTime.mockResolvedValue({ series: [] });   // real data exists, but none for the chart
     render(<MemoryRouter><BusinessImpact /></MemoryRouter>);
-    await waitFor(() => screen.getByText(/Not enough daily traffic yet to chart a trend/));
-    screen.getByText(/not necessarily that the site received no traffic/);
+    await waitFor(() => screen.getByText("Traffic over time"));
+    screen.getByText("No traffic recorded for this period yet.");
+    // the chart's own card/heading is still there — not swapped for a generic note
+    expect(document.querySelector(".sp-bi-chart")).toBeTruthy();
   });
 
   it("renders page views and unique visitors as their own real numbers", async () => {

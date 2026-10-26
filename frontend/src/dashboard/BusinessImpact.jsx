@@ -98,6 +98,10 @@ export default function BusinessImpact() {
       ]);
       setSeries(t.series); setChannels(ch?.channels || null); setPages(lp?.pages || null);
     } catch (e) {
+      // Never show stale cards/charts alongside an error banner — a failed
+      // reload (e.g. after changing the date range) must show ONLY the error
+      // state, never a dashboard that looks like it succeeded with zeros.
+      setSummary(null); setSeries(null); setChannels(null); setPages(null);
       setError(e instanceof ScanError ? e.message : "Could not load AI Business Impact data.");
     } finally { setLoading(false); }
   }, [params, monitorId]);
@@ -168,34 +172,25 @@ export default function BusinessImpact() {
                 but if that's unexpected, confirm the snippet is still present on the live site.</p>
             </Cell>
           )}
-          {!summary.has_data ? (
-            <Cell className="sp-bi-card">
-              <Info size={16} />
-              <p>Tracking is installed, but no visits have been recorded yet for this date range.
-                This is a real "no data yet" state, not a measurement error — check back once the
-                site has had some traffic, or widen the date range.</p>
-            </Cell>
-          ) : (
-            <SummaryCards summary={summary} onUpgrade={() => openUpgrade("business_impact")} />
+
+          {/* A real "no qualifying data yet" fact, not an error — the dashboard
+              structure below stays fully visible either way; this is a compact
+              note, never a full-width panel replacing the page. */}
+          {!summary.has_data && (
+            <div className="sp-bi-nodata-banner">
+              <Info size={14} />
+              <span>Your tracking is active. No qualifying visits were recorded during this
+                period yet. Try another date range, or check back after your site receives traffic.</span>
+            </div>
           )}
 
-          {summary.has_data && series && (
-            series.length > 0
-              ? <TrafficChart series={series} />
-              : <ChartEmptyNote label="Not enough daily traffic yet to chart a trend for this date range." />
-          )}
+          <SummaryCards summary={summary} onUpgrade={() => openUpgrade("business_impact")} />
 
-          {summary.is_pro && summary.has_data && channels && (
-            channels.length > 0
-              ? <ChannelBreakdown channels={channels} />
-              : <ChartEmptyNote label="No traffic-source breakdown yet for this date range." />
-          )}
+          {series && <TrafficChart series={series} rangeStart={params.startDate} rangeEnd={params.endDate} />}
 
-          {summary.is_pro && summary.has_data && pages && (
-            pages.length > 0
-              ? <LandingPageTable pages={pages} />
-              : <ChartEmptyNote label="Not enough landing-page data yet for this date range." />
-          )}
+          {summary.is_pro && channels && <ChannelBreakdown channels={channels} />}
+
+          {summary.is_pro && pages && <LandingPageTable pages={pages} />}
         </>
       )}
     </Shell>
@@ -319,19 +314,19 @@ function SummaryCards({ summary, onUpgrade }) {
   );
 }
 
-function ChartEmptyNote({ label }) {
-  return (
-    <Cell className="sp-bi-card">
-      <Info size={16} />
-      <p>{label} This isn't an error — a zero here means no qualifying events were
-        recorded, not necessarily that the site received no traffic at all.</p>
-    </Cell>
-  );
-}
-
-function TrafficChart({ series }) {
-  const channelsPresent = Array.from(new Set(series.flatMap((d) => Object.keys(d.by_channel))));
-  const data = series.map((d) => ({ date: d.date, ...d.by_channel }));
+function TrafficChart({ series, rangeStart, rangeEnd }) {
+  // A real 2-point, all-zero baseline spanning the ACTUAL selected date range —
+  // never a fabricated non-zero value — so the chart's own axes still show the
+  // true date range instead of rendering a blank/degenerate plot area when
+  // there's nothing to chart yet. No <Area> draws from this (no channel keys),
+  // so the result is an honest empty chart, not an invented trend line.
+  const hasData = series.length > 0;
+  const data = hasData
+    ? series.map((d) => ({ date: d.date, ...d.by_channel }))
+    : [{ date: rangeStart }, { date: rangeEnd }];
+  const channelsPresent = hasData
+    ? Array.from(new Set(series.flatMap((d) => Object.keys(d.by_channel))))
+    : [];
   return (
     <Cell className="sp-bi-card">
       <h2><TrendingUp size={16} /> Traffic over time
@@ -343,7 +338,8 @@ function TrafficChart({ series }) {
             <CartesianGrid stroke="var(--sp-line)" vertical={false} />
             <XAxis dataKey="date" tickFormatter={(d) => fmtDate(d)} tick={{ fill: "var(--sp-muted)", fontSize: 10 }}
                    axisLine={false} tickLine={false} />
-            <YAxis allowDecimals={false} tick={{ fill: "var(--sp-muted)", fontSize: 10 }} axisLine={false} tickLine={false} />
+            <YAxis allowDecimals={false} domain={hasData ? undefined : [0, 1]} tick={{ fill: "var(--sp-muted)", fontSize: 10 }}
+                   axisLine={false} tickLine={false} />
             <Tooltip contentStyle={{ background: "var(--sp-solid)", border: "1px solid var(--sp-line)", borderRadius: 12, fontSize: 12 }}
                     labelFormatter={(d) => fmtDate(d)} />
             {channelsPresent.map((ch) => (
@@ -352,12 +348,15 @@ function TrafficChart({ series }) {
             ))}
           </AreaChart>
         </ResponsiveContainer>
+        {!hasData && <p className="sp-bi-chart-caption">No traffic recorded for this period yet.</p>}
       </div>
-      <div className="sp-bi-legend">
-        {channelsPresent.map((ch) => (
-          <span key={ch}><i style={{ background: CHANNEL_COLORS[ch] || "#999" }} />{CHANNEL_LABELS[ch] || ch}</span>
-        ))}
-      </div>
+      {hasData && (
+        <div className="sp-bi-legend">
+          {channelsPresent.map((ch) => (
+            <span key={ch}><i style={{ background: CHANNEL_COLORS[ch] || "#999" }} />{CHANNEL_LABELS[ch] || ch}</span>
+          ))}
+        </div>
+      )}
     </Cell>
   );
 }
@@ -369,28 +368,34 @@ function ChannelBreakdown({ channels }) {
       <h2><Users size={16} /> Traffic by source
         <span className="sp-bi-tip" title="Sessions grouped by first-touch channel — direct, organic search, social, a named AI assistant, or another identifiable referral.">
           <Info size={12} /></span></h2>
-      <div className="sp-bi-chart">
-        <ResponsiveContainer width="100%" height="100%">
-          <RBarChart data={data} margin={{ top: 6, right: 8, bottom: 0, left: -20 }}>
-            <CartesianGrid stroke="var(--sp-line)" vertical={false} />
-            <XAxis dataKey="label" tick={{ fill: "var(--sp-muted)", fontSize: 10 }} axisLine={false} tickLine={false} />
-            <YAxis allowDecimals={false} tick={{ fill: "var(--sp-muted)", fontSize: 10 }} axisLine={false} tickLine={false} />
-            <Tooltip contentStyle={{ background: "var(--sp-solid)", border: "1px solid var(--sp-line)", borderRadius: 12, fontSize: 12 }} />
-            <Bar dataKey="sessions" fill="var(--sp-primary)" radius={[4, 4, 0, 0]} />
-          </RBarChart>
-        </ResponsiveContainer>
-      </div>
-      <table className="sp-bi-table">
-        <thead><tr><th>Source</th><th>Sessions</th><th>Conversions</th><th>Conv. rate</th><th>Revenue</th></tr></thead>
-        <tbody>
-          {data.map((c) => (
-            <tr key={c.channel} className={AI_CHANNELS.includes(c.channel) ? "ai" : ""}>
-              <td>{c.label}</td><td>{c.sessions.toLocaleString()}</td><td>{c.conversions}</td>
-              <td>{c.conversion_rate_pct}%</td><td>{money(c.revenue_cents) || "—"}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+      {!data.length ? (
+        <p className="sp-bi-empty-inline">No traffic-source data recorded for this period yet.</p>
+      ) : (
+        <>
+          <div className="sp-bi-chart">
+            <ResponsiveContainer width="100%" height="100%">
+              <RBarChart data={data} margin={{ top: 6, right: 8, bottom: 0, left: -20 }}>
+                <CartesianGrid stroke="var(--sp-line)" vertical={false} />
+                <XAxis dataKey="label" tick={{ fill: "var(--sp-muted)", fontSize: 10 }} axisLine={false} tickLine={false} />
+                <YAxis allowDecimals={false} tick={{ fill: "var(--sp-muted)", fontSize: 10 }} axisLine={false} tickLine={false} />
+                <Tooltip contentStyle={{ background: "var(--sp-solid)", border: "1px solid var(--sp-line)", borderRadius: 12, fontSize: 12 }} />
+                <Bar dataKey="sessions" fill="var(--sp-primary)" radius={[4, 4, 0, 0]} />
+              </RBarChart>
+            </ResponsiveContainer>
+          </div>
+          <table className="sp-bi-table">
+            <thead><tr><th>Source</th><th>Sessions</th><th>Conversions</th><th>Conv. rate</th><th>Revenue</th></tr></thead>
+            <tbody>
+              {data.map((c) => (
+                <tr key={c.channel} className={AI_CHANNELS.includes(c.channel) ? "ai" : ""}>
+                  <td>{c.label}</td><td>{c.sessions.toLocaleString()}</td><td>{c.conversions}</td>
+                  <td>{c.conversion_rate_pct}%</td><td>{money(c.revenue_cents) || "—"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </>
+      )}
     </Cell>
   );
 }
@@ -398,12 +403,14 @@ function ChannelBreakdown({ channels }) {
 const PRIORITY_LABEL = { high: "High priority", medium: "Medium priority", low: "Low priority", unknown: "Insufficient data" };
 
 function LandingPageTable({ pages }) {
-  if (!pages.length) return null;
   return (
     <Cell className="sp-bi-card">
       <h2>Pages worth improving</h2>
       <p className="sp-bi-sub-sm">Ranked by observed evidence — real sessions, confirmed conversions, and
         existing AEO issues. Never a guaranteed outcome, and never an estimated revenue gain.</p>
+      {!pages.length ? (
+        <p className="sp-bi-empty-inline">Not enough landing-page data recorded for this period yet.</p>
+      ) : (
       <div className="sp-bi-pages">
         {pages.map((p) => (
           <div key={p.url} className={`sp-bi-page pri-${p.priority}`}>
@@ -426,6 +433,7 @@ function LandingPageTable({ pages }) {
           </div>
         ))}
       </div>
+      )}
     </Cell>
   );
 }
