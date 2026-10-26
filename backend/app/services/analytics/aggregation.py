@@ -51,6 +51,8 @@ def summary(db: DbSession, *, org_id: str, monitor_ids: list[str] | None,
     total_sessions = sess_q.count()
     ai_sessions = sess_q.filter(AnalyticsSession.channel.in_(AI_CHANNELS)).count()
 
+    # Server-confirmed only (verified=True) — the only conversions ever counted as
+    # real revenue/bookings/leads (see ingest.record_conversion's own docstring).
     conv_q = _conversion_query(db, org_id, monitor_ids, start, end)
     ai_conv_q = conv_q.filter(AnalyticsSession.channel.in_(AI_CHANNELS))
     ai_conversions = ai_conv_q.count()
@@ -60,6 +62,15 @@ def summary(db: DbSession, *, org_id: str, monitor_ids: list[str] | None,
     confirmed_bookings = conv_q.filter(AnalyticsConversion.event_type == "booking_confirmed").count()
     leads = conv_q.filter(AnalyticsConversion.event_type == "lead_submitted").count()
 
+    # Visitor-reported, NEVER server-confirmed (verified=False) — shown as a
+    # separate, explicitly-unverified count, never folded into the numbers above or
+    # counted as real revenue. A row that gets confirmed later moves from here into
+    # the verified counts above (ingest.record_conversion upgrades the same row).
+    unverified_q = _conversion_query(db, org_id, monitor_ids, start, end, verified_only=False) \
+        .filter(AnalyticsConversion.verified.is_(False))
+    unverified_bookings = unverified_q.filter(AnalyticsConversion.event_type == "booking_confirmed").count()
+    unverified_leads = unverified_q.filter(AnalyticsConversion.event_type == "lead_submitted").count()
+
     return {
         "total_sessions": total_sessions,
         "ai_sessions": ai_sessions,
@@ -68,7 +79,9 @@ def summary(db: DbSession, *, org_id: str, monitor_ids: list[str] | None,
         "ai_conversion_rate_pct": round(ai_conversions / ai_sessions * 100, 2) if ai_sessions else None,
         "ai_revenue_cents": int(ai_revenue_cents),
         "confirmed_bookings": confirmed_bookings,
+        "unverified_bookings": unverified_bookings,
         "leads": leads,
+        "unverified_leads": unverified_leads,
         "has_data": total_sessions > 0,
     }
 

@@ -47,6 +47,14 @@ services:
         value: https://aeomirror.com,https://www.aeomirror.com
       - key: APP_BASE_URL
         value: https://aeomirror.com
+      # The API's OWN public base URL (distinct from APP_BASE_URL, the frontend's).
+      # Used for links the API itself serves — the digest unsubscribe page, and the
+      # AI Business Impact tracker.js/collect URLs baked into every install snippet
+      # (see app/api/routes_tracking.py's _snippet). Unset here, it silently fell
+      # back to config.py's dev default (http://localhost:8000), which is exactly
+      # why production snippets were shipping a localhost tracker URL.
+      - key: API_BASE_URL
+        value: https://api.aeomirror.com
       - key: DATABASE_URL
         fromDatabase:
           name: aeomirror-db

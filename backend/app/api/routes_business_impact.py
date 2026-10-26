@@ -87,7 +87,9 @@ def summary(start_date: str | None = Query(default=None), end_date: str | None =
         data["ai_conversion_rate_pct"] = None
         data["ai_revenue_cents"] = None
         data["confirmed_bookings"] = None
+        data["unverified_bookings"] = None
         data["leads"] = None
+        data["unverified_leads"] = None
     return {
         "range": {"start": start.date().isoformat(), "end": (end - timedelta(days=1)).date().isoformat()},
         "is_pro": is_pro,

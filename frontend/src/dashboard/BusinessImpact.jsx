@@ -247,8 +247,10 @@ function SummaryCards({ summary, onUpgrade }) {
     { key: "ai_conversions", label: "Purchases from AI traffic", value: summary.ai_conversions, locked: summary.ai_conversions === null, tip: "Confirmed conversions attributed to an AI-referred session. Only server-confirmed events count — a visitor-reported event alone is never treated as proof." },
     { key: "ai_conversion_rate_pct", label: "AI conversion rate", value: summary.ai_conversion_rate_pct != null ? `${summary.ai_conversion_rate_pct}%` : "—", locked: summary.ai_conversion_rate_pct === null, tip: "Confirmed AI-attributed conversions divided by AI-referred sessions." },
     { key: "ai_revenue_cents", label: "Revenue attributed to AI", value: money(summary.ai_revenue_cents), locked: summary.ai_revenue_cents === null, tip: "Confirmed purchase revenue from AI-referred sessions only — never an estimate." },
-    { key: "confirmed_bookings", label: "Confirmed bookings", value: summary.confirmed_bookings, locked: summary.confirmed_bookings === null, tip: "Bookings confirmed via the server-to-server tracking API — never inferred from a page visit." },
-    { key: "leads", label: "Leads generated", value: summary.leads, locked: summary.leads === null, tip: "Successful lead submissions recorded by the tracker — not merely visits to a contact page." },
+    { key: "confirmed_bookings", label: "Confirmed bookings", value: summary.confirmed_bookings, locked: summary.confirmed_bookings === null, tip: "Bookings confirmed via the server-to-server tracking API — never inferred from a page visit.",
+      sub: summary.unverified_bookings > 0 ? `+${summary.unverified_bookings} unverified (visitor-reported, not yet confirmed)` : null },
+    { key: "leads", label: "Leads generated", value: summary.leads, locked: summary.leads === null, tip: "Successful lead submissions recorded by the tracker — not merely visits to a contact page.",
+      sub: summary.unverified_leads > 0 ? `+${summary.unverified_leads} unverified (visitor-reported, not yet confirmed)` : null },
   ];
   return (
     <div className="sp-bi-cards">
@@ -261,7 +263,10 @@ function SummaryCards({ summary, onUpgrade }) {
           {c.locked ? (
             <button className="sp-bi-stat-locked" onClick={onUpgrade}><Lock size={13} /> Pro</button>
           ) : (
-            <div className="sp-bi-stat-v">{c.value ?? "—"}</div>
+            <>
+              <div className="sp-bi-stat-v">{c.value ?? "—"}</div>
+              {c.sub && <div className="sp-bi-stat-sub">{c.sub}</div>}
+            </>
           )}
         </Cell>
       ))}

@@ -565,6 +565,14 @@ class Settings(BaseSettings):
                 missing.append("REDIS_URL (required for shared cache + rate limiting)")
             if not self.jwt_secret:
                 missing.append("JWT_SECRET (required to sign auth tokens)")
+            # Baked into every AI Business Impact tracker.js/collect URL and the
+            # digest-unsubscribe link (see routes_tracking.py) — a forgotten override
+            # here previously shipped "http://localhost:8000" straight into every
+            # customer's production install snippet.
+            if "localhost" in self.api_base_url or "127.0.0.1" in self.api_base_url:
+                missing.append("API_BASE_URL (still the localhost dev default — set the real public API URL)")
+            elif not self.api_base_url.startswith("https://"):
+                missing.append("API_BASE_URL (must be HTTPS in production)")
             if missing:
                 raise ValueError(
                     "Invalid production configuration. Set: " + "; ".join(missing)

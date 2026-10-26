@@ -98,6 +98,22 @@ describe("BusinessImpact", () => {
     screen.getByText("5");
   });
 
+  it("shows unverified leads/bookings as a separate sub-label, never folded into the confirmed count", async () => {
+    listMonitors.mockResolvedValue({ monitors: [MONITOR] });
+    getTrackingStatus.mockResolvedValue({ site_id: "m1", installed: true, has_tracking_api_key: false });
+    getBusinessImpactSummary.mockResolvedValue({
+      total_sessions: 100, ai_sessions: 40, ai_share_pct: 40.0,
+      ai_conversions: 5, ai_conversion_rate_pct: 12.5, ai_revenue_cents: 25000,
+      confirmed_bookings: 2, unverified_bookings: 3, leads: 1, unverified_leads: 4,
+      has_data: true, is_pro: true, ga4_connected: false,
+    });
+    render(<BusinessImpact />);
+    await waitFor(() => screen.getByText("2"));   // confirmed_bookings stays 2, not 5
+    screen.getByText("1");                        // leads stays 1, not 5
+    screen.getByText(/\+3 unverified/);
+    screen.getByText(/\+4 unverified/);
+  });
+
   it("date-range filter re-fetches data for the new range", async () => {
     listMonitors.mockResolvedValue({ monitors: [MONITOR] });
     getTrackingStatus.mockResolvedValue({ site_id: "m1", installed: true, has_tracking_api_key: false });

@@ -20,6 +20,7 @@ from __future__ import annotations
 import logging
 import secrets
 from pathlib import Path
+from urllib.parse import urlparse
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request, Response
 from sqlalchemy import func
@@ -46,6 +47,44 @@ tracking_limiter = RateLimiter(
 
 _TRACKER_JS_PATH = Path(__file__).resolve().parent.parent / "static" / "tracker.js"
 _TRACKER_JS = _TRACKER_JS_PATH.read_text()
+
+
+def _host(url: str | None) -> str | None:
+    """Lowercased hostname with a leading 'www.' stripped, or None. Same www-folding
+    convention as app.scanner.bulk.normalize_dedup_key, so "example.com" and
+    "www.example.com" are always the same host for this comparison."""
+    if not url:
+        return None
+    try:
+        host = urlparse(url).hostname
+    except ValueError:
+        return None
+    if not host:
+        return None
+    host = host.lower()
+    return host[4:] if host.startswith("www.") else host
+
+
+def _origin_allowed(request: Request, monitor: Monitor) -> bool:
+    """Best-effort check that this beacon actually came from a page served on the
+    site this `site_id` belongs to, using the browser-set Origin/Referer headers —
+    NOT the event body's own `url`/`referrer` fields, which are just JS-supplied
+    claims an attacker's own page could set to anything. Origin/Referer are set by
+    the browser itself and can't be overridden by page JS, even cross-origin.
+
+    Fails OPEN (returns True) when neither header is present: some privacy-hardened
+    browsers/extensions strip both, and the tracker's own first rule is to never
+    break a legitimate install over an edge case it can't actually verify. This is
+    not a confidentiality boundary (site_id is already public, embedded in HTML) —
+    it only raises the cost of casually pointing an unrelated page at someone else's
+    site_id to pollute their session counts."""
+    request_host = _host(request.headers.get("origin")) or _host(request.headers.get("referer"))
+    if not request_host:
+        return True
+    monitor_host = _host(monitor.normalized_url) or _host(monitor.url)
+    if not monitor_host:
+        return True
+    return request_host == monitor_host or request_host.endswith("." + monitor_host)
 
 # A public, write-only beacon endpoint — any origin may POST to it by design (that's
 # the whole point of an embeddable tracker). The tracker itself avoids a CORS
@@ -96,6 +135,13 @@ def collect(body: TrackBatch, request: Request, db: Session = Depends(get_db)):
         # an installer "that id doesn't exist" is a legitimate, expected debugging
         # signal, not a confidentiality leak.
         raise HTTPException(status_code=404, detail="Unknown site id.", headers=_CORS_HEADERS)
+    if not _origin_allowed(request, monitor):
+        # A real Origin/Referer was present and didn't match this site_id's own
+        # domain — most likely a page pointed at someone else's site_id. Rejected
+        # outright rather than silently dropped, so a misconfigured install (e.g. a
+        # genuinely different subdomain) is an obvious, debuggable 403, not missing data.
+        raise HTTPException(status_code=403, detail="Origin not authorized for this site id.",
+                            headers=_CORS_HEADERS)
 
     processed = 0
     for ev in body.events:

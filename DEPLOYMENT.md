@@ -38,7 +38,13 @@ PostgreSQL, Redis).
 `ENVIRONMENT=production`, `SCHEDULER_ENABLED=false` (web) / `true` (worker),
 `ENABLE_HSTS=true`, `TRUST_PROXY=true`,
 `CORS_ORIGINS=https://aeomirror.com,https://www.aeomirror.com`,
-`APP_BASE_URL=https://aeomirror.com`.
+`APP_BASE_URL=https://aeomirror.com`, `API_BASE_URL=https://api.aeomirror.com`.
+
+`API_BASE_URL` must be the API's own public URL (not the frontend's) — it's baked
+into every AI Business Impact tracking snippet (`GET /monitors/{id}/tracking`) and
+the digest-unsubscribe link. Confirm it after any deploy:
+`curl -s https://api.aeomirror.com/t/tracker.js | head -c 40` should return the
+tracker source, not a 404/localhost reference.
 
 In production the config validator **fails fast** unless `DATABASE_URL` (non-SQLite),
 `REDIS_URL`, and `JWT_SECRET` are set.

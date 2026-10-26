@@ -109,6 +109,52 @@ def test_collect_conversion_is_never_verified_from_the_public_path():
         db.close()
 
 
+def test_collect_rejects_an_unrelated_origin_spoofing_another_sites_id():
+    owner_client, body = auth_client()
+    monitor_id = _make_monitor(body["organization"]["id"], body["user"]["id"])
+    public = TestClient(app)
+    r = public.post("/t/collect", headers={"Origin": "https://attacker.example"}, json={
+        "site_id": monitor_id,
+        "events": [{"event_id": "e1", "type": "pageview", "session_id": "s1",
+                   "url": "https://attacker.example/"}],
+    })
+    assert r.status_code == 403
+    db = SessionLocal()
+    try:
+        assert db.query(AnalyticsSession).filter_by(monitor_id=monitor_id).count() == 0
+    finally:
+        db.close()
+
+
+def test_collect_allows_the_monitors_own_origin_and_a_subdomain_of_it():
+    owner_client, body = auth_client()
+    monitor_id = _make_monitor(body["organization"]["id"], body["user"]["id"])  # example.com
+    public = TestClient(app)
+    r1 = public.post("/t/collect", headers={"Origin": "https://example.com"}, json={
+        "site_id": monitor_id,
+        "events": [{"event_id": "e1", "type": "pageview", "session_id": "s1", "url": "https://example.com/"}],
+    })
+    r2 = public.post("/t/collect", headers={"Origin": "https://blog.example.com"}, json={
+        "site_id": monitor_id,
+        "events": [{"event_id": "e2", "type": "pageview", "session_id": "s2", "url": "https://blog.example.com/"}],
+    })
+    assert r1.status_code == 204
+    assert r2.status_code == 204
+
+
+def test_collect_allows_requests_with_no_origin_or_referer_at_all():
+    # No signal to check against (e.g. a privacy-hardened browser) — fail open,
+    # never break a legitimate install over a header it can't see.
+    owner_client, body = auth_client()
+    monitor_id = _make_monitor(body["organization"]["id"], body["user"]["id"])
+    public = TestClient(app)
+    r = public.post("/t/collect", json={
+        "site_id": monitor_id,
+        "events": [{"event_id": "e1", "type": "pageview", "session_id": "s1", "url": "https://example.com/"}],
+    })
+    assert r.status_code == 204
+
+
 def test_collect_rate_limited_per_site_and_ip(monkeypatch):
     owner_client, body = auth_client()
     monitor_id = _make_monitor(body["organization"]["id"], body["user"]["id"])

@@ -77,6 +77,35 @@ def test_summary_counts_ai_share_and_only_verified_revenue():
         db.close()
 
 
+def test_summary_separates_unverified_from_confirmed_leads_and_bookings():
+    client, body = auth_client()
+    org_id, user_id = body["organization"]["id"], body["user"]["id"]
+    monitor_id = _make_monitor(org_id, user_id)
+    db = SessionLocal()
+    try:
+        _add_session(db, org_id=org_id, monitor_id=monitor_id, channel="direct")
+        db.flush()
+        _add_conversion(db, org_id=org_id, monitor_id=monitor_id, event_type="lead_submitted",
+                        external_id="lead-confirmed", verified=True)
+        _add_conversion(db, org_id=org_id, monitor_id=monitor_id, event_type="lead_submitted",
+                        external_id="lead-unverified", verified=False)
+        _add_conversion(db, org_id=org_id, monitor_id=monitor_id, event_type="booking_confirmed",
+                        external_id="booking-unverified", verified=False)
+        db.commit()
+
+        start, end = datetime.utcnow() - timedelta(hours=1), datetime.utcnow() + timedelta(hours=1)
+        result = aggregation.summary(db, org_id=org_id, monitor_ids=None, start=start, end=end)
+        # Confirmed counts never include the unverified rows...
+        assert result["leads"] == 1
+        assert result["confirmed_bookings"] == 0
+        # ...and the unverified counts are a SEPARATE, explicit field, never silently
+        # dropped or blended into the confirmed numbers above.
+        assert result["unverified_leads"] == 1
+        assert result["unverified_bookings"] == 1
+    finally:
+        db.close()
+
+
 def test_summary_date_range_excludes_sessions_outside_it():
     client, body = auth_client()
     org_id, user_id = body["organization"]["id"], body["user"]["id"]
@@ -186,6 +215,10 @@ def test_summary_endpoint_nulls_conversion_fields_on_free_plan(monkeypatch):
     assert data["is_pro"] is False
     assert data["ai_revenue_cents"] is None
     assert data["ai_conversions"] is None
+    assert data["confirmed_bookings"] is None
+    assert data["unverified_bookings"] is None
+    assert data["leads"] is None
+    assert data["unverified_leads"] is None
     # But the traffic-share numbers ARE visible on free (explicit product requirement).
     assert "total_sessions" in data
     assert "ai_share_pct" in data
