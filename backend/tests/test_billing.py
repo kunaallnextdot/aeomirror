@@ -118,6 +118,20 @@ def test_webhook_invalid_signature_rejected(monkeypatch):
     assert r.status_code == 400
 
 
+def test_webhook_checkout_completed_with_no_matching_payment_fails_loudly_not_silently(monkeypatch):
+    # Regression: this previously logged at INFO and returned 200/"processed" with
+    # NO Subscription ever created — a real payment could silently vanish. It must
+    # now surface as a failed delivery (500) so Stripe retries and the failure is
+    # visible, rather than falsely reporting success.
+    monkeypatch.setattr(settings, "stripe_webhook_secret", "whsec_test")
+    client, _ = auth_client()
+    event = _stripe_event("checkout.session.completed",
+                          {"client_reference_id": "ref-that-does-not-exist"}, evt_id="evt_no_match_1")
+    r = _post_webhook(client, event, "whsec_test")
+    assert r.status_code == 500
+    assert client.get("/billing/subscription").json()["plan"] == "free"
+
+
 def test_webhook_idempotent(monkeypatch):
     monkeypatch.setattr(settings, "stripe_webhook_secret", "whsec_test")
     client, _ = auth_client()

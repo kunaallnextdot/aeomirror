@@ -19,12 +19,22 @@ from app.db.models import SCAN_COMPLETED, AnalyticsConversion, AnalyticsSession,
 AI_CHANNELS = {"chatgpt", "perplexity", "gemini", "copilot", "claude", "other_identifiable_ai"}
 _MIN_SAMPLE_SESSIONS = 20   # below this, a landing-page recommendation is "insufficient_data"
 
+# Reserved landing-URL marker for a manual diagnostic/verification visit (e.g. "does
+# a real request from the registered domain actually get collected and persisted?"
+# — see ANALYTICS_TRACKING.md's own verification procedure). Any session whose
+# landing_url contains this is excluded from every metric below — a test event must
+# never be mistaken for real customer traffic, and this needs no schema change: the
+# marker lives in the ordinary `url` the tracker already sends (as a query string,
+# e.g. "?aeomirror_diagnostic=1"), the same field every real pageview already uses.
+DIAGNOSTIC_URL_MARKER = "aeomirror_diagnostic"
+
 
 def _session_query(db: DbSession, org_id: str, monitor_ids: list[str] | None,
                    start: datetime, end: datetime):
     q = db.query(AnalyticsSession).filter(
         AnalyticsSession.organization_id == org_id,
         AnalyticsSession.started_at >= start, AnalyticsSession.started_at < end,
+        ~AnalyticsSession.landing_url.contains(DIAGNOSTIC_URL_MARKER, autoescape=True),
     )
     if monitor_ids:
         q = q.filter(AnalyticsSession.monitor_id.in_(monitor_ids))
@@ -51,6 +61,24 @@ def summary(db: DbSession, *, org_id: str, monitor_ids: list[str] | None,
     total_sessions = sess_q.count()
     ai_sessions = sess_q.filter(AnalyticsSession.channel.in_(AI_CHANNELS)).count()
 
+    # Page views: summed from each session's own running count (set at ingest time —
+    # see ingest.record_pageview) rather than a second query against
+    # AnalyticsPageview, matching this module's own "SQL aggregates, bounded
+    # materialization" convention.
+    total_page_views = (sess_q.with_entities(
+        func.coalesce(func.sum(AnalyticsSession.page_view_count), 0)).scalar()) or 0
+
+    # Unique visitors: distinct first-party visitor_id. NULL when the visitor's
+    # browser storage was unavailable (see ingest.get_or_create_session) — those
+    # sessions still count toward total_sessions, just never toward this estimate,
+    # so it is explicitly an estimate, never inflated by double-counting an unknown
+    # visitor as several "unique" ones.
+    unique_visitors = (sess_q.filter(AnalyticsSession.visitor_id.isnot(None))
+                       .with_entities(func.count(func.distinct(AnalyticsSession.visitor_id))).scalar()) or 0
+    ai_unique_visitors = (sess_q.filter(AnalyticsSession.channel.in_(AI_CHANNELS),
+                                        AnalyticsSession.visitor_id.isnot(None))
+                          .with_entities(func.count(func.distinct(AnalyticsSession.visitor_id))).scalar()) or 0
+
     # Server-confirmed only (verified=True) — the only conversions ever counted as
     # real revenue/bookings/leads (see ingest.record_conversion's own docstring).
     conv_q = _conversion_query(db, org_id, monitor_ids, start, end)
@@ -73,7 +101,10 @@ def summary(db: DbSession, *, org_id: str, monitor_ids: list[str] | None,
 
     return {
         "total_sessions": total_sessions,
+        "total_page_views": int(total_page_views),
+        "unique_visitors": unique_visitors,
         "ai_sessions": ai_sessions,
+        "ai_unique_visitors": ai_unique_visitors,
         "ai_share_pct": round(ai_sessions / total_sessions * 100, 1) if total_sessions else None,
         "ai_conversions": ai_conversions,
         "ai_conversion_rate_pct": round(ai_conversions / ai_sessions * 100, 2) if ai_sessions else None,

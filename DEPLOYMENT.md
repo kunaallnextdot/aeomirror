@@ -16,6 +16,21 @@ Production topology and the exact steps to deploy AEOMirror.
 The frontend calls the API over HTTPS with a Bearer access token (in memory) and a
 `SameSite=Strict`, `Secure`, `HttpOnly` refresh cookie.
 
+> **Known deployment drift (discovered 2026-10-26, unresolved):** `api.aeomirror.com`
+> has no DNS record at all (`dns.google/resolve?name=api.aeomirror.com` → NXDOMAIN —
+> checked against Google's public resolver, not just a local one). The live
+> frontend's own compiled bundle (fetched directly from `https://www.aeomirror.com`)
+> calls `https://aeomirror.onrender.com` instead, which does respond correctly. That
+> live API instance also reports `"redis":"not_configured"` on `/healthz`, even
+> though `render.yaml` wires `REDIS_URL` via `fromService` — strong evidence this
+> live Render service's environment variables are **not actually synced with this
+> repo's `render.yaml`** (a Blueprint change to an existing service's env vars
+> generally needs a manual "Sync" in the Render dashboard, or the vars added there
+> directly — pushing to `main` alone does not apply them). Until resolved:
+> `render.yaml`'s `API_BASE_URL` is set to the confirmed-live `aeomirror.onrender.com`
+> host (not `api.aeomirror.com`) below, and whoever has Render dashboard access
+> needs to verify that service's actual env vars match `render.yaml` — see step 5.
+
 ## 1. Backend + worker + DB + Redis — Render
 
 The repository ships a `render.yaml` blueprint (API web service, standalone worker,
@@ -32,19 +47,37 @@ PostgreSQL, Redis).
 3. `DATABASE_URL` and `REDIS_URL` are wired automatically from the managed services.
 4. Deploy. The API container runs `entrypoint.sh` → `alembic upgrade head` → uvicorn
    (2 workers). The worker container runs `python run_worker.py`.
-5. Point `api.aeomirror.com` at the `aeomirror-api` service (Render → Custom Domain).
+5. Point `api.aeomirror.com` at the `aeomirror-api` service (Render → Custom Domain)
+   — **not done as of 2026-10-26** (see the drift note above); until it is, the API
+   is reachable only at its Render-assigned host.
+6. **For an EXISTING service**, a `render.yaml` env var change does not apply itself
+   — go to Render → the service → Environment, and either click **Sync** against
+   this blueprint or add/update the var directly, then manually redeploy.
 
 **Key production env** (defaults set by `render.yaml`):
 `ENVIRONMENT=production`, `SCHEDULER_ENABLED=false` (web) / `true` (worker),
 `ENABLE_HSTS=true`, `TRUST_PROXY=true`,
 `CORS_ORIGINS=https://aeomirror.com,https://www.aeomirror.com`,
-`APP_BASE_URL=https://aeomirror.com`, `API_BASE_URL=https://api.aeomirror.com`.
+`APP_BASE_URL=https://aeomirror.com`, `API_BASE_URL=` the API's real live host
+(see the drift note above for what that actually is right now).
 
 `API_BASE_URL` must be the API's own public URL (not the frontend's) — it's baked
 into every AI Business Impact tracking snippet (`GET /monitors/{id}/tracking`) and
-the digest-unsubscribe link. Confirm it after any deploy:
-`curl -s https://api.aeomirror.com/t/tracker.js | head -c 40` should return the
-tracker source, not a 404/localhost reference.
+the digest-unsubscribe link. Confirm it after any deploy — against whichever host
+is ACTUALLY live (check the frontend bundle or the Render dashboard, don't assume
+the custom domain in this doc is live):
+`curl -s https://<live-api-host>/t/tracker.js | head -c 40` should return the
+tracker source, not a 404/localhost reference, and `curl -s https://<live-api-host>/healthz`
+should show `"redis":"ok"`, not `"not_configured"`, confirming env vars are synced.
+
+**`AUTH_COOKIE_SAMESITE=none`** is required because `APP_BASE_URL` (Vercel) and
+`API_BASE_URL` (Render) are on different registrable domains — a genuinely
+cross-site relationship for cookie purposes. The refresh-token cookie is
+`HttpOnly` + `Secure` already, so `SameSite=none` is the correct, standard
+setting here, not a downgrade; anything stricter means the browser never sends
+the cookie back on the refresh fetch, silently logging every user out on a
+hard page refresh. Production refuses to start if this is misconfigured given
+the actual domains (`app/config.py::_validate_production`).
 
 In production the config validator **fails fast** unless `DATABASE_URL` (non-SQLite),
 `REDIS_URL`, and `JWT_SECRET` are set.

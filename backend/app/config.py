@@ -9,6 +9,8 @@ See INTEGRATIONS.md (A1 Postgres, A3 Redis, B1 Email) and PHASE_1_*.md.
 """
 from __future__ import annotations
 
+from urllib.parse import urlparse
+
 from pydantic import field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -573,6 +575,27 @@ class Settings(BaseSettings):
                 missing.append("API_BASE_URL (still the localhost dev default — set the real public API URL)")
             elif not self.api_base_url.startswith("https://"):
                 missing.append("API_BASE_URL (must be HTTPS in production)")
+            # The refresh-token cookie (_set_refresh_cookie in routes_auth.py) is set
+            # by the API and read back by a fetch() from the FRONTEND's own origin —
+            # whenever that frontend is hosted on a different registrable domain than
+            # the API (e.g. a Vercel app calling a Render API, this app's actual
+            # topology), that is a cross-SITE request. A SameSite=strict/lax cookie is
+            # never attached to a cross-site request, by browsers' own rules — no CORS
+            # setting can override that. The silent result: every user's session
+            # "refresh" on page load fails every single time, logging them out on any
+            # hard refresh, even though their session is perfectly valid server-side.
+            app_host = (urlparse(self.app_base_url).hostname or "").lower()
+            api_host = (urlparse(self.api_base_url).hostname or "").lower()
+            def _registrable(host: str) -> str:
+                parts = host.split(".")
+                return ".".join(parts[-2:]) if len(parts) >= 2 else host
+            if (app_host and api_host and _registrable(app_host) != _registrable(api_host)
+                    and self.auth_cookie_samesite.lower() != "none"):
+                missing.append(
+                    f"AUTH_COOKIE_SAMESITE (must be 'none' — the frontend ({app_host}) "
+                    f"and API ({api_host}) are on different domains, so a stricter "
+                    "SameSite value silently breaks session refresh on every page load)"
+                )
             if missing:
                 raise ValueError(
                     "Invalid production configuration. Set: " + "; ".join(missing)

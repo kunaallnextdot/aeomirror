@@ -5,6 +5,7 @@
    (AiTraffic.jsx) — both are shown with a clear source label, never blended into
    one number (see routes_business_impact.py's module docstring on why). */
 import React, { useCallback, useEffect, useMemo, useState } from "react";
+import { Link } from "react-router-dom";
 import {
   BarChart3, Check, Copy, Info, Lock, RefreshCw, TrendingUp, Users,
 } from "lucide-react";
@@ -122,6 +123,14 @@ export default function BusinessImpact() {
     <Shell className="sp-bi">
       <Header />
 
+      {summary?.ga4_connected && (
+        <p className="sp-bi-ga4-note">
+          This page is AEOMirror's own first-party tracking, kept separate from your connected
+          Google Analytics — see <Link to="/app/analytics/ai-traffic">AI Traffic</Link> for the GA4 view.
+          The two use different definitions and will not match exactly.
+        </p>
+      )}
+
       <div className="sp-bi-toolbar">
         <select className="sp-bi-select" value={monitorId || ""} onChange={(e) => setMonitorId(e.target.value)}>
           {monitors.map((m) => <option key={m.id} value={m.id}>{m.name || m.normalized_url}</option>)}
@@ -133,6 +142,13 @@ export default function BusinessImpact() {
             </button>
           ))}
         </div>
+        {!loading && (
+          <span className="sp-bi-updated">
+            {tracking?.last_event_at
+              ? `Last event received: ${fmtDate(tracking.last_event_at)}`
+              : "Last event received: none yet"}
+          </span>
+        )}
       </div>
 
       {error && <div className="sp-bi-banner err">{error}</div>}
@@ -145,6 +161,13 @@ export default function BusinessImpact() {
 
       {!loading && tracking?.installed && summary && (
         <>
+          {tracking.status === "installed_inactive" && (
+            <Cell className="sp-bi-card">
+              <Info size={16} />
+              <p>No new visits recorded in over a week. This usually just means low traffic —
+                but if that's unexpected, confirm the snippet is still present on the live site.</p>
+            </Cell>
+          )}
           {!summary.has_data ? (
             <Cell className="sp-bi-card">
               <Info size={16} />
@@ -156,12 +179,22 @@ export default function BusinessImpact() {
             <SummaryCards summary={summary} onUpgrade={() => openUpgrade("business_impact")} />
           )}
 
-          {series && series.length > 0 && <TrafficChart series={series} />}
+          {summary.has_data && series && (
+            series.length > 0
+              ? <TrafficChart series={series} />
+              : <ChartEmptyNote label="Not enough daily traffic yet to chart a trend for this date range." />
+          )}
 
-          {summary.is_pro && channels && channels.length > 0 && <ChannelBreakdown channels={channels} />}
+          {summary.is_pro && summary.has_data && channels && (
+            channels.length > 0
+              ? <ChannelBreakdown channels={channels} />
+              : <ChartEmptyNote label="No traffic-source breakdown yet for this date range." />
+          )}
 
-          {summary.is_pro && pages && (
-            <LandingPageTable pages={pages} />
+          {summary.is_pro && summary.has_data && pages && (
+            pages.length > 0
+              ? <LandingPageTable pages={pages} />
+              : <ChartEmptyNote label="Not enough landing-page data yet for this date range." />
           )}
         </>
       )}
@@ -241,15 +274,27 @@ function SetupWizard({ monitorId, tracking, onInstalled }) {
 
 function SummaryCards({ summary, onUpgrade }) {
   const cards = [
+    { key: "unique_visitors", label: "Unique visitors", value: summary.unique_visitors?.toLocaleString(), tip: "Distinct first-party visitor IDs in this date range — an estimate: a visitor whose browser storage is unavailable is still counted as a session, just not toward this number." },
+    { key: "total_page_views", label: "Page views", value: summary.total_page_views?.toLocaleString(), tip: "Every tracked page load, in this date range." },
     { key: "total_sessions", label: "Website sessions", value: summary.total_sessions?.toLocaleString(), tip: "Every visit to a page with the tracking snippet installed, in this date range." },
-    { key: "ai_sessions", label: "Visitors from AI", value: summary.ai_sessions?.toLocaleString(), tip: "Sessions whose first touch was a known AI assistant referral (ChatGPT, Perplexity, Gemini, Copilot, Claude, or another identifiable AI source)." },
+    { key: "ai_sessions", label: "Sessions from AI", value: summary.ai_sessions?.toLocaleString(), tip: "Sessions whose first touch was a known AI assistant referral (ChatGPT, Perplexity, Gemini, Copilot, Claude, or another identifiable AI source)." },
+    { key: "ai_unique_visitors", label: "Visitors from AI", value: summary.ai_unique_visitors?.toLocaleString(), tip: "Distinct visitors whose first touch was a known AI assistant referral." },
     { key: "ai_share_pct", label: "AI traffic share", value: summary.ai_share_pct != null ? `${summary.ai_share_pct}%` : "—", tip: "AI-referred sessions as a share of all sessions." },
-    { key: "ai_conversions", label: "Purchases from AI traffic", value: summary.ai_conversions, locked: summary.ai_conversions === null, tip: "Confirmed conversions attributed to an AI-referred session. Only server-confirmed events count — a visitor-reported event alone is never treated as proof." },
-    { key: "ai_conversion_rate_pct", label: "AI conversion rate", value: summary.ai_conversion_rate_pct != null ? `${summary.ai_conversion_rate_pct}%` : "—", locked: summary.ai_conversion_rate_pct === null, tip: "Confirmed AI-attributed conversions divided by AI-referred sessions." },
-    { key: "ai_revenue_cents", label: "Revenue attributed to AI", value: money(summary.ai_revenue_cents), locked: summary.ai_revenue_cents === null, tip: "Confirmed purchase revenue from AI-referred sessions only — never an estimate." },
-    { key: "confirmed_bookings", label: "Confirmed bookings", value: summary.confirmed_bookings, locked: summary.confirmed_bookings === null, tip: "Bookings confirmed via the server-to-server tracking API — never inferred from a page visit.",
+    { key: "ai_conversions", label: "Purchases from AI traffic", value: summary.ai_conversions, locked: !summary.is_pro, tip: "Confirmed conversions attributed to an AI-referred session. Only server-confirmed events count — a visitor-reported event alone is never treated as proof." },
+    // `locked` is keyed on the account's actual plan, NEVER on the value being
+    // null — ai_conversion_rate_pct is a RATIO (ai_conversions / ai_sessions) that
+    // the backend also returns null for whenever ai_sessions is 0 (a real "not
+    // enough data" case, not a plan restriction). Keying `locked` off the raw value
+    // previously showed a Pro account a false "Pro" paywall for this one card
+    // whenever it had zero AI-referred sessions in the selected range.
+    { key: "ai_conversion_rate_pct", label: "AI conversion rate",
+      value: summary.ai_conversion_rate_pct != null ? `${summary.ai_conversion_rate_pct}%` : "Not enough data yet",
+      locked: !summary.is_pro,
+      tip: "Confirmed AI-attributed conversions divided by AI-referred sessions. Shows \"Not enough data yet\" (not 0%) when there were no AI-referred sessions in this range." },
+    { key: "ai_revenue_cents", label: "Revenue attributed to AI", value: money(summary.ai_revenue_cents), locked: !summary.is_pro, tip: "Confirmed purchase revenue from AI-referred sessions only — never an estimate." },
+    { key: "confirmed_bookings", label: "Confirmed bookings", value: summary.confirmed_bookings, locked: !summary.is_pro, tip: "Bookings confirmed via the server-to-server tracking API — never inferred from a page visit.",
       sub: summary.unverified_bookings > 0 ? `+${summary.unverified_bookings} unverified (visitor-reported, not yet confirmed)` : null },
-    { key: "leads", label: "Leads generated", value: summary.leads, locked: summary.leads === null, tip: "Successful lead submissions recorded by the tracker — not merely visits to a contact page.",
+    { key: "leads", label: "Leads generated", value: summary.leads, locked: !summary.is_pro, tip: "Successful lead submissions recorded by the tracker — not merely visits to a contact page.",
       sub: summary.unverified_leads > 0 ? `+${summary.unverified_leads} unverified (visitor-reported, not yet confirmed)` : null },
   ];
   return (
@@ -274,12 +319,24 @@ function SummaryCards({ summary, onUpgrade }) {
   );
 }
 
+function ChartEmptyNote({ label }) {
+  return (
+    <Cell className="sp-bi-card">
+      <Info size={16} />
+      <p>{label} This isn't an error — a zero here means no qualifying events were
+        recorded, not necessarily that the site received no traffic at all.</p>
+    </Cell>
+  );
+}
+
 function TrafficChart({ series }) {
   const channelsPresent = Array.from(new Set(series.flatMap((d) => Object.keys(d.by_channel))));
   const data = series.map((d) => ({ date: d.date, ...d.by_channel }));
   return (
     <Cell className="sp-bi-card">
-      <h2><TrendingUp size={16} /> Traffic over time</h2>
+      <h2><TrendingUp size={16} /> Traffic over time
+        <span className="sp-bi-tip" title="Sessions per day, broken down by traffic source, for the selected date range.">
+          <Info size={12} /></span></h2>
       <div className="sp-bi-chart">
         <ResponsiveContainer width="100%" height="100%">
           <AreaChart data={data} margin={{ top: 6, right: 8, bottom: 0, left: -20 }}>
@@ -309,7 +366,9 @@ function ChannelBreakdown({ channels }) {
   const data = channels.map((c) => ({ ...c, label: CHANNEL_LABELS[c.channel] || c.channel }));
   return (
     <Cell className="sp-bi-card">
-      <h2><Users size={16} /> Traffic by source</h2>
+      <h2><Users size={16} /> Traffic by source
+        <span className="sp-bi-tip" title="Sessions grouped by first-touch channel — direct, organic search, social, a named AI assistant, or another identifiable referral.">
+          <Info size={12} /></span></h2>
       <div className="sp-bi-chart">
         <ResponsiveContainer width="100%" height="100%">
           <RBarChart data={data} margin={{ top: 6, right: 8, bottom: 0, left: -20 }}>

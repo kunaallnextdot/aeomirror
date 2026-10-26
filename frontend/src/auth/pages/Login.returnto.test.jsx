@@ -23,6 +23,12 @@ describe("Login return-to-intended", () => {
     expect(h.nav).toHaveBeenCalledWith("/app/scans/abc", { replace: true });
   });
 
+  it("returns to a ?next destination that itself carries a query string", () => {
+    window.history.pushState({}, "", "/login?next=" + encodeURIComponent("/app/business-impact?site_id=123"));
+    render(<MemoryRouter><Login /></MemoryRouter>);
+    expect(h.nav).toHaveBeenCalledWith("/app/business-impact?site_id=123", { replace: true });
+  });
+
   it("falls back to /app when there is no next", () => {
     window.history.pushState({}, "", "/login");
     render(<MemoryRouter><Login /></MemoryRouter>);

@@ -16,9 +16,14 @@
 .sp-bi-ranges button{border:none;background:none;padding:6px 12px;border-radius:var(--sp-r-pill);
   font-size:12.5px;color:var(--sp-muted);cursor:pointer;font-family:inherit}
 .sp-bi-ranges button.on{background:var(--sp-primary);color:#fff}
+.sp-bi-updated{font-size:11.5px;color:var(--sp-muted);margin-left:auto;white-space:nowrap}
 
 .sp-bi-banner{padding:10px 14px;border-radius:var(--sp-r-m);font-size:13px;margin-bottom:14px}
 .sp-bi-banner.err{background:var(--sp-t-violet);color:var(--sp-violet-d)}
+.sp-bi-ga4-note{font-size:12.5px;color:var(--sp-muted);background:var(--sp-t-grey);
+  border-radius:var(--sp-r-s);padding:8px 12px;margin-bottom:14px;line-height:1.5}
+.sp-bi-ga4-note a{color:var(--sp-primary);font-weight:600;text-decoration:none}
+.sp-bi-ga4-note a:hover{text-decoration:underline}
 
 .sp-bi-card{background:var(--sp-solid);border:1px solid var(--sp-line);border-radius:var(--sp-r-m);
   padding:18px;box-shadow:var(--sp-sh-s);margin-bottom:14px}

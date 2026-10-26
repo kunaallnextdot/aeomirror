@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import logging
 import secrets
+from datetime import datetime, timedelta
 from pathlib import Path
 from urllib.parse import urlparse
 
@@ -65,6 +66,21 @@ def _host(url: str | None) -> str | None:
     return host[4:] if host.startswith("www.") else host
 
 
+def _monitor_host(monitor: Monitor) -> str | None:
+    """The monitor's own registered host. `Monitor.normalized_url` (see
+    app.api.routes_scan._normalize) is already a BARE host string — no scheme, no
+    "www.", no trailing slash — never a URL `_host()`/urlparse could parse a
+    hostname out of (urlparse("example.com").hostname is None; it has no "//" to
+    mark a netloc). Used directly, lowercased, rather than round-tripped through
+    `_host()`. `monitor.url` (a real, scheme-having URL — see core.ssrf.validate_url)
+    is only the fallback for the (expected never to happen) case normalized_url is
+    somehow empty."""
+    if monitor.normalized_url:
+        host = monitor.normalized_url.strip().lower()
+        return host[4:] if host.startswith("www.") else host
+    return _host(monitor.url)
+
+
 def _origin_allowed(request: Request, monitor: Monitor) -> bool:
     """Best-effort check that this beacon actually came from a page served on the
     site this `site_id` belongs to, using the browser-set Origin/Referer headers —
@@ -81,7 +97,7 @@ def _origin_allowed(request: Request, monitor: Monitor) -> bool:
     request_host = _host(request.headers.get("origin")) or _host(request.headers.get("referer"))
     if not request_host:
         return True
-    monitor_host = _host(monitor.normalized_url) or _host(monitor.url)
+    monitor_host = _monitor_host(monitor)
     if not monitor_host:
         return True
     return request_host == monitor_host or request_host.endswith("." + monitor_host)
@@ -178,12 +194,33 @@ def _snippet(site_id: str) -> str:
     return f'<script defer src="{host}/t/tracker.js" data-site-id="{site_id}"></script>'
 
 
+_STALE_AFTER_DAYS = 7   # heuristic only — see `status`'s own doc below
+
+
+def _tracking_status_label(first_seen, last_seen) -> str:
+    """A coarse, honestly-labeled status for the dashboard to explain, not just a
+    raw boolean. "installed_inactive" is a HEURISTIC (no event in
+    _STALE_AFTER_DAYS), never a confirmed detection of a removed snippet or a
+    collection failure — this architecture has no separate install-time ping, so a
+    real pageview remains the only actual evidence of installation (see
+    tracking_status's own docstring)."""
+    if first_seen is None:
+        return "not_installed"
+    if last_seen is not None and (datetime.utcnow() - last_seen) > timedelta(days=_STALE_AFTER_DAYS):
+        return "installed_inactive"
+    return "active"
+
+
 @router.get("/monitors/{monitor_id}/tracking")
 def tracking_status(monitor_id: str,
                     ctx: AuthContext = Depends(require_permission("report:view")),
                     db: Session = Depends(get_db)):
     """Setup status is based on ACTUAL received events, never assumed from a snippet
-    being copied — installed=True only once a real pageview has been recorded."""
+    being copied — installed=True only once a real pageview has been recorded. This
+    architecture has no dedicated install-time ping/health event; a real pageview IS
+    the detection mechanism, which is why `status` can only ever be one of
+    not_installed/active/installed_inactive — never a distinct "detected but no
+    events" state, since detection and the first event are the same thing here."""
     monitor = _owned_monitor(db, ctx, monitor_id)
     first_seen = (db.query(func.min(AnalyticsSession.started_at))
                  .filter(AnalyticsSession.monitor_id == monitor.id).scalar())
@@ -195,6 +232,7 @@ def tracking_status(monitor_id: str,
         "tracker_url": f"{settings.api_base_url.rstrip('/')}/t/tracker.js",
         "collect_url": f"{settings.api_base_url.rstrip('/')}/t/collect",
         "installed": first_seen is not None,
+        "status": _tracking_status_label(first_seen, last_seen),
         "installed_since": first_seen,
         "last_event_at": last_seen,
         "has_tracking_api_key": bool(monitor.tracking_api_key_hash),

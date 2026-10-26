@@ -1,6 +1,8 @@
 """Public tracking API (app/api/routes_tracking.py) — the collector, tracker.js, and
 the authenticated setup + server-to-server confirm endpoints. Covers validation,
 idempotency, rate limiting, multi-tenant isolation, and auth boundaries."""
+from datetime import datetime, timedelta
+
 from fastapi.testclient import TestClient
 
 from app.config import settings
@@ -61,6 +63,40 @@ def test_collect_pageview_records_a_session_and_pageview():
         assert sessions[0].page_view_count == 1
     finally:
         db.close()
+
+
+def test_collect_pageview_with_no_referrer_or_utm_is_accepted_as_direct():
+    # "missing optional referrer" must never be treated as an error.
+    owner_client, body = auth_client()
+    monitor_id = _make_monitor(body["organization"]["id"], body["user"]["id"])
+    public = TestClient(app)
+    r = public.post("/t/collect", json={
+        "site_id": monitor_id,
+        "events": [{"event_id": "e1", "type": "pageview", "session_id": "s1",
+                   "url": "https://example.com/"}],   # no referrer, no utm_*
+    })
+    assert r.status_code == 204
+    db = SessionLocal()
+    try:
+        s = db.query(AnalyticsSession).filter_by(monitor_id=monitor_id).first()
+        assert s is not None and s.channel == "direct"
+    finally:
+        db.close()
+
+
+def test_collect_rejects_a_structurally_invalid_payload():
+    owner_client, body = auth_client()
+    monitor_id = _make_monitor(body["organization"]["id"], body["user"]["id"])
+    public = TestClient(app)
+    # Missing the required `url` field entirely.
+    r = public.post("/t/collect", json={
+        "site_id": monitor_id,
+        "events": [{"event_id": "e1", "type": "pageview", "session_id": "s1"}],
+    })
+    assert r.status_code == 422
+    # An empty events list is also invalid (min_length=1).
+    r2 = public.post("/t/collect", json={"site_id": monitor_id, "events": []})
+    assert r2.status_code == 422
 
 
 def test_collect_rejects_an_oversized_batch():
@@ -142,6 +178,30 @@ def test_collect_allows_the_monitors_own_origin_and_a_subdomain_of_it():
     assert r2.status_code == 204
 
 
+def test_collect_accepts_the_real_registered_domain_end_to_end_via_post_monitors():
+    # Registers the site through the SAME path a real customer uses (POST /monitors,
+    # which stores normalized_url as a bare host via routes_scan._normalize — no
+    # scheme, no "www." — not a URL urlparse can extract a hostname from), then
+    # sends a collect event with the Origin a real browser on that exact site would
+    # send. Closes the loop end-to-end rather than relying on the DB-insert test
+    # helper's own (coincidentally identical) normalized_url format.
+    client, body = auth_client()
+    monitor_id = client.post("/monitors", json={"url": "https://www.realcustomer.example/",
+                                                 "frequency": "manual"}).json()["id"]
+    public = TestClient(app)
+    r = public.post("/t/collect", headers={"Origin": "https://www.realcustomer.example"}, json={
+        "site_id": monitor_id,
+        "events": [{"event_id": "e1", "type": "pageview", "session_id": "s1",
+                   "url": "https://www.realcustomer.example/"}],
+    })
+    assert r.status_code == 204
+    db = SessionLocal()
+    try:
+        assert db.query(AnalyticsSession).filter_by(monitor_id=monitor_id).count() == 1
+    finally:
+        db.close()
+
+
 def test_collect_allows_requests_with_no_origin_or_referer_at_all():
     # No signal to check against (e.g. a privacy-hardened browser) — fail open,
     # never break a legitimate install over a header it can't see.
@@ -179,6 +239,7 @@ def test_tracking_status_reflects_actual_received_events_not_assumed_installatio
     r = client.get(f"/monitors/{monitor_id}/tracking")
     assert r.status_code == 200
     assert r.json()["installed"] is False
+    assert r.json()["status"] == "not_installed"
 
     public = TestClient(app)
     public.post("/t/collect", json={
@@ -187,6 +248,25 @@ def test_tracking_status_reflects_actual_received_events_not_assumed_installatio
     })
     r2 = client.get(f"/monitors/{monitor_id}/tracking")
     assert r2.json()["installed"] is True
+    assert r2.json()["status"] == "active"
+
+
+def test_tracking_status_flags_a_stale_install_as_inactive_not_an_error():
+    client, body = auth_client()
+    monitor_id = _make_monitor(body["organization"]["id"], body["user"]["id"])
+    db = SessionLocal()
+    try:
+        stale = datetime.utcnow() - timedelta(days=30)
+        db.add(AnalyticsSession(organization_id=body["organization"]["id"], monitor_id=monitor_id,
+                                session_id="old-session", landing_url="https://example.com/",
+                                channel="direct", started_at=stale, last_seen_at=stale, page_view_count=1))
+        db.commit()
+    finally:
+        db.close()
+    r = client.get(f"/monitors/{monitor_id}/tracking")
+    data = r.json()
+    assert data["installed"] is True      # a real event WAS recorded — never downgraded to False
+    assert data["status"] == "installed_inactive"
 
 
 def test_org_a_cannot_see_org_bs_monitor_tracking_status():

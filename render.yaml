@@ -47,14 +47,39 @@ services:
         value: https://aeomirror.com,https://www.aeomirror.com
       - key: APP_BASE_URL
         value: https://aeomirror.com
+      # The frontend (aeomirror.com, Vercel) and this API (its own Render host,
+      # NOT the same domain — see API_BASE_URL's own note below) are genuinely
+      # cross-SITE. config.py's default, AUTH_COOKIE_SAMESITE=strict, is NEVER
+      # sent by the browser on a cross-site request — no CORS setting can change
+      # that — so every user's silent session refresh on page load (auth/client.js
+      # ::refreshSession, called from AuthContext.jsx on mount) failed every time,
+      # logging them straight back out to /login on any hard refresh. 'none'
+      # (paired with Secure=true, already forced on in production, and HttpOnly,
+      # already always on) is the correct, standard setting for this split-domain
+      # topology — not a security downgrade. A production startup check
+      # (app/config.py::_validate_production) now refuses to boot with a stricter
+      # value whenever APP_BASE_URL/API_BASE_URL are on different domains.
+      - key: AUTH_COOKIE_SAMESITE
+        value: none
       # The API's OWN public base URL (distinct from APP_BASE_URL, the frontend's).
       # Used for links the API itself serves — the digest unsubscribe page, and the
       # AI Business Impact tracker.js/collect URLs baked into every install snippet
       # (see app/api/routes_tracking.py's _snippet). Unset here, it silently fell
       # back to config.py's dev default (http://localhost:8000), which is exactly
       # why production snippets were shipping a localhost tracker URL.
+      #
+      # IMPORTANT: this MUST be the actual live API host. DEPLOYMENT.md/README.md
+      # document a custom domain, https://api.aeomirror.com, as canonical — but as
+      # of 2026-10-26 that hostname has NO DNS record at all (confirmed via Google's
+      # public resolver: dns.google/resolve?name=api.aeomirror.com -> NXDOMAIN). The
+      # live frontend's own build (its compiled JS bundle, fetched directly from
+      # https://www.aeomirror.com) calls https://aeomirror.onrender.com, which DOES
+      # respond correctly to /healthz and /t/tracker.js. Pointed at the real,
+      # DNS-confirmed host below — repoint this to api.aeomirror.com ONLY once that
+      # custom domain is actually attached to the Render service and resolves, and
+      # update VITE_API_URL (Vercel) + CORS_ORIGINS/docs to match at the same time.
       - key: API_BASE_URL
-        value: https://api.aeomirror.com
+        value: https://aeomirror.onrender.com
       - key: DATABASE_URL
         fromDatabase:
           name: aeomirror-db

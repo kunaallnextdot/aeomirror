@@ -159,8 +159,14 @@ def _on_checkout_completed(db: Session, data: dict) -> None:
     ref = _ref_from(data)
     payment = (db.query(Payment).filter(Payment.reference == ref).first()) if ref else None
     if not payment:
-        logger.info("checkout_completed: no matching pending payment for ref=%s", ref)
-        return
+        # Raise rather than silently no-op: this previously returned quietly, which
+        # made the webhook report "processed" even though NOTHING happened — a real
+        # customer could pay Stripe and never get a Subscription row, with no visible
+        # failure anywhere. Raising makes routes_billing.py's webhook handler return
+        # 500, so Stripe shows this as a failed delivery (and retries it for up to 3
+        # days) instead of a false success, and PaymentEvent.error records why.
+        logger.warning("checkout_completed: no matching pending payment for ref=%s", ref)
+        raise ValueError(f"No pending payment found for reference={ref!r}.")
     if payment.status == PAY_SUCCEEDED:
         return  # already applied
     payment.status = PAY_SUCCEEDED

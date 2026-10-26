@@ -48,7 +48,14 @@ def _parse_range(start_date: str | None, end_date: str | None) -> tuple[datetime
             raise HTTPException(status_code=422, detail="start_date must be YYYY-MM-DD.")
     if start > end:
         raise HTTPException(status_code=422, detail="start_date must be before end_date.")
-    if (end - start).days > _MAX_RANGE_DAYS:
+    # `end` above is already bumped +1 day (to make end_date's whole day inclusive
+    # in the query's exclusive upper bound), so a request for the dashboard's own
+    # "Last {_MAX_RANGE_DAYS} days" preset — which spans TODAY plus the
+    # _MAX_RANGE_DAYS days before it, i.e. _MAX_RANGE_DAYS + 1 calendar days — always
+    # lands exactly on `(end - start).days == _MAX_RANGE_DAYS + 1`. Comparing against
+    # _MAX_RANGE_DAYS (without the +1) rejected that exact, intended preset with a
+    # false "cannot exceed 90 days" — this is the real off-by-one, not the preset.
+    if (end - start).days > _MAX_RANGE_DAYS + 1:
         raise HTTPException(status_code=422, detail=f"Date range cannot exceed {_MAX_RANGE_DAYS} days.")
     return start, end
 
