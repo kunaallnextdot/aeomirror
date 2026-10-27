@@ -1,12 +1,18 @@
 /* Privacy Policy (/privacy). Public, no auth required. Content is grounded in this
    codebase's actual implementation — see the session's audit for the specific files
-   each claim traces back to. This is a careful draft for the business owner's legal
-   review, not a substitute for one. */
+   each claim traces back to. Restructured (Oct 2026) to directly answer Google OAuth
+   verification's three rejection reasons: (1) who Google user data is shared with,
+   (2) permitted-use / AI-ML / advertising restrictions, each as its own clearly
+   labeled section rather than buried in prose, and (3) this page is now also served
+   as static, pre-rendered HTML (see ../../scripts/prerender-legal.mjs) so Google's
+   review crawler can read it without executing JavaScript. This is a careful draft
+   for the business owner's legal review, not a substitute for one — see the
+   completion report for open items (legal entity name, address, governing region). */
 import React from "react";
 import LegalPage, { Section } from "./LegalPage.jsx";
 
 const SUPPORT_EMAIL = "aeomirror.support@gmail.com";
-const EFFECTIVE_DATE = "October 21, 2026";
+const EFFECTIVE_DATE = "October 27, 2026";
 
 export default function PrivacyPolicy() {
   return (
@@ -17,15 +23,26 @@ export default function PrivacyPolicy() {
       intro={
         <>
           This policy explains what information AEOMirror collects when you use our AI
-          visibility and Answer Engine Optimization (AEO) platform, why we collect it,
-          and the choices available to you. This is a plain-language draft describing
-          our actual data handling — it has not been reviewed by a lawyer, and we
-          encourage you to contact us at{" "}
+          visibility and Answer Engine Optimization (AEO) platform — including when you
+          connect a Google Analytics account — why we collect it, whom we share it
+          with, and the choices available to you. This is a plain-language draft
+          describing our actual data handling — it has not been reviewed by a lawyer,
+          and we encourage you to contact us at{" "}
           <a href={`mailto:${SUPPORT_EMAIL}`}>{SUPPORT_EMAIL}</a> with any questions.
         </>
       }
     >
-      <Section title="1. Information we collect">
+      <Section title="1. Who we are and scope">
+        <p>AEOMirror is an AI visibility and Answer Engine Optimization (AEO) product.
+          It scans websites to report what AI engines such as ChatGPT, Claude, Gemini,
+          and Perplexity can read, understand, and cite, and it offers an optional
+          dashboard showing how much of a site's traffic comes from those AI
+          assistants. This policy applies to AEOMirror's website and product at{" "}
+          <a href="https://aeomirror.com">aeomirror.com</a>, including the optional
+          Google Analytics integration described below.</p>
+      </Section>
+
+      <Section title="2. Information we collect">
         <p><strong>Account information.</strong> When you register, we collect your name,
           email address, and a securely hashed password (we never store your password
           in plain text). If you create or join an organization, we store the
@@ -44,29 +61,37 @@ export default function PrivacyPolicy() {
           revoke your own active sessions.</p>
       </Section>
 
-      <Section title="2. Google Analytics integration (optional)">
+      <Section title="3. Google Account and Google Analytics data">
         <p>AEOMirror offers an optional feature that lets you connect your own Google
           Analytics 4 (GA4) property so we can show which identifiable AI assistants
           (such as ChatGPT, Perplexity, Gemini, Copilot, or Claude) are referring
           visitors to your site. This feature is entirely opt-in — nothing is connected
-          unless you explicitly start the connection from your dashboard.</p>
-        <p>We request only the <strong>read-only</strong> Google Analytics scope
-          (<code>analytics.readonly</code>). We never request write access to your
-          Analytics data, and we never ask for access beyond what this one feature
-          needs.</p>
+          unless you explicitly start the connection from your dashboard, and you see a
+          dedicated consent screen explaining exactly what is about to happen before
+          Google's own authorization page ever opens.</p>
+        <p>We request only one Google permission (OAuth scope): the{" "}
+          <strong>read-only</strong> Google Analytics scope,{" "}
+          <code>https://www.googleapis.com/auth/analytics.readonly</code>. We never
+          request write access to your Analytics data, and we do not request access to
+          Gmail, Google Drive, Google Contacts, Google Calendar, or any other Google
+          product — only this one, read-only Analytics permission.</p>
         <p>When you connect, you choose which GA4 property to share — we only ever show
           you properties your own Google account can already access, and only ever
-          store the one property you select. We do not access any other Google
-          service, email, or file on your account.</p>
-        <p>Your Google refresh token — the credential that lets us fetch your Analytics
-          data on an ongoing basis — is encrypted before it is stored. We never store
-          your Google access token; it is requested fresh for each sync and never
-          persisted. We never display your OAuth tokens to you or to anyone else, and
-          we never include them in logs.</p>
-        <p>Each day, we fetch aggregate session counts from your GA4 property (date,
-          traffic channel, source, and medium — never individual visitor records), and
-          classify each row by a deterministic, rule-based check against a list of
-          known AI-assistant referral domains.</p>
+          store the one property you select. Using that permission, we retrieve
+          aggregate GA4 reporting data for your selected property: daily session
+          counts broken down by date, traffic channel grouping, source, and medium. We
+          never retrieve individual visitor records, personal profiles, or any other
+          Google Analytics report beyond this one aggregate traffic breakdown, and we
+          never retrieve data from any Google property other than the one you select.</p>
+      </Section>
+
+      <Section title="4. How we use Google user data">
+        <p>We use the Google Analytics data described above for exactly one purpose:
+          to classify each day's aggregate sessions by a deterministic, rule-based
+          check against a list of known AI-assistant referral domains, and to display
+          that breakdown to you in your own AEOMirror dashboard as the "AI Traffic"
+          feature. We do not use Google user data for any other feature, for any other
+          customer's account, or for any purpose you have not authorized.</p>
         <p><strong>Important limitation:</strong> Google's Analytics API does not
           provide any way to separately identify a click that came from a Google AI
           Overview versus an ordinary Google organic search result. We do not guess at
@@ -75,33 +100,63 @@ export default function PrivacyPolicy() {
           is honestly labeled "Unattributable," never presented as confirmed AI
           traffic. These are session counts only, not a complete or precise measure of
           AI influence on your traffic.</p>
-        <p>You can disconnect this integration at any time from your dashboard. When
-          you do, we attempt to revoke the credential with Google directly, and we
-          always delete the stored encrypted refresh token from our database
-          immediately, regardless of whether Google's revocation succeeds. Historical
-          traffic numbers already synced before you disconnected are kept (so you
-          don't lose your own historical data), but no further syncing occurs.</p>
-        <p><strong>Google API Services User Data Policy.</strong> AEOMirror's use and
-          transfer of information received from Google APIs to any other app will
-          adhere to the{" "}
+      </Section>
+
+      <Section title="5. How we store and protect Google user data">
+        <p>Your Google refresh token — the one credential that lets us fetch your
+          Analytics data on an ongoing basis — is encrypted before it is stored in our
+          database. We never store your Google access token; it is requested fresh
+          from Google for each sync and is never written to disk or persisted in any
+          form. We never display your OAuth tokens to you or to anyone else, and we
+          never include them in logs.</p>
+        <p>The aggregate daily traffic numbers we retrieve are stored in our own
+          database, associated only with your organization's account, and are not
+          accessible to any other AEOMirror customer.</p>
+      </Section>
+
+      <Section title="6. Data sharing, transfers, and disclosures">
+        <p>We do not sell Google user data, and we do not disclose or transfer it to
+          data brokers, advertisers, or information resellers of any kind.</p>
+        <p>Google user data (your encrypted refresh token and the aggregate GA4 traffic
+          numbers retrieved using it) is stored only in AEOMirror's own database,
+          hosted for us by our infrastructure provider, <strong>Render</strong>, which
+          processes it solely to provide database and hosting infrastructure to
+          AEOMirror — it does not use, read, or analyze that data for its own purposes.
+          Google user data is <strong>not</strong> sent to, or made accessible to, any
+          of our other service providers: not to our AI providers (Anthropic, OpenAI,
+          or Perplexity), not to our payment processor (Stripe), not to our email
+          provider (Resend), and not to Vercel, which hosts only our static frontend
+          files and never receives this data server-side.</p>
+        <p>We disclose Google user data only in these narrow circumstances: (a) to
+          Render, as described above, solely to operate the feature; (b) where required
+          to comply with applicable law, regulation, legal process, or a valid
+          governmental request; (c) where necessary to investigate or prevent fraud,
+          abuse, or a security incident; or (d) as part of a merger, acquisition, or
+          sale of assets — in which case we will notify affected users before their
+          data becomes subject to a different privacy policy. We do not allow any
+          human — employee, contractor, or otherwise — to read your Google Analytics
+          data except where strictly necessary for one of these reasons, or to
+          maintain and debug the feature itself (for example, diagnosing why a sync
+          failed), or with your consent.</p>
+      </Section>
+
+      <Section title="7. Google API Services User Data Policy and Limited Use">
+        <p>AEOMirror's use and transfer of information received from Google APIs to any
+          other app adheres to the{" "}
           <a href="https://developers.google.com/terms/api-services-user-data-policy"
              target="_blank" rel="noreferrer">
             Google API Services User Data Policy
-          </a>, including the Limited Use requirements. Specifically:</p>
+          </a>, including its Limited Use requirements. Specifically:</p>
         <ul>
-          <li>We do not sell Google user data, and we do not transfer it to any third
-            party except where necessary to provide or improve this feature as
-            described above, to comply with applicable law, or as part of a merger,
-            acquisition, or asset sale — in which case we will notify affected users
-            before their data becomes subject to a different privacy policy.</li>
+          <li>We do not transfer Google user data to any third party except where
+            necessary to provide or improve this one feature as described in Section
+            6, to comply with applicable law, or as part of a merger, acquisition, or
+            asset sale with notice to affected users.</li>
           <li>We do not use Google user data, or anything derived from it, to serve
             advertisements of any kind, including personalized or interest-based
             advertising.</li>
-          <li>We do not allow any human — employee, contractor, or otherwise — to read
-            your Google Analytics data, except: with your consent; where strictly
-            necessary for security purposes (for example, investigating a suspected
-            abuse of the service); to comply with applicable law; or to maintain and
-            debug the feature itself (for example, diagnosing why a sync failed).</li>
+          <li>We do not allow any human to read Google user data except in the narrow
+            circumstances described in Section 6.</li>
           <li>We use Google user data only to provide and improve the AI-referral
             traffic dashboard feature described on this page — a user-facing feature
             of AEOMirror consistent with what we disclose here — and for no other
@@ -109,27 +164,61 @@ export default function PrivacyPolicy() {
         </ul>
       </Section>
 
-      <Section title="3. AI processing of submitted content">
-        <p>Some AEOMirror features — AI-written report narratives, Content Insights, and
-          Answer Tracking — send a limited, relevant excerpt of a scanned page's text,
-          or a tracked question, to third-party AI providers (such as Anthropic,
-          OpenAI, or Perplexity, depending on the feature) in order to generate the
-          analysis you requested. These calls happen only when you use the
-          corresponding feature. If an AI provider is not configured or is temporarily
+      <Section title="8. AI and machine learning restrictions">
+        <p>AEOMirror does not use the Google Analytics API, or any other Google API, to
+          develop, improve, or train generalized or non-personalized AI or machine
+          learning models. Google user data obtained through Google APIs is not used
+          for targeted advertising, personalized advertising, or unrelated profiling.</p>
+        <p>Separately from the Google integration, some AEOMirror features — AI-written
+          report narratives, Content Insights, and Answer Tracking — send a limited,
+          relevant excerpt of a scanned page's text, or a tracked question, to
+          third-party AI providers (Anthropic, OpenAI, or Perplexity, depending on the
+          feature) in order to generate the analysis you requested. These calls happen
+          only when you use the corresponding feature, operate on content you submit
+          for scanning (not on Google user data), and never receive your Google
+          Analytics data, your Google refresh token, or any other Google-sourced
+          information. If an AI provider is not configured or is temporarily
           unavailable, affected features fall back to our deterministic, non-AI
           analysis rather than failing silently.</p>
       </Section>
 
-      <Section title="4. How we use information">
-        <p>We use the information described above to operate and improve the product:
-          to run the scans, reports, and monitoring you request; to secure your
-          account and sessions; to send transactional email (account verification,
-          password resets, monitoring alerts, and an optional weekly summary you can
-          opt out of at any time); to process billing through our payment processor;
-          and to respond to support requests.</p>
+      <Section title="9. Data retention and deletion">
+        <p>We retain account and product data for as long as your account is active, so
+          the product continues to work as expected. One automated retention rule
+          currently exists in our system: monitoring change-history snapshots older
+          than 90 days are periodically deleted (we always keep each monitored site's
+          most recent snapshot, regardless of age). Beyond that specific case, we do
+          not currently operate an automatic, blanket deletion schedule for other
+          account or product data.</p>
+        <p><strong>Google data specifically:</strong> your encrypted Google refresh
+          token is deleted immediately when you disconnect the integration (see Section
+          10) or when your account is deleted. Previously synced aggregate GA4 traffic
+          numbers are retained after disconnection, the same way your other historical
+          product data is, unless you ask us to delete them.</p>
+        <p>If you would like your account or data — including previously synced Google
+          traffic data — deleted, please contact us at{" "}
+          <a href={`mailto:${SUPPORT_EMAIL}`}>{SUPPORT_EMAIL}</a> and we will process
+          your request.</p>
       </Section>
 
-      <Section title="5. Cookies and tracking">
+      <Section title="10. Disconnecting a Google account and revoking access">
+        <p>You can disconnect the Google Analytics integration at any time from your
+          dashboard. When you do, we attempt to revoke the credential with Google
+          directly, and we always delete the stored encrypted refresh token from our
+          database immediately, regardless of whether Google's revocation succeeds.
+          You can also revoke AEOMirror's access directly from your Google Account's
+          own{" "}
+          <a href="https://myaccount.google.com/permissions" target="_blank" rel="noreferrer">
+            third-party access settings
+          </a>{" "}
+          at any time, independently of AEOMirror.</p>
+        <p>Historical traffic numbers already synced before you disconnected are kept
+          (so you don't lose your own historical data), but no further syncing occurs.
+          If you would like that historical data deleted as well, contact us at{" "}
+          <a href={`mailto:${SUPPORT_EMAIL}`}>{SUPPORT_EMAIL}</a>.</p>
+      </Section>
+
+      <Section title="11. Cookies and website analytics">
         <p>AEOMirror's own authentication uses a single, first-party cookie to keep you
           signed in. It is HTTP-only (inaccessible to page scripts), transmitted only
           over HTTPS in production, and scoped narrowly to our authentication
@@ -138,65 +227,67 @@ export default function PrivacyPolicy() {
           each configured with privacy-conscious defaults (including IP anonymization
           for Google Analytics) where enabled, to help us understand how visitors use
           our marketing site. These do not run inside the authenticated product
-          dashboard.</p>
+          dashboard, and they are unrelated to — and do not receive any data from —
+          the GA4 integration feature described in Sections 3–10 above.</p>
       </Section>
 
-      <Section title="6. Service providers and infrastructure">
+      <Section title="12. Third-party service providers">
         <p>We rely on a small number of service providers to operate AEOMirror,
-          each processing data only as needed to provide their service to us:</p>
+          each processing data only as needed to provide their service to us. Section
+          6 above states precisely which of these providers can access Google user
+          data specifically — only Render.</p>
         <ul>
           <li><strong>Render</strong> — hosts our backend API, background worker, and
-            database.</li>
-          <li><strong>Vercel</strong> — hosts our frontend application.</li>
+            database (including Google user data, as described in Section 6).</li>
+          <li><strong>Vercel</strong> — hosts our static frontend application files
+            only; does not receive Google user data server-side.</li>
           <li><strong>Google</strong> — provides the optional Analytics integration
             described above.</li>
           <li><strong>Anthropic, OpenAI, and Perplexity</strong> — provide the
-            AI-processing features described above, used only when those features are
-            active.</li>
+            AI-processing features described in Section 8, used only when those
+            features are active, and never receive Google user data.</li>
           <li><strong>Stripe</strong> — processes payments for paid plans. We do not
-            store your full card number; Stripe handles that directly.</li>
-          <li><strong>Resend</strong> — delivers our transactional email.</li>
+            store your full card number; Stripe handles that directly. Stripe never
+            receives Google user data.</li>
+          <li><strong>Resend</strong> — delivers our transactional email. Resend never
+            receives Google user data.</li>
         </ul>
       </Section>
 
-      <Section title="7. Data retention and deletion">
-        <p>We retain account and product data for as long as your account is active, so
-          the product continues to work as expected. One automated retention rule
-          currently exists in our system: monitoring change-history snapshots older
-          than 90 days are periodically deleted (we always keep each monitored site's
-          most recent snapshot, regardless of age). Beyond that specific case, we do
-          not currently operate an automatic, blanket deletion schedule for other
-          account or product data.</p>
-        <p>If you would like your account or data deleted, please contact us at{" "}
-          <a href={`mailto:${SUPPORT_EMAIL}`}>{SUPPORT_EMAIL}</a> and we will process
-          your request.</p>
+      <Section title="13. International data transfers">
+        <p>AEOMirror and its infrastructure providers may process and store data,
+          including Google user data, in a country other than your own. We do not
+          currently commit to a specific processing region; the specific regions in
+          which our infrastructure providers operate will be confirmed here once
+          finalized by AEOMirror.</p>
       </Section>
 
-      <Section title="8. Security">
-        <p>We take reasonable technical measures to protect your information, including
-          password hashing, encryption of the one stored third-party credential
-          (your Google refresh token, if you connect that feature), HTTPS in
-          production, and hashed (not plaintext) storage of IP addresses tied to
-          sessions and anonymous scans. No method of storage or transmission is
-          completely secure, and we cannot guarantee absolute security.</p>
-      </Section>
-
-      <Section title="9. Your rights and choices">
+      <Section title="14. Your rights and choices">
         <p>You can review and revoke your own active login sessions, disconnect the
           Google Analytics integration, opt out of the weekly digest email, and update
           your account details, directly from your dashboard. For any other request —
           including access to, correction of, or deletion of your personal
-          information — contact us at <a href={`mailto:${SUPPORT_EMAIL}`}>{SUPPORT_EMAIL}</a>.</p>
+          information or previously synced Google data — contact us at{" "}
+          <a href={`mailto:${SUPPORT_EMAIL}`}>{SUPPORT_EMAIL}</a>.</p>
       </Section>
 
-      <Section title="10. Changes to this policy">
+      <Section title="15. Children's privacy">
+        <p>AEOMirror is a business tool and is not directed to children. We do not
+          knowingly collect personal information from children under 13. If you
+          believe a child has provided us with personal information, contact us at{" "}
+          <a href={`mailto:${SUPPORT_EMAIL}`}>{SUPPORT_EMAIL}</a> and we will take
+          appropriate steps to delete it.</p>
+      </Section>
+
+      <Section title="16. Changes to this policy">
         <p>We may update this policy as AEOMirror's product changes. We will update the
           "Last updated" date above when we do. Continued use of AEOMirror after a
           change means you accept the updated policy.</p>
       </Section>
 
-      <Section title="11. Contact us">
-        <p>Questions about this policy or your data can be sent to{" "}
+      <Section title="17. Contact information">
+        <p>Questions about this policy, your data, or our Google Analytics integration
+          can be sent to{" "}
           <a href={`mailto:${SUPPORT_EMAIL}`}>{SUPPORT_EMAIL}</a>, or via our{" "}
           <a href="/contact">contact page</a>.</p>
       </Section>

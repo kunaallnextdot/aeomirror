@@ -1,6 +1,8 @@
 /* Privacy Policy (/privacy) + Terms of Service (/terms) — pure rendering tests, same
    isolation convention as PublicReport.test.jsx (render the leaf component directly;
-   neither page calls an API or useAuth(), so no mocking is needed). */
+   neither page calls an API or useAuth(), so no mocking is needed — this also doubles
+   as proof these pages have no authentication dependency, since the full App.jsx
+   route table keeps /privacy and /terms outside the RequireAuth-gated /app/* tree). */
 import React from "react";
 import { render, screen, cleanup } from "@testing-library/react";
 import { describe, it, expect, afterEach } from "vitest";
@@ -19,9 +21,15 @@ describe("PrivacyPolicy", () => {
 
   it("documents the GA4 integration honestly: read-only scope, encrypted refresh token, no access-token storage", () => {
     render(<PrivacyPolicy />);
-    screen.getByText(/read-only/i);
-    screen.getByText(/encrypted before it is stored/i);
-    screen.getByText(/never store your google access token/i);
+    expect(screen.getAllByText(/read-only/i).length).toBeGreaterThan(0);
+    screen.getByText(/is encrypted before it is stored in our database/i);
+    screen.getByText(/we never store your google access token/i);
+  });
+
+  it("names exactly one Google OAuth scope and explicitly rules out Gmail, Drive, Contacts, and Calendar", () => {
+    render(<PrivacyPolicy />);
+    screen.getByText("https://www.googleapis.com/auth/analytics.readonly");
+    screen.getByText(/do not request access to gmail, google drive, google contacts, google calendar/i);
   });
 
   it("documents the AI Overview attribution limitation — never claims precise identification", () => {
@@ -37,12 +45,44 @@ describe("PrivacyPolicy", () => {
     expect(links[0].getAttribute("href")).toBe("mailto:aeomirror.support@gmail.com");
   });
 
+  it("has a standalone 'Data sharing, transfers, and disclosures' section naming which provider can access Google user data (Render) and which cannot (AI providers, Stripe, Resend, Vercel)", () => {
+    render(<PrivacyPolicy />);
+    screen.getByRole("heading", { name: /Data sharing, transfers, and disclosures/i });
+    screen.getByText(/not.*sent to, or made accessible to, any\s*of our other service providers/i);
+    screen.getByText(/not to our ai providers \(anthropic, openai,\s*or perplexity\)/i);
+    screen.getByText(/not to our payment processor \(stripe\)/i);
+    screen.getByText(/not to our email\s*provider \(resend\)/i);
+    screen.getByText(/not to vercel, which hosts only our static frontend/i);
+  });
+
   it("includes the Google API Services User Data Policy / Limited Use disclosure, and explicitly rules out selling data or using it for ads", () => {
     render(<PrivacyPolicy />);
     screen.getByRole("link", { name: /Google API Services User Data Policy/i });
-    screen.getByText(/including the Limited Use requirements/i);
+    screen.getByText(/including its Limited Use requirements/i);
     screen.getByText(/we do not sell google user data/i);
     screen.getByText(/to serve\s*advertisements of any kind/i);
+  });
+
+  it("has a standalone 'AI and machine learning restrictions' section with the required no-training / no-advertising statement, and separates it from the unrelated content-AI features", () => {
+    render(<PrivacyPolicy />);
+    screen.getByRole("heading", { name: /AI and machine learning restrictions/i });
+    screen.getByText(/does not use the google analytics api, or any other google api, to\s*develop, improve, or train/i);
+    screen.getByText(/not used\s*for targeted advertising, personalized advertising, or unrelated profiling/i);
+    screen.getByText(/never receive your google analytics data, your google refresh token, or any other\s*google-sourced information/i);
+  });
+
+  it("explains disconnect/revoke behavior: Google-side revoke, immediate token deletion, and that historical data is kept unless deletion is requested", () => {
+    render(<PrivacyPolicy />);
+    screen.getByRole("heading", { name: /Disconnecting a Google account and revoking access/i });
+    screen.getByText(/we attempt to revoke the credential with google\s*directly/i);
+    screen.getByRole("link", { name: /third-party access settings/i });
+    screen.getByText(/historical traffic numbers already synced before you disconnected are kept/i);
+  });
+
+  it("has a Children's privacy section", () => {
+    render(<PrivacyPolicy />);
+    screen.getByRole("heading", { name: /Children's privacy/i });
+    screen.getByText(/not knowingly collect personal information from children/i);
   });
 
   it("never makes a blanket 'we never store/share any data' claim (narrow, accurate claims like 'never store your password in plain text' are fine)", () => {

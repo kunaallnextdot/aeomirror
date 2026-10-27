@@ -80,6 +80,10 @@ export default function GoogleConsentModal({ onCancel, onConfirm, busy, error, o
             <li>You can disconnect at any time from this page. When you do, we always
               delete the stored credential immediately — Google traffic already synced
               before you disconnect is kept, not automatically deleted.</li>
+            <li>We never sell this data, never use it for advertising, and never use it
+              to train AI or machine-learning models. It is shared only with the
+              infrastructure provider that hosts our database — never with our AI
+              providers, payment processor, or email provider.</li>
           </ul>
         </section>
 
