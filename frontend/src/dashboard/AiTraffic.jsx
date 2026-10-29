@@ -125,6 +125,7 @@ export default function AiTraffic() {
   const [landingPages, setLandingPages] = useState(null);
   const [dashLoading, setDashLoading] = useState(false);
   const [dashError, setDashError] = useState(null);
+  const [sectionErrors, setSectionErrors] = useState({});
   const [channelSort, setChannelSort] = useState("-sessions");
   const [channelQuery, setChannelQuery] = useState("");
   const [landingSort, setLandingSort] = useState("-sessions");
@@ -165,21 +166,33 @@ export default function AiTraffic() {
     if (status?.status !== "active") return;
     let cancelled = false;
     (async () => {
-      setDashLoading(true); setDashError(null);
+      setDashLoading(true); setDashError(null); setSectionErrors({});
       try {
         const rangeParams = { startDate, endDate };
         const tr = await getGa4Traffic(rangeParams);
         if (cancelled) return;
         setTraffic(tr);
         if (!tr?.synced) { setDashLoading(false); return; }
-        const [ov, trend, ch, lp] = await Promise.all([
+        // allSettled, not all: each section degrades on its own. /overview is the one
+        // live GA4 call, so it's the likeliest to fail — it must never blank Trends,
+        // Channels, or Landing Pages, which read independently synced snapshots.
+        const settled = await Promise.allSettled([
           getGa4Overview(rangeParams),
           getGa4Trends(rangeParams),
           getGa4Channels({ ...rangeParams, sort: channelSort, q: channelQuery || undefined }),
           getGa4LandingPages({ ...rangeParams, sort: landingSort, q: landingQuery || undefined }),
         ]);
         if (cancelled) return;
+        const [ov, trend, ch, lp] = settled.map((r) => (r.status === "fulfilled" ? r.value : null));
+        const reason = (r, fallback) => (r.status === "rejected"
+          ? (r.reason instanceof ScanError ? r.reason.message : fallback) : null);
         setOverview(ov); setTrends(trend); setChannels(ch); setLandingPages(lp);
+        setSectionErrors({
+          overview: reason(settled[0], "Could not load the overview."),
+          trends: reason(settled[1], "Could not load traffic trends."),
+          channels: reason(settled[2], "Could not load acquisition channels."),
+          landingPages: reason(settled[3], "Could not load landing pages."),
+        });
       } catch (e) {
         if (!cancelled) {
           setDashError(e instanceof ScanError ? e.message : "Could not load your Website Intelligence dashboard.");
@@ -446,14 +459,25 @@ export default function AiTraffic() {
             <Skeleton h={400} />
           ) : (
             <>
-              <OverviewCards overview={overview} compareEnabled={compareEnabled} loading={dashLoading} />
-              <TrendsSection trends={trends} />
-              <ChannelsTable channels={channels} sort={channelSort} setSort={setChannelSort}
-                             query={channelQuery} setQuery={setChannelQuery} />
-              <LandingPagesTable landingPages={landingPages} sort={landingSort} setSort={setLandingSort}
-                                  query={landingQuery} setQuery={setLandingQuery} />
+              {sectionErrors.overview
+                ? <SectionError title="Executive overview" message={sectionErrors.overview} />
+                : <OverviewCards overview={overview} compareEnabled={compareEnabled} loading={dashLoading} />}
+              {sectionErrors.trends
+                ? <SectionError title="Traffic trends" message={sectionErrors.trends} />
+                : <TrendsSection trends={trends} />}
+              {sectionErrors.channels
+                ? <SectionError title="Acquisition channels" message={sectionErrors.channels} />
+                : <ChannelsTable channels={channels} sort={channelSort} setSort={setChannelSort}
+                                 query={channelQuery} setQuery={setChannelQuery} />}
+              {sectionErrors.landingPages
+                ? <SectionError title="Landing pages" message={sectionErrors.landingPages} />
+                : <LandingPagesTable landingPages={landingPages} sort={landingSort} setSort={setLandingSort}
+                                      query={landingQuery} setQuery={setLandingQuery} />}
               <AiSourceSection traffic={traffic} />
-              <ConversionsSection overview={overview} channels={channels} landingPages={landingPages} />
+              {sectionErrors.overview
+                ? <SectionError title="Conversions"
+                                message="Unavailable — conversion totals come from the overview report, which didn't load." />
+                : <ConversionsSection overview={overview} channels={channels} landingPages={landingPages} />}
               <InsightsSection overview={overview} channels={channels} landingPages={landingPages}
                                compareEnabled={compareEnabled} />
             </>
@@ -487,6 +511,15 @@ export default function AiTraffic() {
       />
     )}
     </>
+  );
+}
+
+function SectionError({ title, message }) {
+  return (
+    <Cell className="sp-ga4-card">
+      <h2>{title}</h2>
+      <p className="sp-ga4-section-error"><AlertTriangle size={14} /> {message}</p>
+    </Cell>
   );
 }
 

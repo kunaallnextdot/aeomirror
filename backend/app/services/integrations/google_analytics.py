@@ -202,6 +202,21 @@ async def list_ga4_properties(access_token: str) -> list[dict] | None:
     return properties
 
 
+def _google_error_reason(resp) -> str:
+    """Google's own structured reason for a rejected Data/Admin API request, e.g.
+    "INVALID_ARGUMENT: Field dateRange is not a valid dimension." These messages
+    describe the request's fields, never credentials — only the structured
+    status + a truncated message are kept, never the raw body. Without this a 400
+    logged as a bare "http 400", which is what made a real invalid-dimension bug
+    in /overview impossible to diagnose from production logs. Not used for the
+    OAuth token endpoint, whose error bodies stay unlogged."""
+    try:
+        err = (resp.json() or {}).get("error") or {}
+    except Exception:  # noqa: BLE001 — a non-JSON error body just means no reason
+        return "no structured reason"
+    return f"{err.get('status', 'UNKNOWN')}: {str(err.get('message', ''))[:300]}"
+
+
 # Metric list shared by every runReport call below. Order matters — every parser
 # in this module reads metricValues by this exact index. All five are strict counts
 # (never a deduplicated-unique metric), so every value here is safe to sum across
@@ -277,7 +292,7 @@ async def fetch_daily_traffic(access_token: str, property_id: str,
     if resp.status_code == 429:
         raise GoogleApiError("quota exceeded", status_code=429)
     if resp.status_code >= 400:
-        log.warning("ga4 runReport failed: http %s", resp.status_code)
+        log.warning("ga4 runReport failed: http %s (%s)", resp.status_code, _google_error_reason(resp))
         return None
     try:
         payload = resp.json()
@@ -333,7 +348,7 @@ async def fetch_daily_overview(access_token: str, property_id: str,
     if resp.status_code == 429:
         raise GoogleApiError("quota exceeded", status_code=429)
     if resp.status_code >= 400:
-        log.warning("ga4 daily-overview report failed: http %s", resp.status_code)
+        log.warning("ga4 daily-overview report failed: http %s (%s)", resp.status_code, _google_error_reason(resp))
         return None
     try:
         payload = resp.json()
@@ -381,7 +396,7 @@ async def fetch_landing_pages(access_token: str, property_id: str,
     if resp.status_code == 429:
         raise GoogleApiError("quota exceeded", status_code=429)
     if resp.status_code >= 400:
-        log.warning("ga4 landing-page report failed: http %s", resp.status_code)
+        log.warning("ga4 landing-page report failed: http %s (%s)", resp.status_code, _google_error_reason(resp))
         return None
     try:
         payload = resp.json()
@@ -391,13 +406,17 @@ async def fetch_landing_pages(access_token: str, property_id: str,
 
 
 def _parse_overview_comparison_report(payload: dict) -> dict:
+    # GA4 adds the dateRange column to the response itself (it is not a requestable
+    # dimension), so find it by header name rather than assuming a position.
+    headers = [h.get("name") for h in payload.get("dimensionHeaders", []) or []]
+    range_idx = headers.index("dateRange") if "dateRange" in headers else 0
     out: dict = {"current": None, "previous": None}
     for row in payload.get("rows", []) or []:
         dims = [d.get("value", "") for d in row.get("dimensionValues", [])]
         mets = [m.get("value", "0") for m in row.get("metricValues", [])]
-        if not dims or not mets:
+        if len(dims) <= range_idx or not mets:
             continue
-        label = "current" if dims[0] == "current" else "previous" if dims[0] == "previous" else None
+        label = dims[range_idx] if dims[range_idx] in ("current", "previous") else None
         if label is None:
             continue
         try:
@@ -433,7 +452,6 @@ async def fetch_overview_with_comparison(
             {"startDate": current_start, "endDate": current_end, "name": "current"},
             {"startDate": previous_start, "endDate": previous_end, "name": "previous"},
         ],
-        "dimensions": [{"name": "dateRange"}],
         "metrics": [{"name": "totalUsers"}, *_COUNT_METRICS],
     }
     headers = {"Authorization": f"Bearer {access_token}"}
@@ -448,7 +466,7 @@ async def fetch_overview_with_comparison(
     if resp.status_code == 429:
         raise GoogleApiError("quota exceeded", status_code=429)
     if resp.status_code >= 400:
-        log.warning("ga4 overview-comparison report failed: http %s", resp.status_code)
+        log.warning("ga4 overview-comparison report failed: http %s (%s)", resp.status_code, _google_error_reason(resp))
         return None
     try:
         payload = resp.json()
@@ -472,7 +490,7 @@ async def fetch_key_events_configured(access_token: str, property_id: str) -> bo
     except (httpx.TimeoutException, httpx.TransportError):
         return None
     if resp.status_code >= 400:
-        log.warning("ga4 keyEvents list failed: http %s", resp.status_code)
+        log.warning("ga4 keyEvents list failed: http %s (%s)", resp.status_code, _google_error_reason(resp))
         return None
     try:
         body = resp.json()

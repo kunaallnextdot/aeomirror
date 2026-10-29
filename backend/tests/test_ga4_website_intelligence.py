@@ -242,6 +242,59 @@ def test_fetch_overview_with_comparison_parses_both_periods():
         assert result["previous"]["total_users"] == 8
 
 
+def test_overview_request_never_asks_for_daterange_as_a_dimension(monkeypatch):
+    """Regression for the production /overview failure: `dateRange` is not a
+    requestable dimension in the GA4 Data API schema — GA4 adds that column to the
+    response itself when a request has multiple dateRanges. Requesting it
+    explicitly is rejected with a 400, which surfaced as "Could not load your
+    Google Analytics overview right now." on every page load."""
+    import httpx
+    captured = {}
+
+    class _CapturingClient(_FakeAsyncClient):
+        async def post(self, url, *, headers=None, json=None, **k):
+            captured["body"] = json
+            return _FakeResponse(200, json_body={"rows": []})
+
+    monkeypatch.setattr(httpx, "AsyncClient", lambda *a, **k: _CapturingClient())
+    asyncio.run(ga4.fetch_overview_with_comparison(
+        "tok", "123", current_start="2026-01-08", current_end="2026-01-14",
+        previous_start="2026-01-01", previous_end="2026-01-07",
+    ))
+    requested = [d["name"] for d in captured["body"].get("dimensions", [])]
+    assert "dateRange" not in requested
+    assert [r["name"] for r in captured["body"]["dateRanges"]] == ["current", "previous"]
+
+
+def test_parse_overview_comparison_report_finds_the_auto_added_daterange_column_by_header():
+    payload = {
+        "dimensionHeaders": [{"name": "dateRange"}],
+        "rows": [
+            _dim(_metric_row("12", "6", "3", "4", "20", "60.0", "1"), "previous"),
+            _dim(_metric_row("30", "15", "9", "11", "50", "90.0", "2"), "current"),
+        ],
+    }
+    out = ga4._parse_overview_comparison_report(payload)
+    assert out["current"]["total_users"] == 30
+    assert out["previous"]["total_users"] == 12
+
+
+def test_a_rejected_report_logs_googles_reason_but_never_the_token(caplog):
+    error_body = {"error": {"code": 400, "status": "INVALID_ARGUMENT",
+                            "message": "Field dateRange is not a valid dimension."}}
+    with pytest.MonkeyPatch.context() as mp:
+        _patch_httpx_client(mp, response=_FakeResponse(400, json_body=error_body))
+        with caplog.at_level("WARNING", logger="app.integrations.google_analytics"):
+            result = asyncio.run(ga4.fetch_overview_with_comparison(
+                "secret-access-token", "123", current_start="2026-01-08",
+                current_end="2026-01-14", previous_start="2026-01-01",
+                previous_end="2026-01-07",
+            ))
+    assert result is None
+    assert "INVALID_ARGUMENT: Field dateRange is not a valid dimension." in caplog.text
+    assert "secret-access-token" not in caplog.text
+
+
 def test_fetch_key_events_configured_true_when_list_nonempty():
     payload = {"keyEvents": [{"eventName": "purchase"}]}
     with pytest.MonkeyPatch.context() as mp:

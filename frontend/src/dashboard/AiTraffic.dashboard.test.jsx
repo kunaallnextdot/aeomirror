@@ -294,6 +294,39 @@ describe("AI Traffic Intelligence", () => {
   });
 });
 
+describe("Partial failure (the production /overview incident)", () => {
+  it("an /overview failure is shown on the Overview section only — Trends, Channels, Landing Pages, and AI Traffic still render", async () => {
+    const { ScanError } = await import("../api.js");
+    getGa4Overview.mockRejectedValue(new ScanError("Could not load your Google Analytics overview right now.", 502));
+    getGa4Channels.mockResolvedValue({
+      channels: [{ channel: "Organic Search", source: "google", medium: "organic", ai_source_label: "unattributable",
+                   sessions: 300, new_users: 100, engaged_sessions: 150, views: 400, key_events: 0,
+                   engagement_rate: 0.5, conversion_rate: 0 }],
+      total: 1, page: 1, page_size: 25,
+    });
+    renderAt();
+    await waitFor(() => screen.getByText(/could not load your google analytics overview right now/i));
+    const overview = screen.getByText(/executive overview/i).closest(".sp-ga4-card");
+    within(overview).getByText(/could not load your google analytics overview right now/i);
+    screen.getByText(/traffic trends/i);
+    screen.getByText("Organic Search");
+    screen.getByText(/landing pages/i);
+    screen.getByText(/ai traffic intelligence/i);
+    // Conversions depends on /overview — it says so honestly instead of showing zeros.
+    screen.getByText(/conversion totals come from the overview report/i);
+  });
+
+  it("a failure in one table doesn't hide the overview", async () => {
+    const { ScanError } = await import("../api.js");
+    getGa4LandingPages.mockRejectedValue(new ScanError("Could not load landing pages.", 500));
+    renderAt();
+    await waitFor(() => screen.getByText(/executive overview/i));
+    const pages = screen.getByText(/^landing pages$/i).closest(".sp-ga4-card");
+    within(pages).getByText(/could not load landing pages/i);
+    expect(screen.queryByText(/could not load your website intelligence dashboard/i)).toBeNull();
+  });
+});
+
 describe("Conversions", () => {
   it("shows key events, conversion rate, and top channels/pages when key events are configured and recorded", async () => {
     getGa4Overview.mockResolvedValue({
