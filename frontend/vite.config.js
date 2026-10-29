@@ -13,10 +13,15 @@ export default defineConfig({
     chunkSizeWarningLimit: 900,
     rollupOptions: {
       output: {
-        manualChunks: {
-          react: ["react", "react-dom"],
-          charts: ["recharts"],
-          icons: ["lucide-react"],
+        // Function form, matched on package path. The object form merged React
+        // into the "charts" chunk (recharts depends on react), so every route —
+        // the public homepage included — downloaded all of Recharts to get React.
+        manualChunks(id) {
+          if (!id.includes("node_modules")) return undefined;
+          if (/node_modules\/(react|react-dom|scheduler)\//.test(id)) return "react";
+          if (/node_modules\/(recharts|recharts-scale|d3-[^/]+|victory-vendor|internmap|decimal\.js-light|eventemitter3|lodash|react-smooth|fast-equals|tiny-invariant)\//.test(id)) return "charts";
+          if (/node_modules\/lucide-react\//.test(id)) return "icons";
+          return undefined;
         },
       },
     },

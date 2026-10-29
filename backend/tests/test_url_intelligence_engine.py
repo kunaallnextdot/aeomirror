@@ -150,3 +150,67 @@ def test_orchestrator_advances_through_phases_to_completed(monkeypatch):
         assert job.analyzed_count == job.crawled_count   # every crawled URL got analyzed
     finally:
         db.close()
+
+
+# ------------------------------- performance: no doomed per-link work -------------------------------
+
+_DUP_PAGE = "<html><body>" + "".join(f'<a href="/p{i % 5}">x</a>' for i in range(200)) + "</body></html>"
+
+
+def test_repeated_links_are_skipped_before_any_dns_lookup(monkeypatch):
+    """A page's links are mostly repeats (nav, footer). Each used to cost a DNS lookup,
+    an INSERT and a rollback on the event loop before the unique index rejected it."""
+    import socket
+    from app.core import ssrf
+    monkeypatch.setattr(settings, "allow_private_hosts", False)
+    lookups = []
+    def fake_getaddrinfo(host, *a, **k):
+        lookups.append(host)
+        return [(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("93.184.216.34", 0))]
+    monkeypatch.setattr(ssrf.socket, "getaddrinfo", fake_getaddrinfo)
+    pages = {**_PAGES, "https://example.com/a": _DUP_PAGE}
+
+    async def fetch_dup(url, **kwargs):
+        return PageBundle(url=url, html=pages.get(url, ""), status_code=200)
+    monkeypatch.setattr(discovery, "fetch", fetch_dup)
+
+    client, body = auth_client()
+    db = SessionLocal()
+    try:
+        job = _job(db, body["organization"]["id"], body["user"]["id"])
+        asyncio.run(_discover_to_completion(db, job))
+        lookups.clear()
+        asyncio.run(discovery.run_crawl_chunk(db, job))
+        new = {r.url for r in db.query(CrawlUrl).filter(CrawlUrl.crawl_job_id == job.id,
+                                                       CrawlUrl.discovery_source == "internal_link")}
+        assert new == {f"https://example.com/p{i}" for i in range(5)}      # same dedup outcome
+        assert len(lookups) <= 3     # one per host per chunk — was one per link (200+)
+    finally:
+        db.close()
+
+
+def test_dns_cache_reuses_a_host_but_still_rejects_private_addresses(monkeypatch):
+    import socket
+    from app.core import ssrf
+    monkeypatch.setattr(settings, "allow_private_hosts", False)
+    calls = []
+    def fake(host, *a, **k):
+        calls.append(host)
+        ip = "10.0.0.5" if host == "internal.example" else "93.184.216.34"
+        return [(socket.AF_INET, socket.SOCK_STREAM, 6, "", (ip, 0))]
+    monkeypatch.setattr(ssrf.socket, "getaddrinfo", fake)
+    cache: dict = {}
+    for p in ("a", "b", "c"):
+        ssrf.validate_url(f"https://public.example/{p}", dns_cache=cache)
+    assert calls == ["public.example"]
+    for _ in range(2):
+        with pytest.raises(ssrf.UnsafeUrlError):
+            ssrf.validate_url("https://internal.example/x", dns_cache=cache)
+
+    def failing(host, *a, **k):
+        raise socket.gaierror("temporary")
+    monkeypatch.setattr(ssrf.socket, "getaddrinfo", failing)
+    monkeypatch.setattr(ssrf.time, "sleep", lambda s: None)
+    with pytest.raises(ssrf.UnsafeUrlError):
+        ssrf.validate_url("https://flaky.example/", dns_cache=cache)
+    assert "flaky.example" not in cache        # failures are never cached

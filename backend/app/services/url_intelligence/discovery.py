@@ -37,6 +37,7 @@ from app.db.models import (
     CrawlJob, CrawlUrl, URL_CRAWLED, URL_DISCOVERED, URL_ELIGIBLE, URL_FAILED, URL_SKIPPED,
 )
 from app.scanner.bulk import normalize_dedup_key, normalize_url
+from app.scanner.signals.base import SignalContext
 from app.services.url_intelligence.classification import classify_page_type, classify_template
 from app.services.url_intelligence.evidence import content_fingerprint, extract_evidence
 
@@ -53,14 +54,38 @@ def _origin(url: str) -> str:
     return f"{p.scheme}://{p.netloc}"
 
 
-def _safe(url: str) -> str | None:
+def _safe(url: str, dns_cache: dict | None = None) -> str | None:
     try:
-        return validate_url(url)
+        return validate_url(url, dns_cache=dns_cache)
     except UnsafeUrlError:
         return None
 
 
-def _try_add_url(db: Session, job: CrawlJob, url: str, *, source: str, depth: int) -> CrawlUrl | None:
+class _Batch:
+    """Per-chunk discovery state: the dedup keys already known for this job (so a
+    page's 200 links, mostly repeats, are skipped before any DNS lookup or insert)
+    and a host-resolution cache for QUEUEING links (every link shares the seed's
+    host). A queued link is re-validated with a fresh lookup before it is fetched
+    (run_crawl_chunk). The DB's unique constraint remains the dedup authority —
+    this only avoids doomed work."""
+
+    def __init__(self, db: Session, job: CrawlJob):
+        self.db, self.job = db, job
+        self.known: set[str] = set()
+        self.dns: dict = {}
+
+    def preload(self, urls) -> None:
+        keys = {normalize_dedup_key(n) for n in (normalize_url(u) for u in urls) if n} - self.known
+        keys = list(keys)
+        for i in range(0, len(keys), 500):
+            part = keys[i:i + 500]
+            self.known.update(k for (k,) in self.db.query(CrawlUrl.normalized_key)
+                              .filter(CrawlUrl.crawl_job_id == self.job.id,
+                                      CrawlUrl.normalized_key.in_(part)))
+
+
+def _try_add_url(db: Session, job: CrawlJob, url: str, *, source: str, depth: int,
+                 batch: _Batch | None = None) -> CrawlUrl | None:
     """Insert one candidate URL for this job if it's new, safe, allowed, and within
     budget. Returns the row (new or pre-existing-but-irrelevant-here) or None if
     rejected outright. Dedup is enforced by the DB's own unique constraint — a
@@ -69,11 +94,13 @@ def _try_add_url(db: Session, job: CrawlJob, url: str, *, source: str, depth: in
     if not norm:
         return None
     key = normalize_dedup_key(norm)
+    if batch is not None and key in batch.known:
+        return None   # already discovered for this job — same outcome as the IntegrityError path
 
     if job.discovered_count >= job.max_urls:
         return None
 
-    safe = _safe(norm)
+    safe = _safe(norm, batch.dns if batch is not None else None)
     row = CrawlUrl(
         crawl_job_id=job.id, organization_id=job.organization_id, url=norm,
         normalized_key=key, discovery_source=source, discovery_depth=depth,
@@ -90,6 +117,8 @@ def _try_add_url(db: Session, job: CrawlJob, url: str, *, source: str, depth: in
         row.url = safe
 
     db.add(row)
+    if batch is not None:
+        batch.known.add(key)
     try:
         db.commit()
     except IntegrityError:
@@ -167,10 +196,13 @@ async def run_discovery_chunk(db: Session, job: CrawlJob) -> bool:
         if "<sitemapindex" in body.lower():
             sitemap_queue.extend(_LOC_RE.findall(body)[:500])
             continue
-        for loc in _LOC_RE.findall(body)[:job.max_urls]:
+        locs = _LOC_RE.findall(body)[:job.max_urls]
+        batch = _Batch(db, job)
+        batch.preload(locs)
+        for loc in locs:
             if job.discovered_count >= job.max_urls:
                 break
-            row = _try_add_url(db, job, loc, source="sitemap", depth=0)
+            row = _try_add_url(db, job, loc, source="sitemap", depth=0, batch=batch)
             if row and row.status == URL_DISCOVERED:
                 _eligibility_check(db, job, row, robots_txt)
 
@@ -193,9 +225,8 @@ async def run_discovery_chunk(db: Session, job: CrawlJob) -> bool:
     return not sitemap_queue
 
 
-def _internal_link_targets(html: str, base_url: str, host: str) -> list[str]:
-    from bs4 import BeautifulSoup
-    soup = BeautifulSoup(html or "", "lxml")
+def _internal_link_targets(soup, base_url: str, host: str) -> list[str]:
+    """Same-site link targets from an already-parsed page (read-only)."""
     targets: list[str] = []
     for a in soup.find_all("a", href=True):
         href = a["href"].strip()
@@ -222,8 +253,12 @@ async def run_crawl_chunk(db: Session, job: CrawlJob) -> bool:
 
     robots_txt = (job.cursor or {}).get("robots_txt", "")
     host = (urlparse(job.normalized_seed_url).hostname or "").lower()
+    links = _Batch(db, job)
 
     for row in batch:
+        # Fresh, uncached resolution: fetch() trusts its caller for the first hop, so
+        # this is the SSRF gate for the request itself. (links.dns only speeds up
+        # queueing discovered links, each of which passes this check before fetching.)
         safe = _safe(row.url)
         if not safe:
             row.status, row.skip_reason = URL_SKIPPED, "ssrf_blocked"
@@ -238,7 +273,8 @@ async def run_crawl_chunk(db: Session, job: CrawlJob) -> bool:
             db.commit()
             continue
 
-        evidence = extract_evidence(bundle, crawl_depth=row.discovery_depth)
+        ctx = SignalContext(bundle)   # parsed once, shared by evidence + link discovery
+        evidence = extract_evidence(bundle, crawl_depth=row.discovery_depth, ctx=ctx)
         row.http_status = bundle.status_code
         row.canonical_url = evidence.get("canonical_url")
         row.page_type = classify_page_type(safe, evidence)
@@ -251,11 +287,13 @@ async def run_crawl_chunk(db: Session, job: CrawlJob) -> bool:
         db.commit()
 
         if row.discovery_depth < settings.url_crawl_max_depth and job.discovered_count < job.max_urls:
-            for target in _internal_link_targets(bundle.html, safe, host)[:200]:
+            targets = _internal_link_targets(ctx.soup, safe, host)[:200]
+            links.preload(targets)
+            for target in targets:
                 if job.discovered_count >= job.max_urls:
                     break
                 new_row = _try_add_url(db, job, target, source="internal_link",
-                                       depth=row.discovery_depth + 1)
+                                       depth=row.discovery_depth + 1, batch=links)
                 if new_row and new_row.status == URL_DISCOVERED:
                     _eligibility_check(db, job, new_row, robots_txt)
 

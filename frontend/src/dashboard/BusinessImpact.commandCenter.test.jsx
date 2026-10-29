@@ -259,3 +259,20 @@ describe("Provenance and qualified values", () => {
     screen.getByText("Unknown");
   });
 });
+
+describe("Website switching races", () => {
+  it("a slow response for the previous website never appears under the newly selected one", async () => {
+    let resolveA;
+    getCommandCenter.mockImplementationOnce(() => new Promise((r) => { resolveA = r; }));     // m1, slow
+    renderAt();
+    await waitFor(() => expect(getCommandCenter).toHaveBeenCalledTimes(1));
+    getCommandCenter.mockResolvedValue(cc({ website: { id: "m2" }, findings: [{
+      ...cc().findings[0], id: "b1", title: "Beta finding" }] }));
+    fireEvent.change(screen.getByLabelText("Website"), { target: { value: "m2" } });
+    await waitFor(() => screen.getByText("Beta finding"));
+    resolveA(cc({ findings: [{ ...cc().findings[0], id: "a1", title: "Acme finding" }] }));
+    await new Promise((r) => setTimeout(r, 20));
+    expect(screen.queryByText("Acme finding")).toBeNull();
+    screen.getByText("Beta finding");
+  });
+});

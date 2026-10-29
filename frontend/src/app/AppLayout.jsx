@@ -16,7 +16,7 @@ import {
 import Logo from "../shared/Logo.jsx";
 import { UpgradeProvider, useUpgrade } from "../dashboard/UpgradeModal.jsx";
 import { useAuth } from "../auth/AuthContext.jsx";
-import { SpAvatar } from "../shared/spectrum.jsx";
+import { SpAvatar, SpectrumSkeletonPage } from "../shared/spectrum.jsx";
 import { RouteErrorBoundary, InLayoutErrorState } from "./RouteErrorBoundary.jsx";
 import "./AppLayout.spectrum.css";
 
@@ -272,7 +272,9 @@ function LayoutBody() {
               view render in-layout (sidebar stays usable); a stale-chunk error recovers
               via the guarded reload. */}
           <RouteErrorBoundary fallback={<InLayoutErrorState />}>
-            <Outlet context={ctx} />
+            <React.Suspense fallback={<SpectrumSkeletonPage />}>
+              <Outlet context={ctx} />
+            </React.Suspense>
           </RouteErrorBoundary>
         </div>
         <AppFooter />

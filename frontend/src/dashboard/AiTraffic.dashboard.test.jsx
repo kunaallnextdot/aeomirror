@@ -426,3 +426,88 @@ describe("Switching GA4 property while already active", () => {
     await waitFor(() => expect(selectGa4Property).toHaveBeenCalledWith("111"));
   });
 });
+
+describe("Request efficiency", () => {
+  it("searching a table refetches only that table, once typing pauses — never the live GA4 overview", async () => {
+    renderAt();
+    await waitFor(() => screen.getByText(/acquisition channels/i));
+    await waitFor(() => expect(getGa4Channels).toHaveBeenCalledTimes(1));
+    const counts = () => [getGa4Traffic, getGa4Overview, getGa4Trends, getGa4LandingPages]
+      .map((f) => f.mock.calls.length);
+    const before = counts();
+
+    const input = screen.getByPlaceholderText(/search channel, source, or medium/i);
+    for (const v of ["c", "ch", "cha", "chat"]) fireEvent.change(input, { target: { value: v } });
+
+    await waitFor(() => expect(getGa4Channels).toHaveBeenCalledTimes(2));   // debounced: one request
+    expect(getGa4Channels).toHaveBeenLastCalledWith(expect.objectContaining({ q: "chat" }));
+    expect(counts()).toEqual(before);                                       // nothing else refetched
+  });
+
+  it("changing the date range reloads every section", async () => {
+    renderAt();
+    await waitFor(() => expect(getGa4Overview).toHaveBeenCalledTimes(1));
+    fireEvent.click(screen.getByRole("button", { name: /^7 days$|last 7 days/i }));
+    await waitFor(() => expect(getGa4Overview).toHaveBeenCalledTimes(2));
+    expect(getGa4Channels).toHaveBeenCalledTimes(2);
+    expect(getGa4LandingPages).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("Never shows stale data", () => {
+  const chRow = (channel) => ({ channel, source: "s", medium: "m", ai_source_label: "other_identifiable",
+    sessions: 5, new_users: 1, engaged_sessions: 1, views: 1, key_events: 0, engagement_rate: 0.2, conversion_rate: 0 });
+  const chResp = (name) => ({ channels: [chRow(name)], total: 1, page: 1, page_size: 25 });
+
+  it("a slow search response for the previous date range never overwrites the new range's table", async () => {
+    let resolveStale;
+    renderAt();
+    await waitFor(() => expect(getGa4Channels).toHaveBeenCalledTimes(1));
+    getGa4Channels.mockImplementationOnce(() => new Promise((r) => { resolveStale = r; }));   // the search request
+    fireEvent.change(screen.getByPlaceholderText(/search channel, source, or medium/i), { target: { value: "x" } });
+    await waitFor(() => expect(getGa4Channels).toHaveBeenCalledTimes(2));
+
+    getGa4Channels.mockResolvedValue(chResp("Fresh Channel"));                              // the new range's load
+    fireEvent.click(screen.getByRole("button", { name: /^7 days$|last 7 days/i }));
+    await waitFor(() => screen.getByText("Fresh Channel"));
+    resolveStale(chResp("Stale Channel"));
+    await new Promise((r) => setTimeout(r, 20));
+    expect(screen.queryByText("Stale Channel")).toBeNull();
+    screen.getByText("Fresh Channel");
+  });
+
+  it("an earlier search that answers last never overwrites the later search", async () => {
+    renderAt();
+    await waitFor(() => expect(getGa4Channels).toHaveBeenCalledTimes(1));
+    let resolveFirst;
+    getGa4Channels.mockImplementationOnce(() => new Promise((r) => { resolveFirst = r; }));
+    const input = screen.getByPlaceholderText(/search channel, source, or medium/i);
+    fireEvent.change(input, { target: { value: "first" } });
+    await waitFor(() => expect(getGa4Channels).toHaveBeenCalledTimes(2));
+    getGa4Channels.mockResolvedValue(chResp("Second Channel"));
+    fireEvent.change(input, { target: { value: "second" } });
+    await waitFor(() => screen.getByText("Second Channel"));
+    resolveFirst(chResp("First Channel"));
+    await new Promise((r) => setTimeout(r, 20));
+    expect(screen.queryByText("First Channel")).toBeNull();
+    screen.getByText("Second Channel");
+  });
+
+  it("switching GA4 property reloads the dashboard instead of keeping the old property's numbers", async () => {
+    const { listGa4Properties, selectGa4Property } = await import("../api.js");
+    listGa4Properties.mockResolvedValue({ properties: [
+      { property_id: "999", property_name: "Acme Main", account_name: "Acme" },
+      { property_id: "111", property_name: "Acme EU", account_name: "Acme" },
+    ] });
+    selectGa4Property.mockResolvedValue({ status: "ok" });
+    renderAt();
+    await waitFor(() => expect(getGa4Traffic).toHaveBeenCalledTimes(1));
+    getGa4Status.mockResolvedValue({ status: "active", ga4_property_name: "Acme EU", ga4_property_id: "111",
+                                     last_synced_at: null });
+    getGa4Traffic.mockResolvedValue({ synced: false, by_source: {}, by_source_detail: {} });
+    fireEvent.click(screen.getByText(/change property/i));
+    await waitFor(() => screen.getByText("Acme EU"));
+    fireEvent.click(screen.getByText("Acme EU"));
+    await waitFor(() => expect(getGa4Traffic).toHaveBeenCalledTimes(2));
+  });
+});

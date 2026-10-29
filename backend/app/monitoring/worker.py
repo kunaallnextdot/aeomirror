@@ -104,12 +104,21 @@ async def tick() -> dict:
         db.close()
 
 
+def _tick_in_own_loop() -> dict:
+    """Run one tick on a private event loop in a worker thread. Jobs do synchronous
+    DB work, DNS resolution and HTML parsing; on the API's event loop (the in-process
+    worker) that stalls every request for the length of a crawl chunk. Every async
+    resource a job uses (httpx clients, semaphores) is created inside the job, so
+    nothing is shared with the request loop."""
+    return asyncio.run(tick())
+
+
 async def run_worker_loop() -> None:
     _stop.clear()
     logger.info("monitoring worker started (interval=%ss)", settings.scheduler_interval_seconds)
     while not _stop.is_set():
         try:
-            res = await tick()
+            res = await asyncio.to_thread(_tick_in_own_loop)
             if res["processed"] or res["enqueued"]:
                 logger.info("worker tick %s", res)
         except Exception:

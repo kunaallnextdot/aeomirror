@@ -59,11 +59,13 @@ def _breadcrumbs(soup) -> list[str]:
     return [a.get_text(" ", strip=True) for a in nav.find_all("a") if a.get_text(strip=True)][:10]
 
 
-def extract_evidence(page: PageBundle, *, crawl_depth: int = 0) -> dict:
+def extract_evidence(page: PageBundle, *, crawl_depth: int = 0,
+                     ctx: SignalContext | None = None) -> dict:
     """Build the full deterministic evidence dict for a fetched page. Pure function —
     no I/O, no AI, never raises (a parse failure degrades a field to None/empty rather
-    than aborting the whole extraction)."""
-    ctx = SignalContext(page)
+    than aborting the whole extraction). Pass `ctx` to share its parsed HTML with the
+    caller (the crawler reuses it for link discovery instead of parsing again)."""
+    ctx = ctx or SignalContext(page)
     soup = ctx.soup
 
     title_tag = soup.find("title")

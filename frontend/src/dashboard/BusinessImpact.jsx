@@ -8,7 +8,7 @@
    AI *referral traffic* (visits from an AI assistant) and AI *answer visibility*
    (mentions in tracked AI answers) are different measurements and are never merged.
    A missing value is shown as its state ("Not set up", "Out of date"…), never as 0. */
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import {
   Activity, AlertTriangle, ArrowRight, BarChart3, Check, ChevronDown, ChevronUp, Copy,
@@ -121,8 +121,14 @@ export default function BusinessImpact() {
     return { monitorId, startDate, endDate };
   }, [monitorId, validSite, rangeDays, customStart, customEnd]);
 
+  // Each load gets a generation number; a response may update state only while its
+  // load is still the latest, so a slow response for the previous website or range
+  // can never land on screen under the newly selected one.
+  const loadGen = useRef(0);
   const load = useCallback(async () => {
     if (!params) return;
+    const gen = ++loadGen.current;
+    const live = () => loadGen.current === gen;
     setLoading(true); setError(null); setSectionErrors({});
     // Switching website or range clears everything first — one site's numbers are
     // never left on screen while another site's are loading.
@@ -131,6 +137,7 @@ export default function BusinessImpact() {
       ? (r.reason instanceof ScanError ? r.reason.message : fallback) : null);
     try {
       const [ccRes, trRes] = await Promise.allSettled([getCommandCenter(params), getTrackingStatus(monitorId)]);
+      if (!live()) return;
       if (ccRes.status === "fulfilled") setCc(ccRes.value);
       if (trRes.status === "rejected") throw trRes.reason;
       const status = trRes.value;
@@ -138,12 +145,14 @@ export default function BusinessImpact() {
       const errs = { commandCenter: msg(ccRes, "Could not load this website's intelligence summary.") };
       if (status.installed) {
         const s = await getBusinessImpactSummary(params);
+        if (!live()) return;
         setSummary(s);
         const [t, ch, lp] = await Promise.allSettled([
           getBusinessImpactTrafficOverTime(params),
           s.is_pro ? getBusinessImpactChannels(params) : Promise.resolve(null),
           s.is_pro ? getBusinessImpactLandingPages(params) : Promise.resolve(null),
         ]);
+        if (!live()) return;
         if (t.status === "fulfilled") setSeries(t.value.series);
         if (ch.status === "fulfilled") setChannels(ch.value?.channels || null);
         if (lp.status === "fulfilled") setPages(lp.value?.pages || null);
@@ -155,9 +164,10 @@ export default function BusinessImpact() {
       }
       setSectionErrors(errs);
     } catch (e) {
+      if (!live()) return;
       setCc(null); setSummary(null); setSeries(null); setChannels(null); setPages(null);
       setError(e instanceof ScanError ? e.message : "Could not load AI Business Impact data.");
-    } finally { setLoading(false); }
+    } finally { if (live()) setLoading(false); }
   }, [params, monitorId]);
 
   useEffect(() => { load(); }, [load]);

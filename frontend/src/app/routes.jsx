@@ -8,24 +8,28 @@ import {
 } from "react-router-dom";
 import { getScanDetail, compareScans, ScanError } from "../api.js";
 import { fmtDate } from "../dashboard/ui.jsx";
-import DashboardHome from "../dashboard/DashboardHome.jsx";
 import ScansTable, { ScansLoading, ScansEmpty, ScansError } from "../dashboard/ScansTable.jsx";
 import { SpectrumSkeletonPage, SpectrumEmptyScans, SpectrumError, Shell, Cell, Ring } from "../shared/spectrum.jsx";
 const spScoreColor = (v) => (v >= 75 ? "var(--sp-blue-d)" : v >= 45 ? "var(--sp-lav-d)" : "var(--sp-violet-d)");
 import ScanDetails, { ScanDetailLoading, ScanDetailNotFound } from "../dashboard/ScanDetails.jsx";
-import Compare from "../dashboard/Compare.jsx";
-import ReportView from "../dashboard/ReportView.jsx";
 import Monitoring from "../dashboard/Monitoring.jsx";
-import MonitorDetail from "../dashboard/MonitorDetail.jsx";
-import AnswerTracking from "../dashboard/AnswerTracking.jsx";
-import ActionCenter from "../dashboard/ActionCenter.jsx";
-import BillingView from "../dashboard/BillingView.jsx";
 import ProfilePage from "../auth/pages/ProfilePage.jsx";
 import TeamPage from "../auth/pages/TeamPage.jsx";
 import OrganizationPage from "../auth/pages/OrganizationPage.jsx";
-import AiTraffic from "../dashboard/AiTraffic.jsx";
-import BusinessImpact from "../dashboard/BusinessImpact.jsx";
-import SiteIntelligence from "../dashboard/SiteIntelligence.jsx";
+
+// Heavier views load on first visit instead of with the app shell, so opening any one
+// page doesn't download every other page (and their chart code). AppLayout wraps the
+// outlet in <Suspense>; a failed chunk is handled by RouteErrorBoundary.
+const DashboardHome = React.lazy(() => import("../dashboard/DashboardHome.jsx"));   // carries the chart library
+const Compare = React.lazy(() => import("../dashboard/Compare.jsx"));
+const ReportView = React.lazy(() => import("../dashboard/ReportView.jsx"));
+const MonitorDetail = React.lazy(() => import("../dashboard/MonitorDetail.jsx"));
+const AnswerTracking = React.lazy(() => import("../dashboard/AnswerTracking.jsx"));
+const ActionCenter = React.lazy(() => import("../dashboard/ActionCenter.jsx"));
+const BillingView = React.lazy(() => import("../dashboard/BillingView.jsx"));
+const AiTraffic = React.lazy(() => import("../dashboard/AiTraffic.jsx"));
+const BusinessImpact = React.lazy(() => import("../dashboard/BusinessImpact.jsx"));
+const SiteIntelligence = React.lazy(() => import("../dashboard/SiteIntelligence.jsx"));
 import { Globe } from "lucide-react";
 
 export function useAppCtx() { return useOutletContext(); }
@@ -51,12 +55,12 @@ export function DashboardHomeRoute() {
    backend endpoint, no duplicated selection logic) and redirects straight to its
    Scan Details page — the same destination the Recent Scans "eye" action opens,
    now discoverable from primary navigation. Loading/error states reuse the shared
-   Aurora states; no scans yet shows a dedicated empty state (not the generic one,
+   Spectrum states; no scans yet shows a dedicated empty state (not the generic one,
    since the copy here is report-specific). */
 export function LatestScanRoute() {
   const { dashboard, loading, error, reload, onRunScan } = useAppCtx();
-  if (error) return <AuroraError message={error} onRetry={reload} />;
-  if (loading) return <AuroraSkeletonPage />;
+  if (error) return <SpectrumError message={error} onRetry={reload} />;
+  if (loading) return <SpectrumSkeletonPage />;
   const id = dashboard?.latest_scan?.id;
   if (!id) return <NoReportYet onRun={onRunScan} />;
   return <Navigate to={`/app/scans/${encodeURIComponent(id)}`} replace />;

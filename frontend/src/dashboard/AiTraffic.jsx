@@ -18,7 +18,7 @@
    stored snapshots and deliberately never show a "Users" total anywhere except the
    Overview cards and the Trends chart's per-day line (each day's own number, never
    summed). Don't "fix" this by summing a per-row Users column — it would be wrong. */
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import {
   AlertTriangle, ArrowRight, BarChart3, ChevronDown, ChevronUp, Info, Lock,
@@ -89,6 +89,16 @@ const fmtSecs = (n) => {
   const m = Math.floor(n / 60), s = Math.round(n % 60);
   return m > 0 ? `${m}m ${s}s` : `${s}s`;
 };
+// The latest value once it has stopped changing for `ms` (search-as-you-type).
+function useDebouncedValue(value, ms) {
+  const [v, setV] = useState(value);
+  useEffect(() => {
+    const t = setTimeout(() => setV(value), ms);
+    return () => clearTimeout(t);
+  }, [value, ms]);
+  return v;
+}
+
 const fmtDelta = (curr, prev) => {
   if (curr == null || prev == null) return null;
   if (prev === 0) return curr === 0 ? null : { dir: "up", text: "new" };
@@ -164,12 +174,26 @@ export default function AiTraffic() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Re-fetches everything whenever the connection becomes active/synced, or the
-  // selected date range, or a channel/landing-page sort/search changes. getGa4Traffic
-  // is included here (not fetched once on mount) so the AI-source breakdown respects
-  // the same selected date range as the rest of the dashboard.
+  // Table search is debounced, and a table's sort/search refetches only that table —
+  // not the whole dashboard, whose /overview is a live (quota-counted) GA4 request.
+  const channelQ = useDebouncedValue(channelQuery, 300);
+  const landingQ = useDebouncedValue(landingQuery, 300);
+  const tableParams = useRef(null);
+  tableParams.current = { channelSort, channelQ, landingSort, landingQ };
+  // Everything the dashboard's data depends on besides table sort/search: a different
+  // property, a newer sync, or another date range must never show the previous data.
+  const dataKey = status?.status === "active"
+    ? `${status.ga4_property_id}|${status.last_synced_at}|${startDate}|${endDate}` : null;
+  const loadedKey = useRef(null);   // dataKey once the full load has issued its table requests
+  // Per-table request counter: only the newest request's response is ever applied, so
+  // a slow older one (previous range, sort or search) can't overwrite newer data.
+  const tableSeq = useRef({ channels: 0, landingPages: 0 });
+
+  // Full reload whenever dataKey changes. getGa4Traffic is included here (not fetched
+  // once on mount) so the AI-source breakdown respects the selected date range.
   useEffect(() => {
-    if (status?.status !== "active") return;
+    loadedKey.current = null;
+    if (!dataKey) return;
     let cancelled = false;
     (async () => {
       setDashLoading(true); setDashError(null); setSectionErrors({});
@@ -178,27 +202,36 @@ export default function AiTraffic() {
         const tr = await getGa4Traffic(rangeParams);
         if (cancelled) return;
         setTraffic(tr);
-        if (!tr?.synced) { setDashLoading(false); return; }
+        if (!tr?.synced) {
+          setOverview(null); setTrends(null); setChannels(null); setLandingPages(null);
+          setDashLoading(false); return;
+        }
+        const t = tableParams.current;
+        const seq = { channels: ++tableSeq.current.channels, landingPages: ++tableSeq.current.landingPages };
+        loadedKey.current = dataKey;
         // allSettled, not all: each section degrades on its own. /overview is the one
         // live GA4 call, so it's the likeliest to fail — it must never blank Trends,
         // Channels, or Landing Pages, which read independently synced snapshots.
         const settled = await Promise.allSettled([
           getGa4Overview(rangeParams),
           getGa4Trends(rangeParams),
-          getGa4Channels({ ...rangeParams, sort: channelSort, q: channelQuery || undefined }),
-          getGa4LandingPages({ ...rangeParams, sort: landingSort, q: landingQuery || undefined }),
+          getGa4Channels({ ...rangeParams, sort: t.channelSort, q: t.channelQ || undefined }),
+          getGa4LandingPages({ ...rangeParams, sort: t.landingSort, q: t.landingQ || undefined }),
         ]);
         if (cancelled) return;
         const [ov, trend, ch, lp] = settled.map((r) => (r.status === "fulfilled" ? r.value : null));
         const reason = (r, fallback) => (r.status === "rejected"
           ? (r.reason instanceof ScanError ? r.reason.message : fallback) : null);
-        setOverview(ov); setTrends(trend); setChannels(ch); setLandingPages(lp);
-        setSectionErrors({
+        const fresh = (k) => tableSeq.current[k] === seq[k];   // no newer table request since
+        setOverview(ov); setTrends(trend);
+        if (fresh("channels")) setChannels(ch);
+        if (fresh("landingPages")) setLandingPages(lp);
+        setSectionErrors((s) => ({
           overview: reason(settled[0], "Could not load the overview."),
           trends: reason(settled[1], "Could not load traffic trends."),
-          channels: reason(settled[2], "Could not load acquisition channels."),
-          landingPages: reason(settled[3], "Could not load landing pages."),
-        });
+          channels: fresh("channels") ? reason(settled[2], "Could not load acquisition channels.") : s.channels,
+          landingPages: fresh("landingPages") ? reason(settled[3], "Could not load landing pages.") : s.landingPages,
+        }));
       } catch (e) {
         if (!cancelled) {
           setDashError(e instanceof ScanError ? e.message : "Could not load your Website Intelligence dashboard.");
@@ -209,7 +242,29 @@ export default function AiTraffic() {
     })();
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [status?.status, startDate, endDate, channelSort, channelQuery, landingSort, landingQuery]);
+  }, [dataKey]);
+
+  // One table's sort/search → only that table's request, once the full load for the
+  // current dataKey has run (before that, the full load fetches the tables itself).
+  const refetchTable = (fetcher, params, key, fallback, setter) => {
+    if (!dataKey || loadedKey.current !== dataKey) return undefined;
+    const seq = ++tableSeq.current[key];
+    const current = () => tableSeq.current[key] === seq && loadedKey.current === dataKey;
+    fetcher({ startDate, endDate, ...params })
+      .then((r) => { if (current()) { setter(r); setSectionErrors((s) => ({ ...s, [key]: null })); } })
+      .catch((e) => {
+        if (current()) setSectionErrors((s) => ({ ...s, [key]: e instanceof ScanError ? e.message : fallback }));
+      });
+    return undefined;
+  };
+  useEffect(() => refetchTable(getGa4Channels, { sort: channelSort, q: channelQ || undefined }, "channels",
+                               "Could not load acquisition channels.", setChannels),
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  [channelSort, channelQ]);
+  useEffect(() => refetchTable(getGa4LandingPages, { sort: landingSort, q: landingQ || undefined }, "landingPages",
+                               "Could not load landing pages.", setLandingPages),
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  [landingSort, landingQ]);
 
   const beginOAuth = async () => {
     setBusy(true); setError(null); setConsentError(null);
@@ -486,7 +541,7 @@ export default function AiTraffic() {
                 : <ConversionsSection overview={overview} channels={channels} landingPages={landingPages} />}
               <InsightsSection overview={overview} channels={channels} landingPages={landingPages}
                                traffic={traffic} compareEnabled={compareEnabled}
-                               filtered={Boolean(channelQuery || landingQuery)} />
+                               filtered={Boolean(channelQ || landingQ)} />
             </>
           )}
 

@@ -37,16 +37,23 @@ class UnsafeUrlError(ValueError):
     """Raised when a URL is blocked by SSRF policy."""
 
 
-def _resolve(hostname: str) -> list:
+def _resolve(hostname: str, cache: dict | None = None) -> list:
     """Resolve a hostname to addrinfo records, retrying transient failures.
 
     Raises UnsafeUrlError only if every attempt fails, so a momentary resolver
     hiccup no longer surfaces as "Host could not be resolved" for a live domain.
+    `cache` (caller-owned, short-lived — e.g. one crawl chunk) reuses a successful
+    resolution for the same host; failures are never cached.
     """
+    if cache is not None and hostname in cache:
+        return cache[hostname]
     last_err: socket.gaierror | None = None
     for attempt in range(_DNS_ATTEMPTS):
         try:
-            return socket.getaddrinfo(hostname, None)
+            infos = socket.getaddrinfo(hostname, None)
+            if cache is not None:
+                cache[hostname] = infos
+            return infos
         except socket.gaierror as e:
             last_err = e
             if attempt < _DNS_ATTEMPTS - 1:
@@ -54,8 +61,13 @@ def _resolve(hostname: str) -> list:
     raise UnsafeUrlError("Host could not be resolved.") from last_err
 
 
-def validate_url(raw: str, *, check_chars: bool = True) -> str:
+def validate_url(raw: str, *, check_chars: bool = True, dns_cache: dict | None = None) -> str:
     """Return a normalized safe URL or raise UnsafeUrlError.
+
+    `dns_cache` lets a batch caller (crawl discovery queueing hundreds of links on one
+    host) resolve each host once; every address is still checked below. Only for
+    checks that are repeated before any request is made: `fetch()` trusts its caller
+    for the first hop, so the check gating a fetch must never pass a cache.
 
     `check_chars` gates the raw-forbidden-character rejection: it is input hygiene for
     mis-pasted USER input, so it defaults on at the entry points. Redirect revalidation
@@ -82,7 +94,7 @@ def validate_url(raw: str, *, check_chars: bool = True) -> str:
 
     # Resolve every address the host maps to and reject unsafe ones. Resolution
     # retries transient failures; a genuinely unknown host still raises after that.
-    infos = _resolve(parsed.hostname)
+    infos = _resolve(parsed.hostname, dns_cache)
 
     for info in infos:
         ip = ipaddress.ip_address(info[4][0])

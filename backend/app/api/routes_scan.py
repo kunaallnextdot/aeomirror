@@ -264,7 +264,9 @@ async def run_scan(db: Session, safe_url: str, ip: str,
         raise HTTPException(status_code=400,
             detail="Could not fetch that URL. Check the address and try again.")
     rubric = get_active_rubric(db)
-    report = score(page, rubric)
+    # Scoring and signals are pure CPU-bound HTML parsing (≈0.2 s for a typical page,
+    # >1 s for a large one); off the event loop so other requests keep being served.
+    report = await run_in_threadpool(score, page, rubric)
     # Phase 3: modular AI-visibility signals (pure functions; no LLM/paid API).
     # `overall_score` is the honest weighted aggregate of the 10 signals that the UI
     # actually displays (robots, sitemap, metadata, schema, content, links,
@@ -272,7 +274,7 @@ async def run_scan(db: Session, safe_url: str, ip: str,
     # Score shown everywhere — homepage gauge, dashboard, scan details, report — so the
     # headline always reflects the checks (incl. failures) shown beneath it. The legacy
     # 6-family `ars` is kept in the payload for reference but is no longer the headline.
-    signals = run_signals(page)
+    signals = await run_in_threadpool(run_signals, page)
     # AI crawler access check (single-page + monitor scans only; never bulk). Best-effort
     # and gated by a flag so it can be disabled without a deploy. Null for old rows / when
     # disabled — the API reads it null-safely.
