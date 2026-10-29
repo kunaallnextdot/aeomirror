@@ -933,19 +933,37 @@ class GoogleAnalyticsConnection(Base):
     last_sync_error_code = Column(String, nullable=True)
     next_sync_at = Column(DateTime, nullable=True, index=True)
     status = Column(String, nullable=False, default=GA4_STATUS_PENDING_PROPERTY)
+    # Whether the connected GA4 property has ANY key events configured, per the
+    # Admin API's keyEvents list (see fetch_key_events_configured). NULL = not yet
+    # checked. Needed because GA4's "keyEvents" metric returns 0 for every row when
+    # no key events exist at all — without this flag we cannot tell "zero conversions
+    # happened" apart from "conversions aren't configured", and the dashboard must
+    # never silently present the second case as the first (see Website Intelligence
+    # dashboard spec).
+    key_events_configured = Column(Boolean, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow)
 
 
 class Ga4TrafficSnapshot(Base):
     """One aggregated daily row from a GA4 runReport call: a (date, channel grouping,
-    source, medium) combination's session count, plus the deterministic AI-source
+    source, medium) combination's metrics, plus the deterministic AI-source
     classification of that combination (see classification.py — computed at sync
     time and stored, not recomputed per-request, so a future classification-rule
     change doesn't silently rewrite historical dashboards). Aggregated counts only —
     never raw per-visitor events (P0 scope). `date` is the GA4 API's own "YYYYMMDD"
     dimension value, stored verbatim as a string (avoids timezone-conversion
-    ambiguity and sorts correctly lexicographically for range queries)."""
+    ambiguity and sorts correctly lexicographically for range queries).
+
+    Every metric column here is a strict COUNT (of sessions, users-who-are-new-today,
+    events, etc.) — each one is safe to SUM across days, across channels, or both,
+    to build a range total. This table deliberately does NOT store GA4's `totalUsers`
+    (a deduplicated-unique-user metric): summing per-day or per-channel totalUsers
+    would double-count a visitor who returns on a different day or via a different
+    channel. Range-level unique-user totals come from a live, correctly-scoped GA4
+    query instead (see fetch_overview_with_comparison) — see Ga4DailyOverview for the
+    one place totalUsers IS stored, and only for one-day-at-a-time display, never
+    summed."""
     __tablename__ = "ga4_traffic_snapshots"
     __table_args__ = (
         Index("ix_ga4_snap_org_date", "organization_id", "date"),
@@ -961,6 +979,64 @@ class Ga4TrafficSnapshot(Base):
     medium = Column(String, nullable=False, default="(not set)")
     ai_source_label = Column(String, nullable=False)       # one of AI_SOURCE_LABELS
     sessions = Column(Integer, nullable=False, default=0)
+    # Additive metrics (safe to SUM across any grouping) — see class docstring.
+    new_users = Column(Integer, nullable=False, default=0)
+    engaged_sessions = Column(Integer, nullable=False, default=0)
+    views = Column(Integer, nullable=False, default=0)             # GA4 screenPageViews
+    engagement_duration_sec = Column(Float, nullable=False, default=0.0)  # GA4 userEngagementDuration
+    key_events = Column(Integer, nullable=False, default=0)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow)
+
+
+class Ga4DailyOverview(Base):
+    """One row per synced day, with NO dimension breakdown — the exact grain GA4
+    reports `totalUsers` at that's safe to read directly (each day's own number),
+    though still never safe to SUM across multiple days (see Ga4TrafficSnapshot's
+    docstring). Powers the Traffic Trends chart's Users/New Users lines. The
+    Executive Overview's range-total KPI cards do NOT read this table — they use a
+    live, correctly-scoped comparison query instead (fetch_overview_with_comparison)."""
+    __tablename__ = "ga4_daily_overview"
+    __table_args__ = (
+        Index("ix_ga4_daily_overview_org_date", "organization_id", "date"),
+        Index("uq_ga4_daily_overview_dimension", "connection_id", "date", unique=True),
+    )
+    id = Column(String, primary_key=True, default=_uuid)
+    organization_id = Column(String, index=True, nullable=False)
+    connection_id = Column(String, index=True, nullable=False)
+    date = Column(String, nullable=False)
+    total_users = Column(Integer, nullable=False, default=0)   # display-only; never sum across rows
+    new_users = Column(Integer, nullable=False, default=0)
+    sessions = Column(Integer, nullable=False, default=0)
+    engaged_sessions = Column(Integer, nullable=False, default=0)
+    views = Column(Integer, nullable=False, default=0)
+    engagement_duration_sec = Column(Float, nullable=False, default=0.0)
+    key_events = Column(Integer, nullable=False, default=0)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow)
+
+
+class Ga4LandingPageSnapshot(Base):
+    """One aggregated daily row per (date, landing page). Like Ga4TrafficSnapshot,
+    every column here is a strict count, safe to sum across days for a range total
+    or across pages for a site total — deliberately excludes `totalUsers` for the
+    same non-additivity reason."""
+    __tablename__ = "ga4_landing_page_snapshots"
+    __table_args__ = (
+        Index("ix_ga4_landing_org_date", "organization_id", "date"),
+        Index("uq_ga4_landing_dimension", "connection_id", "date", "landing_page", unique=True),
+    )
+    id = Column(String, primary_key=True, default=_uuid)
+    organization_id = Column(String, index=True, nullable=False)
+    connection_id = Column(String, index=True, nullable=False)
+    date = Column(String, nullable=False)
+    landing_page = Column(String, nullable=False, default="(not set)")
+    sessions = Column(Integer, nullable=False, default=0)
+    new_users = Column(Integer, nullable=False, default=0)
+    engaged_sessions = Column(Integer, nullable=False, default=0)
+    views = Column(Integer, nullable=False, default=0)
+    engagement_duration_sec = Column(Float, nullable=False, default=0.0)
+    key_events = Column(Integer, nullable=False, default=0)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow)
 

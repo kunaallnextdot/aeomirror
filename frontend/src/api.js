@@ -504,6 +504,25 @@ export function disconnectGoogleAnalytics() {
   return request(`/integrations/google`, { method: "DELETE", ...GA4_OPTS });
 }
 
+function _ga4Query({ startDate, endDate, ...rest } = {}) {
+  const clean = Object.entries({ start_date: startDate, end_date: endDate, ...rest })
+    .filter(([, v]) => v !== undefined && v !== null && v !== "");
+  const qs = new URLSearchParams(clean).toString();
+  return qs ? `?${qs}` : "";
+}
+export function getGa4Overview(params) {
+  return request(`/integrations/google/overview${_ga4Query(params)}`, GA4_OPTS);
+}
+export function getGa4Trends(params) {
+  return request(`/integrations/google/trends${_ga4Query(params)}`, GA4_OPTS);
+}
+export function getGa4Channels(params) {
+  return request(`/integrations/google/channels${_ga4Query(params)}`, GA4_OPTS);
+}
+export function getGa4LandingPages(params) {
+  return request(`/integrations/google/landing-pages${_ga4Query(params)}`, GA4_OPTS);
+}
+
 /* =====================================================================
    First-party website analytics / AI Business Impact — GA4-independent. One
    Monitor = one tracked site = one public "site id" embedded in the installed

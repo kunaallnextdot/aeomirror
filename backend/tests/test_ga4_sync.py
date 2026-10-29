@@ -27,17 +27,28 @@ FAKE_KEY = "zxhjMoSGw8Hu9dZ0qVgN6W7AUHHho9mz5igY2ZvQ4oE="
 # anchors its window to) to stay realistic across both an initial and incremental sync.
 _TODAY_KEY = date.today().strftime("%Y%m%d")
 
+def _counts(sessions, new_users=0, engaged_sessions=0, views=0,
+            engagement_duration_sec=0.0, key_events=0):
+    return {"sessions": sessions, "new_users": new_users, "engaged_sessions": engaged_sessions,
+            "views": views, "engagement_duration_sec": engagement_duration_sec,
+            "key_events": key_events}
+
+
 ROWS_PAGE_1 = [
     {"date": _TODAY_KEY, "channel_grouping": "Referral", "source": "chatgpt.com",
-     "medium": "referral", "sessions": 5},
+     "medium": "referral", **_counts(5, new_users=3, engaged_sessions=4, views=12,
+                                      engagement_duration_sec=240.0, key_events=1)},
     {"date": _TODAY_KEY, "channel_grouping": "Organic Search", "source": "google",
-     "medium": "organic", "sessions": 40},
+     "medium": "organic", **_counts(40, new_users=20, engaged_sessions=25, views=80,
+                                     engagement_duration_sec=900.0, key_events=2)},
 ]
 ROWS_PAGE_1_REVISED = [
     {"date": _TODAY_KEY, "channel_grouping": "Referral", "source": "chatgpt.com",
-     "medium": "referral", "sessions": 9},   # GA4 revised the same-day count upward
+     "medium": "referral", **_counts(9, new_users=5, engaged_sessions=7, views=20,
+                                      engagement_duration_sec=360.0, key_events=2)},
     {"date": _TODAY_KEY, "channel_grouping": "Organic Search", "source": "google",
-     "medium": "organic", "sessions": 40},
+     "medium": "organic", **_counts(40, new_users=20, engaged_sessions=25, views=80,
+                                     engagement_duration_sec=900.0, key_events=2)},
 ]
 
 
@@ -71,6 +82,22 @@ def _patch_refresh_ok(monkeypatch):
     monkeypatch.setattr(ga4, "refresh_access_token", fake_refresh)
 
 
+def _patch_secondary_reports_empty(monkeypatch):
+    """The daily-overview and landing-page reports, plus the key-events-configured
+    check, are best-effort and independent of the primary by-channel traffic report
+    (see run_sync's docstring) — tests that only care about the primary report mock
+    these as no-ops so run_sync never attempts a real network call."""
+    async def fake_overview(token, property_id, start, end):
+        return []
+    async def fake_landing(token, property_id, start, end):
+        return []
+    async def fake_key_events(token, property_id):
+        return None
+    monkeypatch.setattr(ga4, "fetch_daily_overview", fake_overview)
+    monkeypatch.setattr(ga4, "fetch_landing_pages", fake_landing)
+    monkeypatch.setattr(ga4, "fetch_key_events_configured", fake_key_events)
+
+
 @pytest.fixture(autouse=True)
 def _ga4_key(monkeypatch):
     monkeypatch.setattr(settings, "token_encryption_key", FAKE_KEY)
@@ -95,6 +122,7 @@ def test_run_sync_upserts_rows_and_classifies_them(monkeypatch):
     client, body = auth_client()
     conn_id = _connection_id(body["organization"]["id"], body["user"]["id"])
     _patch_refresh_ok(monkeypatch)
+    _patch_secondary_reports_empty(monkeypatch)
 
     async def fake_fetch(token, property_id, start, end):
         assert property_id == "123456"
@@ -110,6 +138,10 @@ def test_run_sync_upserts_rows_and_classifies_them(monkeypatch):
         by_source = {r.source: r for r in rows}
         assert by_source["chatgpt.com"].ai_source_label == "chatgpt"
         assert by_source["chatgpt.com"].sessions == 5
+        assert by_source["chatgpt.com"].new_users == 3
+        assert by_source["chatgpt.com"].engaged_sessions == 4
+        assert by_source["chatgpt.com"].views == 12
+        assert by_source["chatgpt.com"].key_events == 1
         assert by_source["google"].ai_source_label == "unattributable"
 
         assert conn.last_sync_status == "success"
@@ -123,6 +155,7 @@ def test_run_sync_is_idempotent_and_updates_revised_counts_without_duplicating(m
     client, body = auth_client()
     conn_id = _connection_id(body["organization"]["id"], body["user"]["id"])
     _patch_refresh_ok(monkeypatch)
+    _patch_secondary_reports_empty(monkeypatch)
 
     async def fake_fetch_1(token, property_id, start, end):
         return ROWS_PAGE_1
@@ -216,6 +249,7 @@ def test_run_sync_uses_initial_lookback_for_a_never_synced_connection_and_shorte
     conn_existing_id = _connection_id(body2["organization"]["id"], body2["user"]["id"],
                                       last_synced_at=datetime.utcnow())
     _patch_refresh_ok(monkeypatch)
+    _patch_secondary_reports_empty(monkeypatch)
     seen_ranges = []
 
     async def fake_fetch(token, property_id, start, end):
@@ -274,6 +308,7 @@ def test_full_claim_and_process_cycle_completes_the_job(monkeypatch):
     client, body = auth_client()
     conn_id = _connection_id(body["organization"]["id"], body["user"]["id"])
     _patch_refresh_ok(monkeypatch)
+    _patch_secondary_reports_empty(monkeypatch)
 
     async def fake_fetch(token, property_id, start, end):
         return ROWS_PAGE_1

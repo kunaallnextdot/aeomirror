@@ -28,6 +28,7 @@ export const SPECTRUM_ENGINES = {
   claude:     { name: "Claude",     letter: "C", color: "var(--sp-violet)" },
   perplexity: { name: "Perplexity", letter: "P", color: "var(--sp-blue)" },
   gemini:     { name: "Gemini",     letter: "G", color: "var(--sp-indigo)" },
+  copilot:    { name: "Copilot",    letter: "M", color: "var(--sp-cyan)" },
 };
 export function spectrumEngine(key) {
   return SPECTRUM_ENGINES[String(key || "").trim().toLowerCase()] || null;

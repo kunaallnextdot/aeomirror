@@ -8,9 +8,18 @@ import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { MemoryRouter, Routes, Route } from "react-router-dom";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
+// jsdom has no ResizeObserver; the Trends chart's recharts ResponsiveContainer
+// always mounts once "active + synced" renders (see BusinessImpact.test.jsx for
+// the same stub).
+global.ResizeObserver = class { observe() {} unobserve() {} disconnect() {} };
+
 vi.mock("../api.js", () => ({
   getGa4Status: vi.fn(),
   getGa4Traffic: vi.fn(),
+  getGa4Overview: vi.fn(),
+  getGa4Trends: vi.fn(),
+  getGa4Channels: vi.fn(),
+  getGa4LandingPages: vi.fn(),
   connectGoogleAnalytics: vi.fn(),
   listGa4Properties: vi.fn(),
   selectGa4Property: vi.fn(),
@@ -28,10 +37,17 @@ vi.mock("./UpgradeModal.jsx", () => ({
 }));
 
 import {
-  getGa4Status, getGa4Traffic, connectGoogleAnalytics, listGa4Properties,
+  getGa4Status, getGa4Traffic, getGa4Overview, getGa4Trends, getGa4Channels,
+  getGa4LandingPages, connectGoogleAnalytics, listGa4Properties,
   selectGa4Property, triggerGa4Sync, disconnectGoogleAnalytics, ScanError,
 } from "../api.js";
 import AiTraffic from "./AiTraffic.jsx";
+
+const ZERO_METRICS = {
+  total_users: 0, new_users: 0, sessions: 0, engaged_sessions: 0, views: 0,
+  engagement_duration_sec: 0, key_events: 0, returning_users: 0,
+  engagement_rate: null, avg_engagement_time_sec: null, conversion_rate: null,
+};
 
 function renderAt(path = "/app/analytics/ai-traffic") {
   return render(
@@ -47,6 +63,16 @@ beforeEach(() => {
   vi.clearAllMocks();
   assignSpy.mockClear();
   window.confirm = vi.fn(() => true);
+  // Sensible defaults for any test that reaches "active + synced" without caring
+  // about dashboard content specifically — overridden per-test where it matters.
+  getGa4Overview.mockResolvedValue({
+    date_range: { start: "2026-01-01", end: "2026-01-28" },
+    previous_date_range: { start: "2025-12-04", end: "2025-12-31" },
+    current: ZERO_METRICS, previous: ZERO_METRICS, key_events_configured: null,
+  });
+  getGa4Trends.mockResolvedValue({ date_range: { start: "2026-01-01", end: "2026-01-28" }, daily: [] });
+  getGa4Channels.mockResolvedValue({ channels: [], total: 0, page: 1, page_size: 25 });
+  getGa4LandingPages.mockResolvedValue({ pages: [], total: 0, page: 1, page_size: 25 });
   // jsdom's window.location is a non-configurable property (can't vi.spyOn it
   // directly) — redefine it on the object itself rather than reassigning `window.
   // location`, which jsdom also rejects.
@@ -237,10 +263,19 @@ describe("AiTraffic", () => {
       synced: true, last_synced_at: "2026-10-12T10:00:00Z",
       by_source: { chatgpt: 42, perplexity: 7, gemini: 0, copilot: 0, claude: 3,
                   other_identifiable: 11, unattributable: 500 },
+      by_source_detail: {
+        chatgpt: { sessions: 42, new_users: 10, engaged_sessions: 30, views: 80, key_events: 2, engagement_rate: 0.7, conversion_rate: 0.05 },
+        perplexity: { sessions: 7, new_users: 2, engaged_sessions: 4, views: 10, key_events: 0, engagement_rate: 0.57, conversion_rate: 0 },
+        gemini: { sessions: 0, new_users: 0, engaged_sessions: 0, views: 0, key_events: 0, engagement_rate: null, conversion_rate: null },
+        copilot: { sessions: 0, new_users: 0, engaged_sessions: 0, views: 0, key_events: 0, engagement_rate: null, conversion_rate: null },
+        claude: { sessions: 3, new_users: 1, engaged_sessions: 2, views: 5, key_events: 0, engagement_rate: 0.67, conversion_rate: 0 },
+        other_identifiable: { sessions: 11, new_users: 3, engaged_sessions: 6, views: 15, key_events: 0, engagement_rate: 0.55, conversion_rate: 0 },
+        unattributable: { sessions: 500, new_users: 100, engaged_sessions: 200, views: 900, key_events: 10, engagement_rate: 0.4, conversion_rate: 0.02 },
+      },
     });
     renderAt();
-    await waitFor(() => screen.getByText(/sessions by source/i));
-    screen.getByText("42");
+    await waitFor(() => screen.getByText(/ai traffic intelligence/i));
+    screen.getByText(/42 sessions/i);
     screen.getByText("500");
     // The honest-limitation note is always shown alongside real numbers.
     screen.getByText(/ai overview clicks cannot currently be separated/i);

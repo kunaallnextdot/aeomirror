@@ -28,8 +28,9 @@ from app.config import settings
 from app.core import token_crypto
 from app.db.models import (
     GA4_STATUS_ACTIVE, GA4_STATUS_ERROR, GA4_STATUS_PENDING_PROPERTY,
-    GA4_STATUS_REVOKED, JOB_PENDING, JOB_RUNNING, Ga4TrafficSnapshot,
-    GoogleAnalyticsConnection, OAuthState, ScheduledJob,
+    GA4_STATUS_REVOKED, JOB_PENDING, JOB_RUNNING, Ga4DailyOverview,
+    Ga4LandingPageSnapshot, Ga4TrafficSnapshot, GoogleAnalyticsConnection,
+    OAuthState, ScheduledJob,
 )
 from app.services.integrations.classification import classify_source
 
@@ -201,7 +202,39 @@ async def list_ga4_properties(access_token: str) -> list[dict] | None:
     return properties
 
 
+# Metric list shared by every runReport call below. Order matters — every parser
+# in this module reads metricValues by this exact index. All five are strict counts
+# (never a deduplicated-unique metric), so every value here is safe to sum across
+# days, channels, or landing pages — see Ga4TrafficSnapshot's docstring.
+_COUNT_METRICS = [
+    {"name": "sessions"}, {"name": "newUsers"}, {"name": "engagedSessions"},
+    {"name": "screenPageViews"}, {"name": "userEngagementDuration"}, {"name": "keyEvents"},
+]
+
+
+def _parse_count_metrics(mets: list[str]) -> dict:
+    """mets must align with _COUNT_METRICS's order. Never raises — a malformed or
+    missing value for any metric becomes 0/0.0 rather than failing the whole row."""
+    def _int(i: int) -> int:
+        try:
+            return int(mets[i])
+        except (IndexError, TypeError, ValueError):
+            return 0
+
+    def _float(i: int) -> float:
+        try:
+            return float(mets[i])
+        except (IndexError, TypeError, ValueError):
+            return 0.0
+
+    return {
+        "sessions": _int(0), "new_users": _int(1), "engaged_sessions": _int(2),
+        "views": _int(3), "engagement_duration_sec": _float(4), "key_events": _int(5),
+    }
+
+
 def _parse_run_report(payload: dict) -> list[dict]:
+    """date + sessionDefaultChannelGroup + sessionSource + sessionMedium grain."""
     rows_out: list[dict] = []
     for row in payload.get("rows", []) or []:
         dims = [d.get("value", "") for d in row.get("dimensionValues", [])]
@@ -209,14 +242,10 @@ def _parse_run_report(payload: dict) -> list[dict]:
         if len(dims) < 4 or not mets:
             continue
         date_str, channel_grouping, source, medium = dims[:4]
-        try:
-            sessions = int(mets[0])
-        except (TypeError, ValueError):
-            sessions = 0
         rows_out.append({
             "date": date_str, "channel_grouping": channel_grouping or "(not set)",
             "source": source or "(not set)", "medium": medium or "(not set)",
-            "sessions": sessions,
+            **_parse_count_metrics(mets),
         })
     return rows_out
 
@@ -233,7 +262,7 @@ async def fetch_daily_traffic(access_token: str, property_id: str,
         "dateRanges": [{"startDate": start_date, "endDate": end_date}],
         "dimensions": [{"name": "date"}, {"name": "sessionDefaultChannelGroup"},
                         {"name": "sessionSource"}, {"name": "sessionMedium"}],
-        "metrics": [{"name": "sessions"}],
+        "metrics": _COUNT_METRICS,
         "limit": 100000,
     }
     headers = {"Authorization": f"Bearer {access_token}"}
@@ -255,6 +284,201 @@ async def fetch_daily_traffic(access_token: str, property_id: str,
     except Exception:  # noqa: BLE001
         return None
     return _parse_run_report(payload)
+
+
+def _parse_daily_overview_report(payload: dict) -> list[dict]:
+    """date-only grain, WITH totalUsers (safe here: one row == one day == exactly
+    what GA4 reports for that single day, never summed with another row)."""
+    rows_out: list[dict] = []
+    for row in payload.get("rows", []) or []:
+        dims = [d.get("value", "") for d in row.get("dimensionValues", [])]
+        mets = [m.get("value", "0") for m in row.get("metricValues", [])]
+        if not dims or not mets:
+            continue
+        try:
+            total_users = int(mets[0])
+        except (TypeError, ValueError):
+            total_users = 0
+        rows_out.append({
+            "date": dims[0],
+            "total_users": total_users,
+            **_parse_count_metrics(mets[1:]),
+        })
+    return rows_out
+
+
+async def fetch_daily_overview(access_token: str, property_id: str,
+                                start_date: str, end_date: str) -> list[dict] | None:
+    """Same failure contract as fetch_daily_traffic. totalUsers is requested FIRST,
+    ahead of _COUNT_METRICS, specifically so this is the one report in the module
+    that carries a per-day unique-user count — see Ga4DailyOverview's docstring for
+    why it is never summed across days."""
+    import httpx
+    url = _DATA_API_TEMPLATE.format(property_id=property_id)
+    body = {
+        "dateRanges": [{"startDate": start_date, "endDate": end_date}],
+        "dimensions": [{"name": "date"}],
+        "metrics": [{"name": "totalUsers"}, *_COUNT_METRICS],
+        "limit": 100000,
+    }
+    headers = {"Authorization": f"Bearer {access_token}"}
+    try:
+        async with httpx.AsyncClient(timeout=settings.ga4_api_timeout_seconds) as client:
+            resp = await client.post(url, headers=headers, json=body)
+    except (httpx.TimeoutException, httpx.TransportError):
+        log.warning("ga4 daily-overview report failed: transport error")
+        return None
+    if resp.status_code == 403:
+        raise GoogleApiError("property not accessible", status_code=403)
+    if resp.status_code == 429:
+        raise GoogleApiError("quota exceeded", status_code=429)
+    if resp.status_code >= 400:
+        log.warning("ga4 daily-overview report failed: http %s", resp.status_code)
+        return None
+    try:
+        payload = resp.json()
+    except Exception:  # noqa: BLE001
+        return None
+    return _parse_daily_overview_report(payload)
+
+
+def _parse_landing_page_report(payload: dict) -> list[dict]:
+    rows_out: list[dict] = []
+    for row in payload.get("rows", []) or []:
+        dims = [d.get("value", "") for d in row.get("dimensionValues", [])]
+        mets = [m.get("value", "0") for m in row.get("metricValues", [])]
+        if len(dims) < 2 or not mets:
+            continue
+        date_str, landing_page = dims[:2]
+        rows_out.append({
+            "date": date_str, "landing_page": landing_page or "(not set)",
+            **_parse_count_metrics(mets),
+        })
+    return rows_out
+
+
+async def fetch_landing_pages(access_token: str, property_id: str,
+                               start_date: str, end_date: str) -> list[dict] | None:
+    """Same failure contract as fetch_daily_traffic. No totalUsers here either —
+    see Ga4LandingPageSnapshot's docstring."""
+    import httpx
+    url = _DATA_API_TEMPLATE.format(property_id=property_id)
+    body = {
+        "dateRanges": [{"startDate": start_date, "endDate": end_date}],
+        "dimensions": [{"name": "date"}, {"name": "landingPage"}],
+        "metrics": _COUNT_METRICS,
+        "limit": 100000,
+    }
+    headers = {"Authorization": f"Bearer {access_token}"}
+    try:
+        async with httpx.AsyncClient(timeout=settings.ga4_api_timeout_seconds) as client:
+            resp = await client.post(url, headers=headers, json=body)
+    except (httpx.TimeoutException, httpx.TransportError):
+        log.warning("ga4 landing-page report failed: transport error")
+        return None
+    if resp.status_code == 403:
+        raise GoogleApiError("property not accessible", status_code=403)
+    if resp.status_code == 429:
+        raise GoogleApiError("quota exceeded", status_code=429)
+    if resp.status_code >= 400:
+        log.warning("ga4 landing-page report failed: http %s", resp.status_code)
+        return None
+    try:
+        payload = resp.json()
+    except Exception:  # noqa: BLE001
+        return None
+    return _parse_landing_page_report(payload)
+
+
+def _parse_overview_comparison_report(payload: dict) -> dict:
+    out: dict = {"current": None, "previous": None}
+    for row in payload.get("rows", []) or []:
+        dims = [d.get("value", "") for d in row.get("dimensionValues", [])]
+        mets = [m.get("value", "0") for m in row.get("metricValues", [])]
+        if not dims or not mets:
+            continue
+        label = "current" if dims[0] == "current" else "previous" if dims[0] == "previous" else None
+        if label is None:
+            continue
+        try:
+            total_users = int(mets[0])
+        except (TypeError, ValueError):
+            total_users = 0
+        out[label] = {"total_users": total_users, **_parse_count_metrics(mets[1:])}
+
+    zero = {"total_users": 0, **_parse_count_metrics([])}
+    out["current"] = out["current"] or dict(zero)
+    out["previous"] = out["previous"] or dict(zero)
+    return out
+
+
+async def fetch_overview_with_comparison(
+    access_token: str, property_id: str, *,
+    current_start: str, current_end: str, previous_start: str, previous_end: str,
+) -> dict | None:
+    """ONE live runReport call, using GA4's own two-dateRanges feature, to get
+    correctly-scoped totalUsers/newUsers/etc. for the current AND the immediately
+    preceding period in a single request. This is the ONLY place the dashboard
+    queries GA4 live rather than reading a stored snapshot — deliberately, because
+    totalUsers for an arbitrary multi-day range cannot be reconstructed by summing
+    stored per-day rows (see Ga4TrafficSnapshot's docstring) and must be computed by
+    GA4 itself for the exact requested range. Returns
+    {"current": {...}, "previous": {...}} (each a _parse_count_metrics-shaped dict
+    plus total_users), or None on any failure. Raises GoogleApiError(403|429) like
+    the other fetchers."""
+    import httpx
+    url = _DATA_API_TEMPLATE.format(property_id=property_id)
+    body = {
+        "dateRanges": [
+            {"startDate": current_start, "endDate": current_end, "name": "current"},
+            {"startDate": previous_start, "endDate": previous_end, "name": "previous"},
+        ],
+        "dimensions": [{"name": "dateRange"}],
+        "metrics": [{"name": "totalUsers"}, *_COUNT_METRICS],
+    }
+    headers = {"Authorization": f"Bearer {access_token}"}
+    try:
+        async with httpx.AsyncClient(timeout=settings.ga4_api_timeout_seconds) as client:
+            resp = await client.post(url, headers=headers, json=body)
+    except (httpx.TimeoutException, httpx.TransportError):
+        log.warning("ga4 overview-comparison report failed: transport error")
+        return None
+    if resp.status_code == 403:
+        raise GoogleApiError("property not accessible", status_code=403)
+    if resp.status_code == 429:
+        raise GoogleApiError("quota exceeded", status_code=429)
+    if resp.status_code >= 400:
+        log.warning("ga4 overview-comparison report failed: http %s", resp.status_code)
+        return None
+    try:
+        payload = resp.json()
+    except Exception:  # noqa: BLE001
+        return None
+    return _parse_overview_comparison_report(payload)
+
+
+async def fetch_key_events_configured(access_token: str, property_id: str) -> bool | None:
+    """Whether the property has ANY key event configured. GA4's `keyEvents` metric
+    silently returns 0 for every row when none are configured at all — with no way
+    to tell that apart from "zero conversions happened" from the Data API alone —
+    so the Admin API's own keyEvents list is the only reliable signal. Returns None
+    (never raises) on any failure, meaning "unknown", not "false"."""
+    import httpx
+    url = f"https://analyticsadmin.googleapis.com/v1beta/properties/{property_id}/keyEvents"
+    headers = {"Authorization": f"Bearer {access_token}"}
+    try:
+        async with httpx.AsyncClient(timeout=settings.ga4_api_timeout_seconds) as client:
+            resp = await client.get(url, headers=headers, params={"pageSize": 1})
+    except (httpx.TimeoutException, httpx.TransportError):
+        return None
+    if resp.status_code >= 400:
+        log.warning("ga4 keyEvents list failed: http %s", resp.status_code)
+        return None
+    try:
+        body = resp.json()
+    except Exception:  # noqa: BLE001
+        return None
+    return bool(body.get("keyEvents"))
 
 
 # --------------------------- orchestration ---------------------------
@@ -433,6 +657,11 @@ async def run_sync(db: Session, connection: GoogleAnalyticsConnection) -> dict:
         found = existing_by_key.get(key)
         if found:
             found.sessions = row["sessions"]
+            found.new_users = row["new_users"]
+            found.engaged_sessions = row["engaged_sessions"]
+            found.views = row["views"]
+            found.engagement_duration_sec = row["engagement_duration_sec"]
+            found.key_events = row["key_events"]
             found.ai_source_label = label
             found.updated_at = now
         else:
@@ -440,8 +669,93 @@ async def run_sync(db: Session, connection: GoogleAnalyticsConnection) -> dict:
                 organization_id=connection.organization_id, connection_id=connection.id,
                 date=row["date"], channel_grouping=row["channel_grouping"],
                 source=row["source"], medium=row["medium"], ai_source_label=label,
-                sessions=row["sessions"], created_at=now, updated_at=now,
+                sessions=row["sessions"], new_users=row["new_users"],
+                engaged_sessions=row["engaged_sessions"], views=row["views"],
+                engagement_duration_sec=row["engagement_duration_sec"],
+                key_events=row["key_events"], created_at=now, updated_at=now,
             ))
+
+    # Daily-overview and landing-page reports are best-effort: a transient failure
+    # on either one does not fail the whole sync (the primary by-channel traffic
+    # report above already succeeded and is the most important dataset — the AI
+    # Traffic breakdown — so we keep that result rather than discarding it over a
+    # secondary report's hiccup). Each is retried on the next scheduled sync.
+    try:
+        overview_rows = await fetch_daily_overview(access_token, connection.ga4_property_id,
+                                                     start_str, end_str)
+    except GoogleApiError:
+        overview_rows = None
+    if overview_rows is not None:
+        existing_overview = (db.query(Ga4DailyOverview)
+                              .filter(Ga4DailyOverview.connection_id == connection.id,
+                                      Ga4DailyOverview.date >= start_key,
+                                      Ga4DailyOverview.date <= end_key)
+                              .all())
+        existing_overview_by_date = {r.date: r for r in existing_overview}
+        for row in overview_rows:
+            found = existing_overview_by_date.get(row["date"])
+            if found:
+                found.total_users = row["total_users"]
+                found.new_users = row["new_users"]
+                found.sessions = row["sessions"]
+                found.engaged_sessions = row["engaged_sessions"]
+                found.views = row["views"]
+                found.engagement_duration_sec = row["engagement_duration_sec"]
+                found.key_events = row["key_events"]
+                found.updated_at = now
+            else:
+                db.add(Ga4DailyOverview(
+                    organization_id=connection.organization_id, connection_id=connection.id,
+                    date=row["date"], total_users=row["total_users"],
+                    new_users=row["new_users"], sessions=row["sessions"],
+                    engaged_sessions=row["engaged_sessions"], views=row["views"],
+                    engagement_duration_sec=row["engagement_duration_sec"],
+                    key_events=row["key_events"], created_at=now, updated_at=now,
+                ))
+    else:
+        log.warning("ga4 sync: daily-overview report unavailable this cycle, skipping")
+
+    try:
+        landing_rows = await fetch_landing_pages(access_token, connection.ga4_property_id,
+                                                  start_str, end_str)
+    except GoogleApiError:
+        landing_rows = None
+    if landing_rows is not None:
+        existing_landing = (db.query(Ga4LandingPageSnapshot)
+                             .filter(Ga4LandingPageSnapshot.connection_id == connection.id,
+                                     Ga4LandingPageSnapshot.date >= start_key,
+                                     Ga4LandingPageSnapshot.date <= end_key)
+                             .all())
+        existing_landing_by_key = {(r.date, r.landing_page): r for r in existing_landing}
+        for row in landing_rows:
+            key = (row["date"], row["landing_page"])
+            found = existing_landing_by_key.get(key)
+            if found:
+                found.sessions = row["sessions"]
+                found.new_users = row["new_users"]
+                found.engaged_sessions = row["engaged_sessions"]
+                found.views = row["views"]
+                found.engagement_duration_sec = row["engagement_duration_sec"]
+                found.key_events = row["key_events"]
+                found.updated_at = now
+            else:
+                db.add(Ga4LandingPageSnapshot(
+                    organization_id=connection.organization_id, connection_id=connection.id,
+                    date=row["date"], landing_page=row["landing_page"],
+                    sessions=row["sessions"], new_users=row["new_users"],
+                    engaged_sessions=row["engaged_sessions"], views=row["views"],
+                    engagement_duration_sec=row["engagement_duration_sec"],
+                    key_events=row["key_events"], created_at=now, updated_at=now,
+                ))
+    else:
+        log.warning("ga4 sync: landing-page report unavailable this cycle, skipping")
+
+    # Cheap, infrequent config check — only overwrite a previously-known value when
+    # this call actually succeeds, so a transient failure never flips a known
+    # True/False back to "unknown".
+    key_events_configured = await fetch_key_events_configured(access_token, connection.ga4_property_id)
+    if key_events_configured is not None:
+        connection.key_events_configured = key_events_configured
 
     connection.last_synced_at = now
     connection.last_sync_status = "success"

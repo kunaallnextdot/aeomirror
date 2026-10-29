@@ -19,7 +19,10 @@ from sqlalchemy.orm import Session
 from app.api.deps import AuthContext, get_context, require_permission
 from app.billing import entitlements
 from app.config import settings
-from app.db.models import AI_SOURCE_LABELS, GA4_STATUS_ACTIVE, Ga4TrafficSnapshot
+from app.db.models import (
+    AI_SOURCE_LABELS, GA4_STATUS_ACTIVE, Ga4DailyOverview, Ga4LandingPageSnapshot,
+    Ga4TrafficSnapshot, Monitor, Scan,
+)
 from app.db.session import get_db
 from app.monitoring import scheduler
 from app.schemas.integrations import SelectGa4PropertyRequest
@@ -191,16 +194,13 @@ def trigger_sync(ctx: AuthContext = Depends(require_permission("org:update")),
 _MAX_RANGE_DAYS = 90
 
 
-@router.get("/traffic")
-def traffic(start_date: str | None = Query(default=None),
-           end_date: str | None = Query(default=None),
-           ctx: AuthContext = Depends(require_permission("report:view")),
-           db: Session = Depends(get_db)):
-    _require_pro(db, ctx)
-    connection = _owned_connection_or_404(db, ctx)
-
+def _parse_date_range(start_date: str | None, end_date: str | None,
+                       *, default_days: int = 30) -> tuple:
+    """Shared by every date-ranged GA4 endpoint below. Returns (start, end) as
+    date objects, already validated. Raises HTTPException(422) on anything
+    malformed — never silently clamps to a "close enough" range."""
     end = date.today()
-    start = end - timedelta(days=30)
+    start = end - timedelta(days=default_days)
     if end_date:
         try:
             end = datetime.strptime(end_date, "%Y-%m-%d").date()
@@ -216,6 +216,26 @@ def traffic(start_date: str | None = Query(default=None),
     if (end - start).days > _MAX_RANGE_DAYS:
         raise HTTPException(status_code=422,
             detail=f"Date range cannot exceed {_MAX_RANGE_DAYS} days.")
+    return start, end
+
+
+def _preceding_period(start: date, end: date) -> tuple:
+    """The immediately-preceding period of equal length, for a previous-period
+    comparison — e.g. [Jan 8, Jan 14] -> [Jan 1, Jan 7]."""
+    span = (end - start).days + 1
+    prev_end = start - timedelta(days=1)
+    prev_start = prev_end - timedelta(days=span - 1)
+    return prev_start, prev_end
+
+
+@router.get("/traffic")
+def traffic(start_date: str | None = Query(default=None),
+           end_date: str | None = Query(default=None),
+           ctx: AuthContext = Depends(require_permission("report:view")),
+           db: Session = Depends(get_db)):
+    _require_pro(db, ctx)
+    connection = _owned_connection_or_404(db, ctx)
+    start, end = _parse_date_range(start_date, end_date)
 
     start_key, end_key = start.strftime("%Y%m%d"), end.strftime("%Y%m%d")
     rows = (db.query(Ga4TrafficSnapshot)
@@ -227,18 +247,317 @@ def traffic(start_date: str | None = Query(default=None),
 
     by_source: dict[str, int] = {label: 0 for label in AI_SOURCE_LABELS}
     daily: dict[str, dict[str, int]] = {}
+    # Richer per-source metrics, additive to the response below the original
+    # by_source field (kept byte-for-byte as before — existing tests/clients rely
+    # on its exact shape). All additive counts, safe to sum (see
+    # Ga4TrafficSnapshot's docstring).
+    detail: dict[str, dict] = {
+        label: {"sessions": 0, "new_users": 0, "engaged_sessions": 0, "views": 0, "key_events": 0}
+        for label in AI_SOURCE_LABELS
+    }
     for r in rows:
         by_source[r.ai_source_label] = by_source.get(r.ai_source_label, 0) + r.sessions
         day = daily.setdefault(r.date, {label: 0 for label in AI_SOURCE_LABELS})
         day[r.ai_source_label] = day.get(r.ai_source_label, 0) + r.sessions
+        d = detail[r.ai_source_label]
+        d["sessions"] += r.sessions
+        d["new_users"] += r.new_users
+        d["engaged_sessions"] += r.engaged_sessions
+        d["views"] += r.views
+        d["key_events"] += r.key_events
+    for d in detail.values():
+        d["engagement_rate"] = (d["engaged_sessions"] / d["sessions"]) if d["sessions"] else None
+        d["conversion_rate"] = (d["key_events"] / d["sessions"]) if d["sessions"] else None
 
     return {
         "synced": connection.last_synced_at is not None,
         "last_synced_at": connection.last_synced_at,
         "date_range": {"start": start.isoformat(), "end": end.isoformat()},
         "by_source": by_source,
+        "by_source_detail": detail,
         "daily": [{"date": d, "by_source": v} for d, v in sorted(daily.items())],
     }
+
+
+# ------------------------------- overview -------------------------------
+
+@router.get("/overview")
+async def overview(start_date: str | None = Query(default=None),
+                   end_date: str | None = Query(default=None),
+                   ctx: AuthContext = Depends(require_permission("report:view")),
+                   db: Session = Depends(get_db)):
+    """The Executive Overview's KPI cards. The ONE endpoint that queries GA4 live
+    (one request, GA4's own two-dateRanges feature) rather than reading a stored
+    snapshot — totalUsers/newUsers for an arbitrary range cannot be correctly
+    reconstructed from summed per-day rows (see Ga4TrafficSnapshot's docstring), so
+    this asks GA4 to compute both the current and immediately-preceding period
+    itself. A transient failure here degrades honestly (502), never to a fabricated
+    zero."""
+    _require_pro(db, ctx)
+    connection = _owned_connection_or_404(db, ctx)
+    start, end = _parse_date_range(start_date, end_date)
+    prev_start, prev_end = _preceding_period(start, end)
+
+    base = {
+        "date_range": {"start": start.isoformat(), "end": end.isoformat()},
+        "previous_date_range": {"start": prev_start.isoformat(), "end": prev_end.isoformat()},
+        "synced": connection.last_synced_at is not None,
+        "last_synced_at": connection.last_synced_at,
+        "key_events_configured": connection.key_events_configured,
+    }
+    if connection.status != GA4_STATUS_ACTIVE or not connection.ga4_property_id:
+        return {**base, "current": None, "previous": None, "unavailable_reason": "not_active"}
+
+    access_token = await ga4.get_valid_access_token(db, connection)
+    if not access_token:
+        raise HTTPException(status_code=401,
+            detail="Your Google Analytics connection needs to be reconnected.")
+    try:
+        result = await ga4.fetch_overview_with_comparison(
+            access_token, connection.ga4_property_id,
+            current_start=start.strftime("%Y-%m-%d"), current_end=end.strftime("%Y-%m-%d"),
+            previous_start=prev_start.strftime("%Y-%m-%d"), previous_end=prev_end.strftime("%Y-%m-%d"),
+        )
+    except ga4.GoogleApiError as exc:
+        status_code = 429 if exc.status_code == 429 else 502
+        raise HTTPException(status_code=status_code,
+            detail="Could not load your Google Analytics overview right now.")
+    if result is None:
+        raise HTTPException(status_code=502,
+            detail="Could not load your Google Analytics overview right now.")
+
+    return {**base, "current": _enrich_overview_metrics(result["current"]),
+            "previous": _enrich_overview_metrics(result["previous"])}
+
+
+def _enrich_overview_metrics(m: dict) -> dict:
+    """Adds the derived (non-raw-GA4) fields: returning_users, engagement_rate,
+    avg_engagement_time_sec, conversion_rate — each explicitly documented as
+    derived so a reader never mistakes them for a metric GA4 itself returns."""
+    sessions = m["sessions"]
+    return {
+        **m,
+        "returning_users": max(m["total_users"] - m["new_users"], 0),
+        "engagement_rate": (m["engaged_sessions"] / sessions) if sessions else None,
+        "avg_engagement_time_sec": (m["engagement_duration_sec"] / sessions) if sessions else None,
+        "conversion_rate": (m["key_events"] / sessions) if sessions else None,
+    }
+
+
+# ------------------------------- trends -------------------------------
+
+@router.get("/trends")
+def trends(start_date: str | None = Query(default=None),
+          end_date: str | None = Query(default=None),
+          ctx: AuthContext = Depends(require_permission("report:view")),
+          db: Session = Depends(get_db)):
+    """Day-by-day series for the Traffic Trends chart, read entirely from stored
+    snapshots (no live GA4 call — see /overview for why totalUsers/newUsers range
+    TOTALS need a live query, which does not apply here: each day's own totalUsers
+    is read as GA4 reported it for that single day, never summed with another
+    day — see Ga4DailyOverview's docstring)."""
+    _require_pro(db, ctx)
+    connection = _owned_connection_or_404(db, ctx)
+    start, end = _parse_date_range(start_date, end_date, default_days=28)
+    start_key, end_key = start.strftime("%Y%m%d"), end.strftime("%Y%m%d")
+
+    overview_rows = (db.query(Ga4DailyOverview)
+                     .filter(Ga4DailyOverview.connection_id == connection.id,
+                             Ga4DailyOverview.date >= start_key,
+                             Ga4DailyOverview.date <= end_key)
+                     .all())
+    traffic_rows = (db.query(Ga4TrafficSnapshot)
+                     .filter(Ga4TrafficSnapshot.connection_id == connection.id,
+                             Ga4TrafficSnapshot.date >= start_key,
+                             Ga4TrafficSnapshot.date <= end_key)
+                     .all())
+
+    ai_by_day: dict[str, dict[str, int]] = {}
+    for r in traffic_rows:
+        day = ai_by_day.setdefault(r.date, {label: 0 for label in AI_SOURCE_LABELS})
+        day[r.ai_source_label] += r.sessions
+
+    daily = []
+    for r in sorted(overview_rows, key=lambda x: x.date):
+        daily.append({
+            "date": r.date,
+            "total_users": r.total_users, "new_users": r.new_users,
+            "returning_users": max(r.total_users - r.new_users, 0),
+            "sessions": r.sessions, "engaged_sessions": r.engaged_sessions,
+            "engagement_rate": (r.engaged_sessions / r.sessions) if r.sessions else None,
+            "views": r.views, "key_events": r.key_events,
+            "ai_sessions": ai_by_day.get(r.date, {label: 0 for label in AI_SOURCE_LABELS}),
+        })
+
+    return {
+        "date_range": {"start": start.isoformat(), "end": end.isoformat()},
+        "synced": connection.last_synced_at is not None,
+        "last_synced_at": connection.last_synced_at,
+        "daily": daily,
+    }
+
+
+# ------------------------------- channels -------------------------------
+
+@router.get("/channels")
+def channels(start_date: str | None = Query(default=None),
+            end_date: str | None = Query(default=None),
+            q: str | None = Query(default=None),
+            sort: str = Query(default="-sessions"),
+            page: int = Query(default=1, ge=1),
+            page_size: int = Query(default=25, ge=1, le=200),
+            ctx: AuthContext = Depends(require_permission("report:view")),
+            db: Session = Depends(get_db)):
+    """Acquisition-channel table. Deliberately omits a "Users" column — totalUsers
+    is not additive across channels or days (see Ga4TrafficSnapshot's docstring);
+    showing it here would require a live per-row GA4 query, which does not scale to
+    a table with many rows. Every column shown here IS a safe sum."""
+    _require_pro(db, ctx)
+    connection = _owned_connection_or_404(db, ctx)
+    start, end = _parse_date_range(start_date, end_date)
+    start_key, end_key = start.strftime("%Y%m%d"), end.strftime("%Y%m%d")
+
+    rows = (db.query(Ga4TrafficSnapshot)
+            .filter(Ga4TrafficSnapshot.connection_id == connection.id,
+                    Ga4TrafficSnapshot.date >= start_key,
+                    Ga4TrafficSnapshot.date <= end_key)
+            .all())
+
+    grouped: dict[tuple, dict] = {}
+    for r in rows:
+        key = (r.channel_grouping, r.source, r.medium)
+        g = grouped.setdefault(key, {
+            "channel": r.channel_grouping, "source": r.source, "medium": r.medium,
+            "ai_source_label": r.ai_source_label,
+            "sessions": 0, "new_users": 0, "engaged_sessions": 0, "views": 0, "key_events": 0,
+        })
+        g["sessions"] += r.sessions
+        g["new_users"] += r.new_users
+        g["engaged_sessions"] += r.engaged_sessions
+        g["views"] += r.views
+        g["key_events"] += r.key_events
+
+    items = list(grouped.values())
+    for g in items:
+        g["engagement_rate"] = (g["engaged_sessions"] / g["sessions"]) if g["sessions"] else None
+        g["conversion_rate"] = (g["key_events"] / g["sessions"]) if g["sessions"] else None
+    if q:
+        needle = q.lower()
+        items = [g for g in items if needle in g["channel"].lower()
+                 or needle in g["source"].lower() or needle in g["medium"].lower()]
+
+    items = _apply_sort(items, sort, allowed={"sessions", "new_users", "engaged_sessions",
+                                               "views", "key_events", "engagement_rate",
+                                               "conversion_rate", "channel"})
+    total = len(items)
+    paged = items[(page - 1) * page_size: page * page_size]
+
+    return {
+        "date_range": {"start": start.isoformat(), "end": end.isoformat()},
+        "total": total, "page": page, "page_size": page_size,
+        "channels": paged,
+    }
+
+
+def _apply_sort(items: list[dict], sort: str, *, allowed: set) -> list[dict]:
+    desc = sort.startswith("-")
+    field = sort[1:] if desc else sort
+    if field not in allowed:
+        field, desc = "sessions", True
+    return sorted(items, key=lambda x: (x.get(field) is None, x.get(field)), reverse=desc)
+
+
+# ------------------------------- landing pages -------------------------------
+
+@router.get("/landing-pages")
+def landing_pages(start_date: str | None = Query(default=None),
+                  end_date: str | None = Query(default=None),
+                  q: str | None = Query(default=None),
+                  sort: str = Query(default="-sessions"),
+                  page: int = Query(default=1, ge=1),
+                  page_size: int = Query(default=25, ge=1, le=200),
+                  ctx: AuthContext = Depends(require_permission("report:view")),
+                  db: Session = Depends(get_db)):
+    """Landing-page performance table, plus a previous-period delta (valid here —
+    every metric is additive, see Ga4LandingPageSnapshot's docstring) and a
+    best-effort cross-reference to the org's own AEOMirror scan/audit record for
+    that page, kept as a SEPARATE field (never merged into the analytics numbers)."""
+    _require_pro(db, ctx)
+    connection = _owned_connection_or_404(db, ctx)
+    start, end = _parse_date_range(start_date, end_date)
+    prev_start, prev_end = _preceding_period(start, end)
+    start_key, end_key = start.strftime("%Y%m%d"), end.strftime("%Y%m%d")
+    prev_start_key, prev_end_key = prev_start.strftime("%Y%m%d"), prev_end.strftime("%Y%m%d")
+
+    def _grouped(lo: str, hi: str) -> dict[str, dict]:
+        rows = (db.query(Ga4LandingPageSnapshot)
+                .filter(Ga4LandingPageSnapshot.connection_id == connection.id,
+                        Ga4LandingPageSnapshot.date >= lo,
+                        Ga4LandingPageSnapshot.date <= hi)
+                .all())
+        out: dict[str, dict] = {}
+        for r in rows:
+            g = out.setdefault(r.landing_page, {
+                "landing_page": r.landing_page, "sessions": 0, "new_users": 0,
+                "engaged_sessions": 0, "views": 0, "key_events": 0,
+            })
+            g["sessions"] += r.sessions
+            g["new_users"] += r.new_users
+            g["engaged_sessions"] += r.engaged_sessions
+            g["views"] += r.views
+            g["key_events"] += r.key_events
+        return out
+
+    current = _grouped(start_key, end_key)
+    previous = _grouped(prev_start_key, prev_end_key)
+
+    items = []
+    for page_path, g in current.items():
+        g["engagement_rate"] = (g["engaged_sessions"] / g["sessions"]) if g["sessions"] else None
+        g["conversion_rate"] = (g["key_events"] / g["sessions"]) if g["sessions"] else None
+        prev_sessions = previous.get(page_path, {}).get("sessions")
+        g["sessions_change"] = (g["sessions"] - prev_sessions) if prev_sessions is not None else None
+        g["scan"] = _match_scan_for_landing_page(db, ctx.org_id, page_path)
+        items.append(g)
+
+    if q:
+        needle = q.lower()
+        items = [g for g in items if needle in g["landing_page"].lower()]
+    items = _apply_sort(items, sort, allowed={"sessions", "new_users", "engaged_sessions",
+                                               "views", "key_events", "engagement_rate",
+                                               "conversion_rate", "sessions_change", "landing_page"})
+    total = len(items)
+    paged = items[(page - 1) * page_size: page * page_size]
+
+    return {
+        "date_range": {"start": start.isoformat(), "end": end.isoformat()},
+        "previous_date_range": {"start": prev_start.isoformat(), "end": prev_end.isoformat()},
+        "total": total, "page": page, "page_size": page_size,
+        "pages": paged,
+    }
+
+
+def _match_scan_for_landing_page(db: Session, org_id: str, landing_page: str) -> dict | None:
+    """Best-effort only: tries to connect a GA4 landing path to an existing
+    AEOMirror scan for the SAME organization, so the dashboard can link out to real
+    audit evidence for that page. Only attempted when the org has exactly one
+    monitored site — with more than one, which site a GA4 property belongs to is
+    genuinely ambiguous, and guessing wrong would misattribute audit data to the
+    wrong page, so this honestly returns None instead."""
+    monitors = db.query(Monitor).filter(Monitor.organization_id == org_id).limit(2).all()
+    if len(monitors) != 1:
+        return None
+    monitor = monitors[0]
+    base = monitor.url.rstrip("/")
+    candidate = base + landing_page if landing_page.startswith("/") else f"{base}/{landing_page}"
+    scan = (db.query(Scan)
+            .filter(Scan.organization_id == org_id,
+                    (Scan.url == candidate) | (Scan.normalized_url == candidate))
+            .order_by(Scan.created_at.desc())
+            .first())
+    if not scan:
+        return None
+    return {"scan_id": scan.id, "score": scan.ars}
 
 
 # ------------------------------- disconnect -------------------------------
