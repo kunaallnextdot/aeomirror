@@ -321,3 +321,44 @@ def test_org_a_cannot_read_or_mutate_org_bs_connection(monkeypatch):
 
     traffic_a = client_a.get("/integrations/google/traffic")
     assert traffic_a.status_code == 404
+
+
+def test_switching_property_drops_the_old_propertys_data_and_website_link(monkeypatch):
+    """Snapshots are keyed by connection, not property — keeping them would sum the
+    old property's traffic into the new one's, and the new property may measure a
+    different website."""
+    from app.db.models import Ga4TrafficSnapshot
+    _enable_ga4(monkeypatch)
+    client, body = auth_client()
+    org_id = body["organization"]["id"]
+    conn_id = _make_connection(org_id, body["user"]["id"], status=GA4_STATUS_ACTIVE)
+    db = SessionLocal()
+    try:
+        db.query(GoogleAnalyticsConnection).filter_by(id=conn_id).update(
+            {"ga4_property_id": "123456", "linked_monitor_id": "site-1", "last_synced_at": datetime.utcnow()})
+        db.add(Ga4TrafficSnapshot(organization_id=org_id, connection_id=conn_id, date="20260101",
+                                  channel_grouping="Direct", source="(direct)", medium="(none)",
+                                  ai_source_label="unattributable", sessions=9))
+        db.commit()
+    finally:
+        db.close()
+    _patch_refresh_ok(monkeypatch)
+    monkeypatch.setattr(ga4, "list_ga4_properties", lambda token: _async(PROPS))
+
+    # Re-selecting the SAME property keeps everything.
+    assert client.post("/integrations/google/select-property", json={"property_id": "123456"}).status_code == 200
+    db = SessionLocal()
+    try:
+        assert db.query(Ga4TrafficSnapshot).filter_by(connection_id=conn_id).count() == 1
+        assert db.get(GoogleAnalyticsConnection, conn_id).linked_monitor_id == "site-1"
+    finally:
+        db.close()
+
+    assert client.post("/integrations/google/select-property", json={"property_id": "789012"}).status_code == 200
+    db = SessionLocal()
+    try:
+        conn = db.get(GoogleAnalyticsConnection, conn_id)
+        assert db.query(Ga4TrafficSnapshot).filter_by(connection_id=conn_id).count() == 0
+        assert conn.linked_monitor_id is None and conn.last_synced_at is None
+    finally:
+        db.close()

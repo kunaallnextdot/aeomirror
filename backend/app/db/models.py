@@ -941,6 +941,16 @@ class GoogleAnalyticsConnection(Base):
     # never silently present the second case as the first (see Website Intelligence
     # dashboard spec).
     key_events_configured = Column(Boolean, nullable=True)
+    # Which of the org's websites (Monitor) this GA4 property measures. Set ONLY by an
+    # explicit user choice: the Admin API returns no hostname for a property, so it
+    # can't be inferred, and guessing would show one site's analytics as another's.
+    # NULL = not linked; GA4 data is then never shown on any per-website view.
+    linked_monitor_id = Column(String, nullable=True, index=True)
+    # When each best-effort report last actually succeeded. `last_synced_at` is the
+    # required by-channel traffic report only; the overview and landing-page reports
+    # can fail on a sync that still succeeds overall, so their freshness is their own.
+    overview_synced_at = Column(DateTime, nullable=True)
+    landing_pages_synced_at = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow)
 

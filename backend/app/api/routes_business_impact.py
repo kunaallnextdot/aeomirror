@@ -142,3 +142,21 @@ def landing_pages(start_date: str | None = Query(default=None), end_date: str | 
     pages = aggregation.landing_page_performance(db, org_id=ctx.org_id, monitor_ids=monitor_ids,
                                                   start=start, end=end, limit=limit, offset=offset)
     return {"pages": pages, "limit": limit, "offset": offset}
+
+
+@router.get("/command-center")
+def command_center(monitor_id: str = Query(..., min_length=1),
+                   start_date: str | None = Query(default=None), end_date: str | None = Query(default=None),
+                   ctx: AuthContext = Depends(require_permission("report:view")),
+                   db: Session = Depends(get_db)):
+    """One website's evidence from every existing source (see services/command_center).
+    monitor_id is REQUIRED — this view never mixes websites — and is ownership-checked
+    exactly like the other endpoints. Free plan gets the indicators and findings;
+    Pro-only values (conversion figures, page-level findings, GA4 numbers) are left
+    out for free orgs rather than shown as zeros."""
+    from app.services import command_center as cc
+    start, end = _parse_range(start_date, end_date)
+    ids = _owned_monitor_ids(db, ctx, monitor_id)
+    monitor = db.get(Monitor, ids[0])
+    return cc.build(db, org_id=ctx.org_id, monitor=monitor, start=start, end=end,
+                    is_pro=entitlements.is_pro(db, ctx.org_id))

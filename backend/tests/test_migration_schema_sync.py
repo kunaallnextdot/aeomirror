@@ -82,13 +82,13 @@ def test_migrating_a_fresh_database_to_head_produces_the_tables_and_columns_the_
 def test_alembic_head_matches_the_latest_ga4_migration():
     """A simpler tripwire: if someone adds a new migration without updating this
     test, it fails loudly instead of silently passing — forcing a conscious
-    decision about whether the new head is still b4f7e1a9c2d3 or something newer
+    decision about whether the new head is still d3a7f9c2e5b1 or something newer
     that should also be covered by the schema-sync test above."""
     cfg = _fresh_alembic_config(os.path.join(tempfile.gettempdir(), "unused.db"))
     from alembic.script import ScriptDirectory
     script = ScriptDirectory.from_config(cfg)
     heads = script.get_heads()
-    assert heads == ["b4f7e1a9c2d3"], (
-        f"expected alembic head to be b4f7e1a9c2d3, got {heads} — update this test "
+    assert heads == ["d3a7f9c2e5b1"], (
+        f"expected alembic head to be d3a7f9c2e5b1, got {heads} — update this test "
         "alongside whatever new migration moved the head"
     )

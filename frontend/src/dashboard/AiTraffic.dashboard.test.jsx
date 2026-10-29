@@ -288,9 +288,22 @@ describe("AI Traffic Intelligence", () => {
     renderAt();
     await waitFor(() => screen.getByText(/ai traffic intelligence/i));
     screen.getByText("ChatGPT");
-    screen.getByText(/42 sessions/i);
+    screen.getByText("42 sessions");   // the ChatGPT engine card
     expect(screen.getAllByText("No sessions").length).toBe(4);   // perplexity/gemini/copilot/claude
     screen.getByText("999");           // unattributable plain row
+  });
+
+  it("uses a singular badge for exactly one session, and explains the non-AI rows", async () => {
+    getGa4Traffic.mockResolvedValue({
+      synced: true, by_source: {},
+      by_source_detail: { claude: { sessions: 1, engaged_sessions: 1, key_events: 0, engagement_rate: 1 } },
+    });
+    renderAt();
+    await waitFor(() => screen.getByText(/ai traffic intelligence/i));
+    screen.getByText("1 session");
+    expect(screen.queryByText("1 sessions")).toBeNull();
+    screen.getByText(/a named referrer that isn't a known ai assistant/i);
+    screen.getByText(/direct, google organic search, or no referrer/i);
   });
 });
 

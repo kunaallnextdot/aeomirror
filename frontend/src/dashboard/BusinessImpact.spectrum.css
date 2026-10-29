@@ -20,10 +20,6 @@
 
 .sp-bi-banner{padding:10px 14px;border-radius:var(--sp-r-m);font-size:13px;margin-bottom:14px}
 .sp-bi-banner.err{background:var(--sp-t-violet);color:var(--sp-violet-d)}
-.sp-bi-ga4-note{font-size:12.5px;color:var(--sp-muted);background:var(--sp-t-grey);
-  border-radius:var(--sp-r-s);padding:8px 12px;margin-bottom:14px;line-height:1.5}
-.sp-bi-ga4-note a{color:var(--sp-primary);font-weight:600;text-decoration:none}
-.sp-bi-ga4-note a:hover{text-decoration:underline}
 
 .sp-bi-card{background:var(--sp-solid);border:1px solid var(--sp-line);border-radius:var(--sp-r-m);
   padding:18px;box-shadow:var(--sp-sh-s);margin-bottom:14px}
@@ -99,3 +95,108 @@
 .sp-bi-page-link{display:inline-block;margin-top:6px;font-size:12px;color:var(--sp-primary);
   text-decoration:none;font-weight:500}
 .sp-bi-page-link:hover{text-decoration:underline}
+
+/* ================= Website Intelligence Command Center ================= */
+.sp-bi-compare{display:flex;align-items:center;gap:6px;font-size:12.5px;color:var(--sp-muted);cursor:pointer}
+.sp-bi-custom{display:flex;align-items:center;gap:16px;flex-wrap:wrap;margin:-6px 0 16px;font-size:12.5px;color:var(--sp-muted)}
+.sp-bi-custom label{display:flex;align-items:center;gap:6px}
+.sp-bi-custom input{border:1px solid var(--sp-line);border-radius:var(--sp-r-s);padding:5px 8px;font:inherit;color:var(--sp-ink);background:var(--sp-solid)}
+.sp-bi-hint{font-size:12px !important;color:var(--sp-muted) !important;line-height:1.5;margin:8px 0 0 !important}
+.sp-bi-section-error{display:flex;align-items:center;gap:7px;color:var(--sp-violet-d) !important;margin:0 !important}
+.sp-bi-section-title{margin:6px 0 10px}
+.sp-bi-section-title h2{display:flex;align-items:center;gap:8px;font-family:var(--sp-font-heading);
+  font-size:15px;font-weight:700;color:var(--sp-ink);margin:0}
+.sp-bi-section-title .sp-bi-sub-sm{margin:6px 0 0}
+.sp-bi-section-title .sp-bi-sub-sm a{color:var(--sp-primary);font-weight:600;text-decoration:none}
+.sp-bi-source{font-size:11px;font-weight:500;color:var(--sp-muted);font-family:var(--sp-font-numeric)}
+.sp-bi-section-title .sp-bi-source{display:inline-block;margin-top:2px}
+
+/* status pill — one vocabulary for every source */
+.sp-bi-status{font-size:11px;font-weight:600;padding:2px 8px;border-radius:var(--sp-r-pill);white-space:nowrap;
+  background:var(--sp-t-grey);color:var(--sp-muted)}
+.sp-bi-status.st-available{background:var(--sp-t-blue);color:var(--sp-blue-d)}
+.sp-bi-status.st-stale,.sp-bi-status.st-partial,.sp-bi-status.st-insufficient_data{background:var(--sp-t-lav);color:var(--sp-lav-d)}
+.sp-bi-status.st-error{background:var(--sp-t-violet);color:var(--sp-violet-d)}
+
+/* indicators — first viewport */
+/* Six indicators: 3+3 on desktop, 2+2+2 on tablet, 1 column on phones — never a
+   5+1 row with one orphaned card. */
+.sp-bi-inds{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin-bottom:14px}
+@media (max-width:1100px){.sp-bi-inds{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media (max-width:560px){.sp-bi-inds{grid-template-columns:1fr}}
+.sp-bi-ind{background:var(--sp-solid);border:1px solid var(--sp-line);border-radius:var(--sp-r-m);padding:14px 16px;
+  display:flex;flex-direction:column;gap:6px;min-width:0}
+.sp-bi-ind-top{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.sp-bi-ind-title{display:flex;align-items:center;gap:6px;font-size:12px;font-weight:600;color:var(--sp-ink-2);min-width:0}
+.sp-bi-ind-title svg{color:var(--sp-primary);flex:none}
+.sp-bi-ind-value{font-family:var(--sp-font-numeric);font-size:22px;font-weight:500;color:var(--sp-ink);line-height:1.2}
+.sp-bi-ind-detail{font-size:12px;color:var(--sp-muted);line-height:1.45;flex:1}
+.sp-bi-ind-note{font-size:11.5px;color:var(--sp-ink-2,var(--sp-muted));line-height:1.4;margin-top:4px;padding-left:8px;border-left:2px solid var(--sp-line-2)}
+.sp-bi-change-note{font-size:12px;color:var(--sp-muted);margin:-4px 0 14px}
+.sp-bi-ind-meta{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;
+  font-size:11px;color:var(--sp-muted);border-top:1px solid var(--sp-line-2);padding-top:8px}
+.sp-bi-ind-meta a{display:inline-flex;align-items:center;gap:3px;color:var(--sp-primary);font-weight:600;text-decoration:none}
+.sp-bi-ind-meta a:hover{text-decoration:underline}
+.sp-bi-ind-meta a:focus-visible,.sp-bi-finding-h:focus-visible,.sp-bi-more:focus-visible{outline:2px solid var(--sp-primary);outline-offset:2px}
+
+.sp-bi-linkbar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;background:var(--sp-t-grey);
+  border-radius:var(--sp-r-s);padding:10px 12px;margin:-4px 0 14px;font-size:12.5px;color:var(--sp-ink-2)}
+.sp-bi-linkbar span{flex:1;min-width:220px}
+
+/* findings */
+.sp-bi-findings{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:8px}
+.sp-bi-finding{border:1px solid var(--sp-line);border-radius:var(--sp-r-s);overflow:hidden}
+.sp-bi-finding.pri-high{border-left:3px solid var(--sp-violet-d)}
+.sp-bi-finding.pri-medium{border-left:3px solid var(--sp-lav-d)}
+.sp-bi-finding-h{width:100%;display:flex;align-items:center;gap:10px;background:none;border:0;padding:11px 14px;
+  font:inherit;text-align:left;cursor:pointer;color:var(--sp-ink)}
+.sp-bi-finding-h .sp-bi-pri{text-transform:capitalize}
+.sp-bi-finding-t{flex:1;font-size:13.5px;font-weight:600;min-width:0}
+.sp-bi-finding-cat{font-size:11px;color:var(--sp-muted);white-space:nowrap}
+.sp-bi-finding-b{padding:2px 14px 14px;border-top:1px solid var(--sp-line-2)}
+.sp-bi-statements{list-style:none;margin:10px 0;padding:0;display:flex;flex-direction:column;gap:6px;font-size:13px;color:var(--sp-ink-2);line-height:1.5}
+.sp-bi-stype{display:inline-block;min-width:78px;font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--sp-muted)}
+.sp-bi-stype.t-recommendation{color:var(--sp-primary)}
+.sp-bi-stype.t-calculated{color:var(--sp-blue-d)}
+.sp-bi-evidence{display:grid;grid-template-columns:auto 1fr;gap:4px 14px;margin:0 0 10px;font-size:12.5px}
+.sp-bi-evidence dt{color:var(--sp-muted)}
+.sp-bi-evidence dd{margin:0;color:var(--sp-ink);font-family:var(--sp-font-numeric)}
+.sp-bi-evidence small{font-family:var(--sp-font-body);color:var(--sp-muted);margin-left:6px}
+.sp-bi-finding-meta{font-size:11.5px !important;color:var(--sp-muted) !important;margin:0 0 6px !important}
+.sp-bi-more{margin-top:10px;background:none;border:0;padding:0;font:inherit;font-size:12.5px;font-weight:600;color:var(--sp-primary);cursor:pointer}
+
+/* KPI deltas + unmeasured values */
+.sp-bi-stat-v.muted{font-family:var(--sp-font-body);font-size:13px;color:var(--sp-muted);font-weight:500}
+.sp-bi-delta{display:block;font-size:11px;margin-top:3px;color:var(--sp-muted)}
+.sp-bi-delta.up{color:var(--sp-blue-d)}
+.sp-bi-delta.down{color:var(--sp-violet-d)}
+
+/* AI search intelligence — two separate measurements */
+.sp-bi-ai-cols{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,280px),1fr));gap:14px}
+.sp-bi-ai-col{border:1px solid var(--sp-line);border-radius:var(--sp-r-s);padding:14px;min-width:0}
+.sp-bi-ai-col h3{display:flex;align-items:baseline;justify-content:space-between;gap:8px;flex-wrap:wrap}
+.sp-bi-ai-big{font-family:var(--sp-font-numeric);font-size:22px !important;color:var(--sp-ink) !important;margin:4px 0 8px !important}
+.sp-bi-ai-big small{font-family:var(--sp-font-body);font-size:12.5px;color:var(--sp-muted)}
+.sp-bi-ai-list{list-style:none;margin:0 0 6px;padding:0}
+.sp-bi-ai-list li{display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--sp-line-2);font-size:12.5px}
+.sp-bi-ai-list li:last-child{border-bottom:0}
+.sp-bi-ai-list strong{font-family:var(--sp-font-numeric);font-weight:500}
+
+.sp-bi-chart-sm{height:200px}
+.sp-bi-table-wrap{overflow-x:auto}
+
+/* landing pages */
+.sp-bi-pages-toolbar{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px}
+.sp-bi-pages-toolbar input,.sp-bi-pages-toolbar select{border:1px solid var(--sp-line);border-radius:var(--sp-r-s);
+  padding:7px 10px;font:inherit;font-size:13px;color:var(--sp-ink);background:var(--sp-solid)}
+.sp-bi-pages-toolbar input{flex:1;min-width:180px}
+.sp-bi-page-audit{font-size:12px !important;color:var(--sp-ink-2) !important;margin:6px 0 0 !important}
+.sp-bi-page-audit.muted{color:var(--sp-muted) !important}
+
+@media (max-width:640px){
+  .sp-bi-card{padding:14px}
+  .sp-bi-updated{margin-left:0;white-space:normal}
+  .sp-bi-ranges{width:100%;justify-content:space-between}
+  .sp-bi-ranges button{flex:1;padding:6px 4px}
+  .sp-bi-finding-cat{display:none}
+}

@@ -270,3 +270,77 @@ def test_landing_pages_cross_tenant_isolation(monkeypatch):
 
     assert client_a.get("/integrations/google/landing-pages").status_code == 404
     assert len(client_b.get("/integrations/google/landing-pages").json()["pages"]) == 1
+
+
+# ------------------------------- per-dataset freshness + comparability + mapping -------------------------------
+
+def _set_conn(conn_id: str, **values):
+    db = SessionLocal()
+    try:
+        db.query(GoogleAnalyticsConnection).filter_by(id=conn_id).update(values)
+        db.commit()
+    finally:
+        db.close()
+
+
+def test_trends_and_landing_pages_report_their_own_dataset_sync_not_the_global_one(monkeypatch):
+    _enable_ga4(monkeypatch)
+    client, body = auth_client()
+    conn_id = _make_connection(body["organization"]["id"], body["user"]["id"])   # traffic synced
+    t = client.get("/integrations/google/trends").json()
+    lp = client.get("/integrations/google/landing-pages").json()
+    assert t["synced"] is False and t["last_synced_at"] is None
+    assert lp["synced"] is False and lp["last_synced_at"] is None
+    _set_conn(conn_id, overview_synced_at=datetime.utcnow())
+    assert client.get("/integrations/google/trends").json()["synced"] is True
+    assert client.get("/integrations/google/status").json()["datasets"]["landing_pages"] is None
+
+
+def test_landing_page_change_is_withheld_when_history_does_not_cover_the_previous_period(monkeypatch):
+    _enable_ga4(monkeypatch)
+    client, body = auth_client()
+    org_id = body["organization"]["id"]
+    conn_id = _make_connection(org_id, body["user"]["id"])
+    _seed_landing_page(conn_id, org_id)          # only today's row: no previous-period history
+    r = client.get("/integrations/google/landing-pages").json()
+    assert r["previous_comparable"] is False
+    assert r["pages"][0]["sessions_change"] is None   # unknown, never "+50 vs 0"
+
+    db = SessionLocal()
+    try:
+        old = (date.today() - timedelta(days=90)).strftime("%Y%m%d")
+        db.add(Ga4LandingPageSnapshot(organization_id=org_id, connection_id=conn_id, date=old,
+                                      landing_page="/other", sessions=1, new_users=1,
+                                      engaged_sessions=1, views=1, engagement_duration_sec=1.0,
+                                      key_events=0))
+        db.commit()
+    finally:
+        db.close()
+    r = client.get("/integrations/google/landing-pages").json()
+    assert r["previous_comparable"] is True
+    pricing = next(p for p in r["pages"] if p["landing_page"] == "/pricing")
+    assert pricing["sessions_change"] is None   # absent in previous → still not invented
+
+
+def test_landing_page_audit_match_uses_the_explicitly_linked_website(monkeypatch):
+    _enable_ga4(monkeypatch)
+    client, body = auth_client()
+    org_id, user_id = body["organization"]["id"], body["user"]["id"]
+    conn_id = _make_connection(org_id, user_id)
+    _seed_landing_page(conn_id, org_id)
+    db = SessionLocal()
+    try:
+        a = Monitor(organization_id=org_id, user_id=user_id, url="https://a.example", normalized_url="a.example")
+        b = Monitor(organization_id=org_id, user_id=user_id, url="https://b.example", normalized_url="b.example")
+        db.add_all([a, b]); db.commit()
+        db.add(Scan(url="https://b.example/pricing", normalized_url="b.example/pricing", ars=61,
+                    rubric_version="v1", result={}, organization_id=org_id, created_at=datetime.utcnow()))
+        db.commit()
+        b_id = b.id
+    finally:
+        db.close()
+    # Two websites, no link: ambiguous, so no audit is attributed.
+    assert client.get("/integrations/google/landing-pages").json()["pages"][0]["scan"] is None
+    _set_conn(conn_id, linked_monitor_id=b_id)
+    scan = client.get("/integrations/google/landing-pages").json()["pages"][0]["scan"]
+    assert scan is not None and scan["score"] == 61

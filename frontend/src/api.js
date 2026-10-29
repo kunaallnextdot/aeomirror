@@ -540,6 +540,14 @@ function _biQuery({ startDate, endDate, monitorId, ...rest } = {}) {
   const qs = new URLSearchParams(clean).toString();
   return qs ? `?${qs}` : "";
 }
+export function getCommandCenter(params) {
+  return request(`/business-impact/command-center${_biQuery(params)}`);
+}
+export function linkGa4Website(monitorId) {
+  return request(`/integrations/google/link-website`, {
+    method: "POST", body: JSON.stringify({ monitor_id: monitorId }), ...GA4_OPTS,
+  });
+}
 export function getBusinessImpactSummary(params) {
   return request(`/business-impact/summary${_biQuery(params)}`);
 }

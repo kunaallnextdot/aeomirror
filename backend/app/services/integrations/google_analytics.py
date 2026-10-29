@@ -600,6 +600,15 @@ async def select_property(db: Session, connection: GoogleAnalyticsConnection,
         # needs its own initial lookback, not an incremental fetch picking up where
         # the OLD property's history left off.
         connection.last_synced_at = None
+        connection.overview_synced_at = None
+        connection.landing_pages_synced_at = None
+        # Snapshots are keyed by connection, not property: the old property's rows
+        # would otherwise be summed into the new property's totals. And the new
+        # property may measure a different website, so its link must be chosen again.
+        for model in (Ga4TrafficSnapshot, Ga4DailyOverview, Ga4LandingPageSnapshot):
+            (db.query(model).filter(model.connection_id == connection.id)
+             .delete(synchronize_session=False))
+        connection.linked_monitor_id = None
 
     connection.ga4_property_id = match["property_id"]
     connection.ga4_property_name = match["property_name"]
@@ -775,6 +784,12 @@ async def run_sync(db: Session, connection: GoogleAnalyticsConnection) -> dict:
     if key_events_configured is not None:
         connection.key_events_configured = key_events_configured
 
+    # Each best-effort dataset's freshness is stamped only when its own report
+    # succeeded — never inherited from the traffic report's success below.
+    if overview_rows is not None:
+        connection.overview_synced_at = now
+    if landing_rows is not None:
+        connection.landing_pages_synced_at = now
     connection.last_synced_at = now
     connection.last_sync_status = "success"
     connection.last_sync_error_code = None

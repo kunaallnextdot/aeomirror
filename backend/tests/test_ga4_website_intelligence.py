@@ -420,3 +420,35 @@ def test_run_sync_secondary_report_failure_does_not_fail_the_whole_sync(monkeypa
         assert db.query(Ga4LandingPageSnapshot).filter_by(connection_id=conn_id).count() == 0
     finally:
         db.close()
+
+
+def test_each_dataset_records_its_own_last_successful_sync(monkeypatch):
+    """A failed best-effort report must not inherit the traffic report's success
+    timestamp — its sections would otherwise claim a freshness they don't have."""
+    client, body = auth_client()
+    conn_id = _connection_id(body["organization"]["id"], body["user"]["id"])
+    _patch_refresh_ok(monkeypatch)
+
+    async def fake_traffic(token, property_id, start, end):
+        return []
+    async def fake_overview_ok(token, property_id, start, end):
+        return []
+    async def fake_landing_fails(token, property_id, start, end):
+        return None
+    async def fake_key_events(token, property_id):
+        return None
+    monkeypatch.setattr(ga4, "fetch_daily_traffic", fake_traffic)
+    monkeypatch.setattr(ga4, "fetch_daily_overview", fake_overview_ok)
+    monkeypatch.setattr(ga4, "fetch_landing_pages", fake_landing_fails)
+    monkeypatch.setattr(ga4, "fetch_key_events_configured", fake_key_events)
+
+    db = SessionLocal()
+    try:
+        conn = db.get(GoogleAnalyticsConnection, conn_id)
+        asyncio.run(ga4.run_sync(db, conn))
+        db.refresh(conn)
+        assert conn.last_synced_at is not None
+        assert conn.overview_synced_at == conn.last_synced_at      # an empty report still succeeded
+        assert conn.landing_pages_synced_at is None                # failed → never stamped
+    finally:
+        db.close()

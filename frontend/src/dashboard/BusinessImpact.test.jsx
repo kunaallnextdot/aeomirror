@@ -19,6 +19,8 @@ vi.mock("../api.js", () => ({
   getBusinessImpactTrafficOverTime: vi.fn(),
   getBusinessImpactChannels: vi.fn(),
   getBusinessImpactLandingPages: vi.fn(),
+  getCommandCenter: vi.fn(),
+  linkGa4Website: vi.fn(),
   ScanError: class ScanError extends Error {
     constructor(message, code) { super(message); this.code = code; }
   },
@@ -26,20 +28,34 @@ vi.mock("../api.js", () => ({
 vi.mock("./UpgradeModal.jsx", () => ({
   useUpgrade: () => ({ openUpgrade: vi.fn() }),
 }));
+vi.mock("../auth/AuthContext.jsx", () => ({ useAuth: () => ({ hasPermission: () => true }) }));
 
 import {
   listMonitors, getTrackingStatus, getBusinessImpactSummary, getBusinessImpactTrafficOverTime,
-  getBusinessImpactChannels, getBusinessImpactLandingPages,
+  getBusinessImpactChannels, getBusinessImpactLandingPages, getCommandCenter,
 } from "../api.js";
 import BusinessImpact from "./BusinessImpact.jsx";
 
 const MONITOR = { id: "m1", name: "Acme", normalized_url: "acme.example" };
+const NC = (reason) => ({ status: "not_configured", source: null, as_of: null, reason });
+const EMPTY_CC = {
+  website: { id: "m1" }, range: { start: "2026-10-02", end: "2026-10-29" },
+  indicators: {
+    technical: NC("This website hasn't been audited yet."),
+    ai_visibility: NC("Answer Tracking isn't set up for this website."),
+    traffic: NC("No visits recorded yet."), ga4: NC("Google Analytics isn't connected."),
+    conversions: { status: "not_configured", configured: false },
+    action_center: NC("No completed site crawl yet."),
+  },
+  findings: [],
+};
 
 beforeEach(() => {
   vi.clearAllMocks();
   getBusinessImpactTrafficOverTime.mockResolvedValue({ series: [] });
   getBusinessImpactChannels.mockResolvedValue({ channels: [] });
   getBusinessImpactLandingPages.mockResolvedValue({ pages: [] });
+  getCommandCenter.mockResolvedValue(EMPTY_CC);
 });
 
 describe("BusinessImpact", () => {
@@ -96,7 +112,7 @@ describe("BusinessImpact", () => {
     render(<MemoryRouter><BusinessImpact /></MemoryRouter>);
     await waitFor(() => screen.getByText("Traffic by source"));
     screen.getByText("No traffic-source data recorded for this period yet.");
-    screen.getByText("Pages worth improving");
+    screen.getByText("Landing pages");
     screen.getByText("Not enough landing-page data recorded for this period yet.");
   });
 
@@ -113,7 +129,7 @@ describe("BusinessImpact", () => {
 
     // Now the next fetch (triggered by changing the date range) fails outright.
     getBusinessImpactSummary.mockRejectedValueOnce(new Error("boom"));
-    fireEvent.click(screen.getByText("Last 7 days"));
+    fireEvent.click(screen.getByText("7 days"));
     await waitFor(() => screen.getByText("Could not load AI Business Impact data."));
     // The previous successful numbers must not linger alongside the error.
     expect(screen.queryByText("123")).toBeNull();
@@ -142,7 +158,7 @@ describe("BusinessImpact", () => {
     getBusinessImpactSummary.mockResolvedValue({
       total_sessions: 100, ai_sessions: 40, ai_share_pct: 40.0,
       ai_conversions: 5, ai_conversion_rate_pct: 12.5, ai_revenue_cents: 25000,
-      confirmed_bookings: 2, leads: 3, has_data: true, is_pro: true, ga4_connected: false,
+      confirmed_bookings: 2, leads: 3, has_data: true, is_pro: true, ga4_connected: false, conversion_tracking_configured: true,
     });
     render(<MemoryRouter><BusinessImpact /></MemoryRouter>);
     await waitFor(() => screen.getByText("$250.00"));
@@ -159,7 +175,7 @@ describe("BusinessImpact", () => {
     getBusinessImpactSummary.mockResolvedValue({
       total_sessions: 50, ai_sessions: 0, ai_share_pct: 0,
       ai_conversions: 0, ai_conversion_rate_pct: null, ai_revenue_cents: 0,
-      confirmed_bookings: 0, leads: 0, has_data: true, is_pro: true, ga4_connected: false,
+      confirmed_bookings: 0, leads: 0, has_data: true, is_pro: true, ga4_connected: false, conversion_tracking_configured: true,
     });
     render(<MemoryRouter><BusinessImpact /></MemoryRouter>);
     await waitFor(() => screen.getByText("Not enough data yet"));
@@ -235,7 +251,7 @@ describe("BusinessImpact", () => {
       total_sessions: 100, ai_sessions: 40, ai_share_pct: 40.0,
       ai_conversions: 5, ai_conversion_rate_pct: 12.5, ai_revenue_cents: 25000,
       confirmed_bookings: 2, unverified_bookings: 3, leads: 1, unverified_leads: 4,
-      has_data: true, is_pro: true, ga4_connected: false,
+      has_data: true, is_pro: true, ga4_connected: false, conversion_tracking_configured: true,
     });
     render(<MemoryRouter><BusinessImpact /></MemoryRouter>);
     await waitFor(() => screen.getByText("2"));   // confirmed_bookings stays 2, not 5
@@ -269,7 +285,7 @@ describe("BusinessImpact", () => {
     render(<MemoryRouter><BusinessImpact /></MemoryRouter>);
     await waitFor(() => screen.getByText("10"));
     const callsBefore = getBusinessImpactSummary.mock.calls.length;
-    fireEvent.click(screen.getByText("Last 7 days"));
+    fireEvent.click(screen.getByText("7 days"));
     await waitFor(() => expect(getBusinessImpactSummary.mock.calls.length).toBeGreaterThan(callsBefore));
   });
 
@@ -288,7 +304,7 @@ describe("BusinessImpact", () => {
                reason: "30 sessions, 0% conversion rate, 10 AI-referred.", aeo: null }],
     });
     render(<MemoryRouter><BusinessImpact /></MemoryRouter>);
-    await waitFor(() => screen.getByText(/pages worth improving/i));
+    await waitFor(() => screen.getByText(/^landing pages$/i));
     // The page explicitly DISCLAIMS estimating revenue (legitimate, expected copy) —
     // what must never appear is an actual fabricated estimate VALUE being presented.
     expect(screen.queryByText(/estimated revenue:\s*\$/i)).toBeNull();

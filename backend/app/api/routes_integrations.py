@@ -14,6 +14,7 @@ from datetime import date, datetime, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import RedirectResponse
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.api.deps import AuthContext, get_context, require_permission
@@ -21,11 +22,12 @@ from app.billing import entitlements
 from app.config import settings
 from app.db.models import (
     AI_SOURCE_LABELS, GA4_STATUS_ACTIVE, Ga4DailyOverview, Ga4LandingPageSnapshot,
-    Ga4TrafficSnapshot, Monitor, Scan,
+    Ga4TrafficSnapshot, GoogleAnalyticsConnection, Monitor, Scan,
 )
 from app.db.session import get_db
 from app.monitoring import scheduler
-from app.schemas.integrations import SelectGa4PropertyRequest
+from app.schemas.integrations import LinkGa4WebsiteRequest, SelectGa4PropertyRequest
+from app.services.analytics.aggregation import page_key
 from app.services.integrations import google_analytics as ga4
 
 log = logging.getLogger("app.integrations.google_analytics.routes")
@@ -134,6 +136,14 @@ def status(ctx: AuthContext = Depends(require_permission("report:view")),
         "last_synced_at": connection.last_synced_at,
         "last_sync_status": connection.last_sync_status,
         "last_sync_error_code": connection.last_sync_error_code,
+        "linked_monitor_id": connection.linked_monitor_id,
+        # Each dataset's own last successful sync; the overview and landing-page
+        # reports are best-effort and can lag the traffic report.
+        "datasets": {
+            "traffic": connection.last_synced_at,
+            "overview": connection.overview_synced_at,
+            "landing_pages": connection.landing_pages_synced_at,
+        },
     }
 
 
@@ -171,6 +181,28 @@ async def select_property(body: SelectGa4PropertyRequest,
         raise HTTPException(status_code=502, detail="Could not verify that property right now.")
     return {"status": "ok", "ga4_property_id": connection.ga4_property_id,
             "ga4_property_name": connection.ga4_property_name}
+
+
+# ------------------------------- website link -------------------------------
+
+@router.post("/link-website")
+def link_website(body: LinkGa4WebsiteRequest,
+                 ctx: AuthContext = Depends(require_permission("org:update")),
+                 db: Session = Depends(get_db)):
+    """Explicitly states which of the org's websites this GA4 property measures.
+    Never inferred (the Admin API returns no hostname for a property). A monitor_id
+    from another organization is a 404 — the same response as a nonexistent one, so
+    this can't be used to probe other orgs' site ids."""
+    _require_pro(db, ctx)
+    connection = _owned_connection_or_404(db, ctx)
+    if body.monitor_id is not None:
+        monitor = db.get(Monitor, body.monitor_id)
+        if not monitor or monitor.organization_id != ctx.org_id:
+            raise HTTPException(status_code=404, detail="Website not found.")
+    connection.linked_monitor_id = body.monitor_id
+    connection.updated_at = datetime.utcnow()
+    db.commit()
+    return {"status": "ok", "linked_monitor_id": connection.linked_monitor_id}
 
 
 # ------------------------------- sync -------------------------------
@@ -391,8 +423,10 @@ def trends(start_date: str | None = Query(default=None),
 
     return {
         "date_range": {"start": start.isoformat(), "end": end.isoformat()},
-        "synced": connection.last_synced_at is not None,
-        "last_synced_at": connection.last_synced_at,
+        # The daily rows come from the overview report, so its own sync time — not
+        # the traffic report's — is this section's freshness.
+        "synced": connection.overview_synced_at is not None,
+        "last_synced_at": connection.overview_synced_at,
         "daily": daily,
     }
 
@@ -510,14 +544,20 @@ def landing_pages(start_date: str | None = Query(default=None),
 
     current = _grouped(start_key, end_key)
     previous = _grouped(prev_start_key, prev_end_key)
+    # A change is only comparable when stored history reaches back over the whole
+    # previous period; otherwise a missing page there means "not synced", not 0.
+    earliest = (db.query(func.min(Ga4LandingPageSnapshot.date))
+                .filter(Ga4LandingPageSnapshot.connection_id == connection.id).scalar())
+    previous_comparable = earliest is not None and earliest <= prev_start_key
+    monitor = _scan_match_monitor(db, ctx.org_id, connection)
 
     items = []
     for page_path, g in current.items():
         g["engagement_rate"] = (g["engaged_sessions"] / g["sessions"]) if g["sessions"] else None
         g["conversion_rate"] = (g["key_events"] / g["sessions"]) if g["sessions"] else None
-        prev_sessions = previous.get(page_path, {}).get("sessions")
+        prev_sessions = previous.get(page_path, {}).get("sessions") if previous_comparable else None
         g["sessions_change"] = (g["sessions"] - prev_sessions) if prev_sessions is not None else None
-        g["scan"] = _match_scan_for_landing_page(db, ctx.org_id, page_path)
+        g["scan"] = _match_scan_for_landing_page(db, ctx.org_id, monitor, page_path)
         items.append(g)
 
     if q:
@@ -532,27 +572,41 @@ def landing_pages(start_date: str | None = Query(default=None),
     return {
         "date_range": {"start": start.isoformat(), "end": end.isoformat()},
         "previous_date_range": {"start": prev_start.isoformat(), "end": prev_end.isoformat()},
+        "previous_comparable": previous_comparable,
+        "synced": connection.landing_pages_synced_at is not None,
+        "last_synced_at": connection.landing_pages_synced_at,
         "total": total, "page": page, "page_size": page_size,
         "pages": paged,
     }
 
 
-def _match_scan_for_landing_page(db: Session, org_id: str, landing_page: str) -> dict | None:
-    """Best-effort only: tries to connect a GA4 landing path to an existing
-    AEOMirror scan for the SAME organization, so the dashboard can link out to real
-    audit evidence for that page. Only attempted when the org has exactly one
-    monitored site — with more than one, which site a GA4 property belongs to is
-    genuinely ambiguous, and guessing wrong would misattribute audit data to the
-    wrong page, so this honestly returns None instead."""
+def _scan_match_monitor(db: Session, org_id: str,
+                        connection: GoogleAnalyticsConnection) -> Monitor | None:
+    """Which website's audits GA4 landing paths may be matched against: the one the
+    property is explicitly linked to, else the org's only website. With several
+    websites and no link, which site the property measures is genuinely ambiguous,
+    and guessing wrong would misattribute audit data, so there is no match."""
+    if connection.linked_monitor_id:
+        return (db.query(Monitor).filter(Monitor.id == connection.linked_monitor_id,
+                                         Monitor.organization_id == org_id).first())
     monitors = db.query(Monitor).filter(Monitor.organization_id == org_id).limit(2).all()
-    if len(monitors) != 1:
+    return monitors[0] if len(monitors) == 1 else None
+
+
+def _match_scan_for_landing_page(db: Session, org_id: str, monitor: Monitor | None,
+                                 landing_page: str) -> dict | None:
+    """Best-effort only: connects a GA4 landing path to an existing AEOMirror scan
+    of that page on the matched website (see _scan_match_monitor), so the dashboard
+    can link out to real audit evidence. None when there's no unambiguous website."""
+    if monitor is None:
         return None
-    monitor = monitors[0]
     base = monitor.url.rstrip("/")
     candidate = base + landing_page if landing_page.startswith("/") else f"{base}/{landing_page}"
+    key, _ = page_key(candidate)
     scan = (db.query(Scan)
             .filter(Scan.organization_id == org_id,
-                    (Scan.url == candidate) | (Scan.normalized_url == candidate))
+                    (Scan.url == candidate) | (Scan.normalized_url == candidate)
+                    | (Scan.normalized_url == key))
             .order_by(Scan.created_at.desc())
             .first())
     if not scan:

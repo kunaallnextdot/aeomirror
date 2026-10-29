@@ -275,7 +275,7 @@ describe("AiTraffic", () => {
     });
     renderAt();
     await waitFor(() => screen.getByText(/ai traffic intelligence/i));
-    screen.getByText(/42 sessions/i);
+    screen.getByText("42 sessions");   // the ChatGPT engine card
     screen.getByText("500");
     // The honest-limitation note is always shown alongside real numbers.
     screen.getByText(/ai overview clicks cannot currently be separated/i);

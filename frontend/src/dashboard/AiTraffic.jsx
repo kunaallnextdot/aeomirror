@@ -48,6 +48,12 @@ const AI_LABELS = {
 };
 const AI_ENGINE_ORDER = ["chatgpt", "perplexity", "gemini", "copilot", "claude"];
 const AI_OTHER_ORDER = ["other_identifiable", "unattributable"];
+// Mirrors classify_source() in backend/app/services/integrations/classification.py.
+const AI_OTHER_DESCRIPTIONS = {
+  other_identifiable: "A named referrer that isn't a known AI assistant.",
+  unattributable: "Direct, Google organic search, or no referrer — not counted as AI.",
+};
+const sessionsLabel = (n) => (!n ? "No sessions" : `${fmtInt(n)} session${n === 1 ? "" : "s"}`);
 
 const ERROR_MESSAGES = {
   access_denied: "You cancelled the Google sign-in.",
@@ -479,7 +485,8 @@ export default function AiTraffic() {
                                 message="Unavailable — conversion totals come from the overview report, which didn't load." />
                 : <ConversionsSection overview={overview} channels={channels} landingPages={landingPages} />}
               <InsightsSection overview={overview} channels={channels} landingPages={landingPages}
-                               compareEnabled={compareEnabled} />
+                               traffic={traffic} compareEnabled={compareEnabled}
+                               filtered={Boolean(channelQuery || landingQuery)} />
             </>
           )}
 
@@ -608,6 +615,9 @@ function TrendsSection({ trends }) {
   return (
     <Cell className="sp-ga4-card">
       <h2>Traffic trends</h2>
+      {trends.synced === false && (
+        <p className="sp-ga4-helper">The daily overview report hasn't synced successfully yet; it retries on the next sync.</p>
+      )}
       <div className="sp-ga4-trend-tabs">
         {TREND_VIEWS.map((v) => (
           <button key={v.key} className={view === v.key ? "on" : ""} onClick={() => setView(v.key)}>{v.label}</button>
@@ -731,6 +741,12 @@ function LandingPagesTable({ landingPages, sort, setSort, query, setQuery }) {
   return (
     <Cell className="sp-ga4-card">
       <h2>Landing pages</h2>
+      {landingPages.synced === false && (
+        <p className="sp-ga4-helper">The landing-page report hasn't synced successfully yet; it retries on the next sync.</p>
+      )}
+      {landingPages.synced !== false && landingPages.previous_comparable === false && (
+        <p className="sp-ga4-helper">Synced history doesn't cover the previous period yet, so changes aren't shown.</p>
+      )}
       <div className="sp-ga4-table-toolbar">
         <Search size={13} />
         <input placeholder="Search a page path…" value={query} onChange={(e) => setQuery(e.target.value)} />
@@ -753,7 +769,8 @@ function LandingPagesTable({ landingPages, sort, setSort, query, setQuery }) {
             </thead>
             <tbody>
               {rows.map((p) => {
-                const delta = fmtDelta(p.sessions, p.sessions - (p.sessions_change ?? 0));
+                // null = no comparable previous value — shown as "—", never as "no change".
+                const delta = p.sessions_change == null ? null : fmtDelta(p.sessions, p.sessions - p.sessions_change);
                 const isOpen = expanded === p.landing_page;
                 const weakEngagement = p.sessions >= 20 && p.engagement_rate != null && p.engagement_rate < 0.3;
                 return (
@@ -818,22 +835,25 @@ function AiSourceSection({ traffic }) {
           const d = detail[key] || { sessions: 0 };
           return (
             <EngineCard key={key} engine={key} status={d.sessions > 0 ? "yes" : "no"}
-                        statusLabel={d.sessions > 0 ? `${fmtInt(d.sessions)} sessions` : "No sessions"}>
-              <div className="sp-ga4-engine-stats">
-                <span>Engaged: {fmtInt(d.engaged_sessions)}</span>
-                <span>Eng. rate: {fmtPct(d.engagement_rate)}</span>
-                <span>Key events: {fmtInt(d.key_events)}</span>
-              </div>
+                        statusLabel={sessionsLabel(d.sessions)}>
+              <dl className="sp-ga4-engine-stats">
+                <dt>Engaged sessions</dt><dd>{fmtInt(d.engaged_sessions)}</dd>
+                <dt>Engagement rate</dt><dd>{fmtPct(d.engagement_rate)}</dd>
+                <dt>Key events</dt><dd>{fmtInt(d.key_events)}</dd>
+              </dl>
             </EngineCard>
           );
         })}
       </div>
-      <ul className="sp-ga4-sources">
+      <ul className="sp-ga4-other-sources">
         {AI_OTHER_ORDER.map((key) => {
           const d = detail[key] || { sessions: 0 };
           return (
             <li key={key}>
-              <span>{AI_LABELS[key]}</span>
+              <div>
+                <span className="sp-ga4-other-name">{AI_LABELS[key]}</span>
+                <span className="sp-ga4-other-desc">{AI_OTHER_DESCRIPTIONS[key]}</span>
+              </div>
               <strong>{fmtInt(d.sessions)}</strong>
             </li>
           );
@@ -875,7 +895,9 @@ function ConversionsSection({ overview, channels, landingPages }) {
         </p>
       ) : (
         <>
-          <div className="sp-ga4-kpis">
+          {/* One responsive grid for metrics AND breakdowns, so the section fills the
+              row instead of two small cards beside a wide empty gap. */}
+          <div className="sp-ga4-conv-grid">
             <div className="sp-ga4-kpi" title="GA4 keyEvents for the selected period.">
               <div className="sp-ga4-kpi-label">Key events</div>
               <div className="sp-ga4-kpi-value">{fmtInt(key_events)}</div>
@@ -889,33 +911,29 @@ function ConversionsSection({ overview, channels, landingPages }) {
               <div className="sp-ga4-kpi-label">Conversion rate</div>
               <div className="sp-ga4-kpi-value">{fmtPct(conversion_rate)}</div>
             </div>
+            {topChannels.length > 0 && (
+              <div className="sp-ga4-conv-panel">
+                <h3>By channel</h3>
+                <ul className="sp-ga4-sources">
+                  {topChannels.map((c, i) => (
+                    <li key={i}><span>{c.channel}</span><strong>{fmtInt(c.key_events)}</strong></li>
+                  ))}
+                </ul>
+              </div>
+            )}
+            {topPages.length > 0 && (
+              <div className="sp-ga4-conv-panel">
+                <h3>By landing page</h3>
+                <ul className="sp-ga4-sources">
+                  {topPages.map((p) => (
+                    <li key={p.landing_page}><span>{p.landing_page}</span><strong>{fmtInt(p.key_events)}</strong></li>
+                  ))}
+                </ul>
+              </div>
+            )}
           </div>
-          {(topChannels.length > 0 || topPages.length > 0) && (
-            <div className="sp-ga4-conv-cols">
-              {topChannels.length > 0 && (
-                <div>
-                  <h3>By channel</h3>
-                  <ul className="sp-ga4-sources">
-                    {topChannels.map((c, i) => (
-                      <li key={i}><span>{c.channel}</span><strong>{fmtInt(c.key_events)}</strong></li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-              {topPages.length > 0 && (
-                <div>
-                  <h3>By landing page</h3>
-                  <ul className="sp-ga4-sources">
-                    {topPages.map((p) => (
-                      <li key={p.landing_page}><span>{p.landing_page}</span><strong>{fmtInt(p.key_events)}</strong></li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-            </div>
-          )}
           {key_events === 0 && (
-            <p className="sp-ga4-empty-inline">
+            <p className="sp-ga4-helper">
               Key events are configured, but none were recorded in this period.
             </p>
           )}
@@ -927,9 +945,9 @@ function ConversionsSection({ overview, channels, landingPages }) {
 
 /* ============================= Insights (client-computed, evidence-based) ============================= */
 
-function InsightsSection({ overview, channels, landingPages, compareEnabled }) {
-  const insights = useMemo(() => buildInsights({ overview, channels, landingPages, compareEnabled }), [
-    overview, channels, landingPages, compareEnabled,
+function InsightsSection({ overview, channels, landingPages, traffic, compareEnabled, filtered }) {
+  const insights = useMemo(() => buildInsights({ overview, channels, landingPages, traffic, compareEnabled, filtered }), [
+    overview, channels, landingPages, traffic, compareEnabled, filtered,
   ]);
   if (!insights.length) return null;
   return (
@@ -950,8 +968,9 @@ function InsightsSection({ overview, channels, landingPages, compareEnabled }) {
 /* Every insight here reads directly from already-fetched, already-displayed
    numbers — no separate inference step, no fabricated correlation-as-causation
    claims. Each one states what happened, the comparison baseline if used, and a
-   concrete next step. */
-function buildInsights({ overview, channels, landingPages, compareEnabled }) {
+   concrete next step. A "most"/ranking claim is only made over the complete,
+   unfiltered set it ranks — never over one filtered or paginated table page. */
+export function buildInsights({ overview, channels, landingPages, traffic, compareEnabled, filtered = false }) {
   const out = [];
   if (overview?.current && overview?.previous && compareEnabled) {
     const er = fmtDelta(overview.current.engagement_rate, overview.previous.engagement_rate);
@@ -964,27 +983,34 @@ function buildInsights({ overview, channels, landingPages, compareEnabled }) {
       });
     }
   }
-  if (channels?.channels?.length) {
-    const top = [...channels.channels].sort((a, b) => b.sessions - a.sessions)[0];
-    if (top && top.sessions > 0) {
-      out.push({ text: `${top.channel} generated ${fmtInt(top.sessions)} sessions during this period, the most of any channel.` });
-    }
-    const aiChannel = channels.channels.find((c) => AI_ENGINE_ORDER.includes(c.ai_source_label) && c.sessions > 0);
-    if (aiChannel) {
-      out.push({ text: `${AI_LABELS[aiChannel.ai_source_label]} is an identifiable AI referral source and generated ${fmtInt(aiChannel.sessions)} sessions this period.` });
+  // Channel rows are per channel × source × medium; a channel's total is the sum of
+  // its rows, and only valid when every row is present (unfiltered, one page).
+  const ch = channels?.channels || [];
+  if (ch.length && !filtered && channels.total === ch.length) {
+    const byChannel = {};
+    ch.forEach((c) => { byChannel[c.channel] = (byChannel[c.channel] || 0) + c.sessions; });
+    const ranked = Object.entries(byChannel).sort((a, b) => b[1] - a[1]);
+    if (ranked[0][1] > 0 && (ranked.length === 1 || ranked[0][1] > ranked[1][1])) {
+      out.push({ text: `${ranked[0][0]} generated ${fmtInt(ranked[0][1])} sessions during this period, the most of any channel.` });
     }
   }
-  if (landingPages?.pages?.length) {
-    const weak = landingPages.pages.find((p) => p.sessions >= 20 && p.engagement_rate != null && p.engagement_rate < 0.3);
+  // AI assistant totals come from /traffic, which covers every row for the range.
+  const detail = traffic?.by_source_detail || {};
+  AI_ENGINE_ORDER.filter((k) => detail[k]?.sessions > 0).slice(0, 1).forEach((k) => {
+    out.push({ text: `${AI_LABELS[k]} is an identifiable AI referral source and generated ${fmtInt(detail[k].sessions)} sessions this period.` });
+  });
+  const pages = landingPages?.pages || [];
+  if (pages.length) {
+    // Compared with the property-wide engagement rate GA4 reported for the same
+    // range — the only baseline there is. Without it, no comparison is claimed.
+    const siteRate = overview?.current?.engagement_rate;
+    const weak = siteRate != null
+      && pages.find((p) => p.sessions >= 20 && p.engagement_rate != null && p.engagement_rate < 0.3 && p.engagement_rate < siteRate);
     if (weak) {
       out.push({
-        text: `${weak.landing_page} receives meaningful traffic (${fmtInt(weak.sessions)} sessions) but has relatively low engagement (${fmtPct(weak.engagement_rate)}) compared with the site's other pages.`,
+        text: `${weak.landing_page} received ${fmtInt(weak.sessions)} sessions with a ${fmtPct(weak.engagement_rate)} engagement rate, below the ${fmtPct(siteRate)} rate for the whole property in this period.`,
         next: weak.scan ? `See its AEO audit (score ${weak.scan.score}) for concrete fixes.` : "Consider running an AEOMirror scan on this page.",
       });
-    }
-    const sorted = [...landingPages.pages].sort((a, b) => b.sessions - a.sessions);
-    if (sorted.length >= 2 && sorted[0].sessions > sorted[1].sessions) {
-      out.push({ text: `${sorted[0].landing_page} received more sessions (${fmtInt(sorted[0].sessions)}) than ${sorted[1].landing_page} (${fmtInt(sorted[1].sessions)}) this period.` });
     }
   }
   return out;

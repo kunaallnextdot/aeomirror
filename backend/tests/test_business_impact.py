@@ -220,15 +220,46 @@ def test_landing_page_insufficient_data_label_below_sample_threshold():
         db.close()
 
 
+def test_landing_page_without_conversion_tracking_never_claims_it_converts_poorly():
+    """30 AI sessions and zero confirmed conversions EVER for the site: 0% isn't
+    evidence of poor conversion, it's absent measurement. (This test previously
+    asserted the opposite — that's the bug that flagged nearly every AI-visited page
+    "high priority".)"""
+    client, body = auth_client()
+    org_id, user_id = body["organization"]["id"], body["user"]["id"]
+    monitor_id = _make_monitor(org_id, user_id)
+    db = SessionLocal()
+    try:
+        for i in range(30):
+            _add_session(db, org_id=org_id, monitor_id=monitor_id, channel="chatgpt",
+                        landing_url="https://example.com/struggling-page")
+        db.commit()
+        start, end = datetime.utcnow() - timedelta(hours=1), datetime.utcnow() + timedelta(hours=1)
+        page = aggregation.landing_page_performance(db, org_id=org_id, monitor_ids=None,
+                                                     start=start, end=end, include_aeo=False)[0]
+        assert page["pattern"] == "ai_traffic_conversion_unmeasured"
+        assert page["priority"] != "high"
+        assert page["conversions"] is None and page["conversion_rate_pct"] is None
+        assert "converts poorly" not in page["recommendation"]
+    finally:
+        db.close()
+
+
 def test_landing_page_high_ai_traffic_low_conversion_flagged_high_priority():
     client, body = auth_client()
     org_id, user_id = body["organization"]["id"], body["user"]["id"]
     monitor_id = _make_monitor(org_id, user_id)
     db = SessionLocal()
     try:
-        for i in range(30):   # 30 AI sessions, 0 conversions -> high ai share, low conv rate
+        for i in range(30):   # 30 AI sessions, 0 conversions on THIS page...
             _add_session(db, org_id=org_id, monitor_id=monitor_id, channel="chatgpt",
                         landing_url="https://example.com/struggling-page")
+        # ...while conversion confirmation IS configured (a confirmed conversion exists
+        # elsewhere on the site), so 0% on this page is real evidence.
+        other = _add_session(db, org_id=org_id, monitor_id=monitor_id, channel="direct",
+                             landing_url="https://example.com/checkout")
+        _add_conversion(db, org_id=org_id, monitor_id=monitor_id, session_id=other.id,
+                        external_id="order-1", value_cents=1000)
         db.commit()
         start, end = datetime.utcnow() - timedelta(hours=1), datetime.utcnow() + timedelta(hours=1)
         pages = aggregation.landing_page_performance(db, org_id=org_id, monitor_ids=None,
@@ -416,3 +447,155 @@ def test_business_impact_cannot_be_scoped_to_another_orgs_monitor():
     monitor_b = _make_monitor(body_b["organization"]["id"], body_b["user"]["id"])
     r = client_a.get("/business-impact/summary", params={"monitor_id": monitor_b})
     assert r.status_code == 404
+
+
+# ------------------------------- Command Center data-quality fixes -------------------------------
+
+def _window():
+    return datetime.utcnow() - timedelta(hours=1), datetime.utcnow() + timedelta(hours=1)
+
+
+def test_page_key_folds_query_strings_fragments_slashes_and_www():
+    keys = {aggregation.page_key(u)[0] for u in (
+        "https://example.com/pricing", "https://www.example.com/pricing/",
+        "https://example.com/pricing?utm_source=chatgpt.com", "http://EXAMPLE.com/pricing#faq")}
+    assert keys == {"example.com/pricing"}
+    assert aggregation.page_key("https://example.com/")[0] == "example.com"
+
+
+def test_landing_pages_merge_url_variants_so_one_page_is_not_split_into_tiny_rows():
+    """Regression: 25 sessions spread over 5 variants of one URL used to be 5 rows of 5
+    sessions, each labelled 'insufficient data'."""
+    client, body = auth_client()
+    org_id, user_id = body["organization"]["id"], body["user"]["id"]
+    monitor_id = _make_monitor(org_id, user_id)
+    db = SessionLocal()
+    try:
+        variants = ["https://example.com/pricing", "https://example.com/pricing/",
+                    "https://example.com/pricing?utm_source=a", "https://www.example.com/pricing",
+                    "https://example.com/pricing#faq"]
+        for i in range(25):
+            _add_session(db, org_id=org_id, monitor_id=monitor_id, channel="direct",
+                         landing_url=variants[i % 5], session_id=f"merge-{i}")
+        db.commit()
+        start, end = _window()
+        pages = aggregation.landing_page_performance(db, org_id=org_id, monitor_ids=[monitor_id],
+                                                      start=start, end=end, include_aeo=False)
+        assert len(pages) == 1
+        assert pages[0]["sessions"] == 25 and pages[0]["variant_count"] == 5
+        assert pages[0]["path"] == "/pricing"
+        assert pages[0]["confidence"] != "insufficient_data"
+    finally:
+        db.close()
+
+
+def test_landing_page_audit_matches_on_normalized_url_and_counts_real_issues():
+    from app.db.models import Scan
+    client, body = auth_client()
+    org_id, user_id = body["organization"]["id"], body["user"]["id"]
+    monitor_id = _make_monitor(org_id, user_id)
+    db = SessionLocal()
+    try:
+        _add_session(db, org_id=org_id, monitor_id=monitor_id, channel="direct",
+                     landing_url="https://www.example.com/about/?ref=x", session_id="aeo-1")
+        db.add(Scan(url="https://example.com/about", normalized_url="example.com/about", ars=60,
+                    rubric_version="v1", organization_id=org_id, status="completed",
+                    result={"overall_score": 58, "sections": [
+                        {"id": "schema", "label": "Schema", "status": "fail", "issues": ["a", "b"]},
+                        {"id": "metadata", "label": "Metadata", "status": "warn", "issues": ["c"]},
+                        {"id": "robots", "label": "Robots", "status": "pass", "issues": []}]}))
+        db.commit()
+        start, end = _window()
+        page = aggregation.landing_page_performance(db, org_id=org_id, monitor_ids=[monitor_id],
+                                                     start=start, end=end)[0]
+        assert page["aeo"] is not None
+        assert page["aeo"]["score"] == 58
+        assert page["aeo"]["issue_count"] == 3
+        assert page["aeo"]["failing_signals"] == ["Schema"]
+        assert page["aeo"]["warning_signals"] == ["Metadata"]
+    finally:
+        db.close()
+
+
+def test_diagnostic_visit_conversions_are_excluded_like_their_sessions():
+    client, body = auth_client()
+    org_id, user_id = body["organization"]["id"], body["user"]["id"]
+    monitor_id = _make_monitor(org_id, user_id)
+    db = SessionLocal()
+    try:
+        diag = _add_session(db, org_id=org_id, monitor_id=monitor_id, channel="chatgpt",
+                            landing_url="https://example.com/?aeomirror_diagnostic=1", session_id="diag-1")
+        _add_conversion(db, org_id=org_id, monitor_id=monitor_id, session_id=diag.id,
+                        external_id="diag-order", event_type="lead_submitted")
+        db.commit()
+        start, end = _window()
+        s = aggregation.summary(db, org_id=org_id, monitor_ids=[monitor_id], start=start, end=end)
+        assert s["total_sessions"] == 0
+        assert s["leads"] == 0 and s["ai_conversions"] == 0
+    finally:
+        db.close()
+
+
+def test_traffic_over_time_zero_fills_tracked_days_and_never_fakes_untracked_ones():
+    client, body = auth_client()
+    org_id, user_id = body["organization"]["id"], body["user"]["id"]
+    monitor_id = _make_monitor(org_id, user_id)
+    db = SessionLocal()
+    try:
+        today = datetime.utcnow().replace(hour=12, minute=0, second=0, microsecond=0)
+        _add_session(db, org_id=org_id, monitor_id=monitor_id, channel="direct",
+                     started_at=today - timedelta(days=3), session_id="t-1")
+        _add_session(db, org_id=org_id, monitor_id=monitor_id, channel="chatgpt",
+                     started_at=today, session_id="t-2")
+        db.commit()
+        start = (today - timedelta(days=6)).replace(hour=0)
+        end = (today + timedelta(days=1)).replace(hour=0)
+        series = aggregation.traffic_over_time(db, org_id=org_id, monitor_ids=[monitor_id],
+                                               start=start, end=end)
+        assert len(series) == 7                              # every day, not just 2
+        assert [d["tracked"] for d in series[:3]] == [False, False, False]
+        assert all(d["total"] is None for d in series[:3])  # before tracking: unknown, not 0
+        assert series[3]["total"] == 1                       # first tracked day
+        assert series[4]["total"] == 0 and series[5]["total"] == 0   # real zeros
+        assert series[6]["by_channel"] == {"chatgpt": 1}
+    finally:
+        db.close()
+
+
+def test_channel_breakdown_never_emits_null_channel_or_a_rate_without_sessions():
+    client, body = auth_client()
+    org_id, user_id = body["organization"]["id"], body["user"]["id"]
+    monitor_id = _make_monitor(org_id, user_id)
+    db = SessionLocal()
+    try:
+        _add_conversion(db, org_id=org_id, monitor_id=monitor_id, session_id=None,
+                        external_id="unlinked-1", value_cents=500)
+        db.commit()
+        start, end = _window()
+        rows = aggregation.channel_breakdown(db, org_id=org_id, monitor_ids=[monitor_id],
+                                             start=start, end=end)
+        assert [r["channel"] for r in rows] == ["unlinked"]
+        assert rows[0]["conversion_rate_pct"] is None
+    finally:
+        db.close()
+
+
+def test_summary_reports_whether_conversion_tracking_is_configured():
+    client, body = auth_client()
+    org_id, user_id = body["organization"]["id"], body["user"]["id"]
+    monitor_id = _make_monitor(org_id, user_id)
+    db = SessionLocal()
+    try:
+        start, end = _window()
+        assert aggregation.summary(db, org_id=org_id, monitor_ids=[monitor_id],
+                                   start=start, end=end)["conversion_tracking_configured"] is False
+        _add_conversion(db, org_id=org_id, monitor_id=monitor_id, external_id="u-1", verified=False)
+        db.commit()   # an unverified, client-reported event alone is not "configured"
+        assert aggregation.summary(db, org_id=org_id, monitor_ids=[monitor_id],
+                                   start=start, end=end)["conversion_tracking_configured"] is False
+        _add_conversion(db, org_id=org_id, monitor_id=monitor_id, external_id="v-1", verified=True)
+        db.commit()
+        assert aggregation.summary(db, org_id=org_id, monitor_ids=[monitor_id],
+                                   start=start, end=end)["conversion_tracking_configured"] is True
+    finally:
+        db.close()

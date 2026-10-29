@@ -16,6 +16,10 @@
 .sp-ga4-card{background:var(--sp-solid);border:1px solid var(--sp-line);border-radius:var(--sp-r-m);
   padding:18px;box-shadow:var(--sp-sh-s);margin-bottom:14px}
 .sp-ga4-card p{font-size:13.5px;color:var(--sp-ink);line-height:1.6;margin:8px 0 12px}
+/* Section titles had no rule at all and rendered at the browser's default <h2> size. */
+.sp-ga4-card h2{display:flex;align-items:center;gap:8px;font-family:var(--sp-font-heading);
+  font-size:15px;font-weight:700;color:var(--sp-ink);margin:0 0 14px;line-height:1.3}
+.sp-ga4-card h3{font-size:12.5px;font-weight:700;color:var(--sp-ink);margin:0 0 8px}
 
 .sp-ga4-toolbar{display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap}
 .sp-ga4-toolbar strong{font-size:15px;color:var(--sp-ink)}
@@ -33,7 +37,8 @@
 .sp-ga4-sources li{display:flex;align-items:center;justify-content:space-between;
   padding:9px 0;border-bottom:1px solid var(--sp-line-2);font-size:13.5px;color:var(--sp-ink)}
 .sp-ga4-sources li:last-child{border-bottom:0}
-.sp-ga4-sources strong{font-family:var(--sp-font-numeric);font-weight:500}
+.sp-ga4-sources strong{flex:none;font-family:var(--sp-font-numeric);font-weight:500}
+.sp-ga4-sources li > span{min-width:0;overflow-wrap:anywhere}
 
 .sp-ga4-note{display:flex;align-items:flex-start;gap:10px;background:var(--sp-t-grey)}
 .sp-ga4-note svg{flex:none;margin-top:2px;color:var(--sp-muted)}
@@ -58,7 +63,7 @@
 
 .sp-ga4-refreshing{font-size:11px;font-weight:400;color:var(--sp-muted);margin-left:8px}
 
-.sp-ga4-kpis{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:12px}
+.sp-ga4-kpis{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,150px),1fr));gap:12px}
 .sp-ga4-kpi{border:1px solid var(--sp-line);border-radius:var(--sp-r-s);padding:12px;cursor:help}
 .sp-ga4-kpi-label{font-size:11px;color:var(--sp-muted);text-transform:uppercase;letter-spacing:.04em;margin-bottom:6px}
 .sp-ga4-kpi-value{font-family:var(--sp-font-numeric);font-size:20px;font-weight:500;color:var(--sp-ink)}
@@ -100,11 +105,50 @@
 td span.up{color:var(--sp-blue-d)}
 td span.down{color:var(--sp-violet-d)}
 
-.sp-ga4-engine-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:10px;margin-bottom:14px}
-.sp-ga4-engine-stats{display:flex;flex-direction:column;gap:3px;font-size:11.5px;color:var(--sp-muted)}
+/* AI source cards. auto-FIT (not auto-fill) so five cards stretch across the row
+   instead of leaving empty tracks on the right. The shared EngineCard (.sp-jc*,
+   shared/spectrum.css) is restyled ONLY inside this grid — other pages that use it
+   are untouched. */
+.sp-ga4-engine-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,180px),1fr));
+  gap:12px;margin-bottom:16px}
+.sp-ga4-engine-grid .sp-jc{box-shadow:none;padding:14px 16px;gap:14px}
+/* Icon on the left; name with its session badge stacked beside it. Keeps every
+   card's header identical whether or not it has traffic, and lets five cards fit
+   one desktop row (a single-line name+badge needs ~250px per card). */
+.sp-ga4-engine-grid .sp-jc-h{display:grid;grid-template-columns:auto 1fr;column-gap:10px;row-gap:4px;
+  align-items:center;min-width:0}
+.sp-ga4-engine-grid .sp-jc-ic{grid-row:1 / span 2}
+.sp-ga4-engine-grid .sp-jc-n{min-width:0;overflow-wrap:anywhere;line-height:1.25}
+.sp-ga4-engine-grid .sp-jc-s{justify-self:start;margin-left:0;text-transform:none;letter-spacing:0;
+  font-size:11.5px;white-space:nowrap;padding:2px 8px;border-radius:var(--sp-r-pill)}
+/* Zero sessions is a neutral fact, not a warning. */
+.sp-ga4-engine-grid .sp-jc-s.sp-no{background:var(--sp-t-grey);color:var(--sp-muted)}
+.sp-ga4-engine-stats{display:grid;grid-template-columns:1fr auto;column-gap:12px;row-gap:6px;
+  margin:0;font-size:12px}
+.sp-ga4-engine-stats dt{color:var(--sp-muted)}
+.sp-ga4-engine-stats dd{margin:0;text-align:right;color:var(--sp-ink);font-family:var(--sp-font-numeric);
+  font-variant-numeric:tabular-nums}
 
-.sp-ga4-conv-cols{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:20px;margin-top:16px}
-.sp-ga4-conv-cols h3{font-size:12.5px;font-weight:700;color:var(--sp-ink);margin:0 0 8px}
+/* Other identified / Unattributable: full-width rows under the cards, same border
+   and radius as the cards so they read as one group. */
+.sp-ga4-other-sources{list-style:none;margin:0;padding:0;border:1px solid var(--sp-line);
+  border-radius:var(--sp-r-m)}
+.sp-ga4-other-sources li{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:12px 16px}
+.sp-ga4-other-sources li + li{border-top:1px solid var(--sp-line-2)}
+.sp-ga4-other-sources li > div{display:flex;flex-direction:column;gap:2px;min-width:0}
+.sp-ga4-other-name{font-size:13.5px;font-weight:600;color:var(--sp-ink)}
+.sp-ga4-other-desc{font-size:12px;color:var(--sp-muted);line-height:1.45}
+.sp-ga4-other-sources strong{flex:none;font-family:var(--sp-font-numeric);font-weight:500;font-size:15px;
+  color:var(--sp-ink);font-variant-numeric:tabular-nums}
+
+/* Conversions: metrics and breakdown panels share one grid so the row is used fully
+   and every tile matches the Overview's KPI tiles. */
+.sp-ga4-conv-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,220px),1fr));
+  gap:12px}
+.sp-ga4-conv-panel{border:1px solid var(--sp-line);border-radius:var(--sp-r-s);padding:12px 14px;min-width:0}
+.sp-ga4-conv-panel h3{margin-bottom:6px}
+.sp-ga4-conv-panel .sp-ga4-sources li{padding:7px 0;font-size:12.5px}
+.sp-ga4-helper{font-size:12px !important;color:var(--sp-muted) !important;margin:12px 0 0 !important}
 
 .sp-ga4-insights{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:12px}
 .sp-ga4-insights li{border-left:2px solid var(--sp-primary);padding-left:12px}
@@ -160,3 +204,14 @@ td span.down{color:var(--sp-violet-d)}
 .sp-gcm-actions{display:flex;justify-content:flex-end;gap:10px;flex-wrap:wrap}
 @media(max-width:480px){.sp-gcm-actions{flex-direction:column-reverse}
   .sp-gcm-actions .sp-btn{width:100%;justify-content:center}}
+
+/* ---------- narrow screens ---------- */
+@media (max-width:640px){
+  .sp-ga4-card{padding:14px}
+  .sp-ga4-toolbar{align-items:stretch}
+  .sp-ga4-toolbar > div{min-width:0}
+  .sp-ga4-ranges{width:100%;justify-content:space-between}
+  .sp-ga4-ranges button{flex:1;padding:6px 6px}
+  .sp-ga4-actions{width:100%}
+  .sp-ga4-other-sources li{padding:11px 12px}
+}

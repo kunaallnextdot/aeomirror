@@ -10,8 +10,9 @@ business owner would read as "real revenue" (see services/analytics/ingest.py).
 from __future__ import annotations
 
 from datetime import datetime, timedelta
+from urllib.parse import urlsplit
 
-from sqlalchemy import case, func
+from sqlalchemy import case, func, or_
 from sqlalchemy.orm import Session as DbSession
 
 from app.db.models import SCAN_COMPLETED, AnalyticsConversion, AnalyticsSession, Scan
@@ -27,6 +28,26 @@ _MIN_SAMPLE_SESSIONS = 20   # below this, a landing-page recommendation is "insu
 # marker lives in the ordinary `url` the tracker already sends (as a query string,
 # e.g. "?aeomirror_diagnostic=1"), the same field every real pageview already uses.
 DIAGNOSTIC_URL_MARKER = "aeomirror_diagnostic"
+
+
+def page_key(url: str | None) -> tuple[str, str]:
+    """(normalized key, display path) for a raw landing URL. The tracker sends the full
+    window.location.href, so without this "/pricing", "/pricing/",
+    "/pricing?utm_source=x" and "/pricing#faq" were four different "pages", each too
+    small to analyze. The key is host (lowercased, no "www.") + path (no trailing
+    slash) — the same shape as Scan.normalized_url (routes_scan._normalize), so a page
+    can be matched to its audit."""
+    raw = (url or "").strip()
+    try:
+        parts = urlsplit(raw if "://" in raw else f"https://{raw}")
+    except ValueError:
+        return raw.lower(), raw
+    host = (parts.hostname or "").lower()
+    if host.startswith("www."):
+        host = host[4:]
+    path = parts.path.rstrip("/") or "/"
+    key = host + ("" if path == "/" else path)
+    return key, path
 
 
 def _session_query(db: DbSession, org_id: str, monitor_ids: list[str] | None,
@@ -47,12 +68,37 @@ def _conversion_query(db: DbSession, org_id: str, monitor_ids: list[str] | None,
          .join(AnalyticsSession, AnalyticsConversion.analytics_session_id == AnalyticsSession.id,
                isouter=True)
          .filter(AnalyticsConversion.organization_id == org_id,
-                 AnalyticsConversion.created_at >= start, AnalyticsConversion.created_at < end))
+                 AnalyticsConversion.created_at >= start, AnalyticsConversion.created_at < end,
+                 # Same diagnostic exclusion as _session_query — previously a test visit
+                 # was excluded from sessions but its conversions still counted.
+                 or_(AnalyticsSession.id.is_(None),
+                     ~AnalyticsSession.landing_url.contains(DIAGNOSTIC_URL_MARKER, autoescape=True))))
     if verified_only:
         q = q.filter(AnalyticsConversion.verified.is_(True))
     if monitor_ids:
         q = q.filter(AnalyticsConversion.monitor_id.in_(monitor_ids))
     return q
+
+
+def conversion_tracking_configured(db: DbSession, org_id: str, monitor_ids: list[str] | None) -> bool:
+    """True once at least one server-confirmed conversion has EVER been recorded for
+    these sites. Before that, a conversion count of 0 isn't evidence of "nothing
+    converted" — it means the confirm integration (routes_tracking /tracking/confirm)
+    isn't sending anything, so no conversion-based conclusion may be drawn."""
+    q = db.query(AnalyticsConversion.id).filter(AnalyticsConversion.organization_id == org_id,
+                                                AnalyticsConversion.verified.is_(True))
+    if monitor_ids:
+        q = q.filter(AnalyticsConversion.monitor_id.in_(monitor_ids))
+    return q.first() is not None
+
+
+def first_session_at(db: DbSession, org_id: str, monitor_ids: list[str] | None) -> datetime | None:
+    q = db.query(func.min(AnalyticsSession.started_at)).filter(
+        AnalyticsSession.organization_id == org_id,
+        ~AnalyticsSession.landing_url.contains(DIAGNOSTIC_URL_MARKER, autoescape=True))
+    if monitor_ids:
+        q = q.filter(AnalyticsSession.monitor_id.in_(monitor_ids))
+    return q.scalar()
 
 
 def summary(db: DbSession, *, org_id: str, monitor_ids: list[str] | None,
@@ -114,6 +160,7 @@ def summary(db: DbSession, *, org_id: str, monitor_ids: list[str] | None,
         "leads": leads,
         "unverified_leads": unverified_leads,
         "has_data": total_sessions > 0,
+        "conversion_tracking_configured": conversion_tracking_configured(db, org_id, monitor_ids),
     }
 
 
@@ -130,7 +177,24 @@ def traffic_over_time(db: DbSession, *, org_id: str, monitor_ids: list[str] | No
         day = (started_at + offset).date().isoformat()
         buckets.setdefault(day, {})
         buckets[day][channel] = buckets[day].get(channel, 0) + 1
-    return [{"date": d, "by_channel": c} for d, c in sorted(buckets.items())]
+
+    # Every day in the range, not just days with sessions — previously empty days were
+    # dropped and the chart drew a smooth curve straight across them. A day is only a
+    # real zero once tracking had started; before the site's first-ever session it is
+    # "not tracked" (tracked=False), never a fabricated 0.
+    first = first_session_at(db, org_id, monitor_ids)
+    first_day = (first + offset).date() if first else None
+    out = []
+    day = (start + offset).date()
+    last = (end + offset - timedelta(microseconds=1)).date()
+    while day <= last:
+        key = day.isoformat()
+        by_channel = buckets.get(key, {})
+        tracked = first_day is not None and day >= first_day
+        out.append({"date": key, "by_channel": by_channel, "tracked": tracked,
+                    "total": sum(by_channel.values()) if tracked else None})
+        day += timedelta(days=1)
+    return out
 
 
 def channel_breakdown(db: DbSession, *, org_id: str, monitor_ids: list[str] | None,
@@ -154,37 +218,51 @@ def channel_breakdown(db: DbSession, *, org_id: str, monitor_ids: list[str] | No
         sessions = sessions_by_channel.get(ch, 0)
         conversions, revenue = conv_by_channel.get(ch, (0, 0))
         out.append({
-            "channel": ch, "sessions": sessions, "conversions": conversions,
-            "revenue_cents": revenue,
-            "conversion_rate_pct": round(conversions / sessions * 100, 2) if sessions else 0.0,
+            # A confirmed conversion with no linked session has no channel — label it
+            # honestly instead of emitting a null channel the UI can't render.
+            "channel": ch if ch is not None else "unlinked",
+            "sessions": sessions, "conversions": conversions, "revenue_cents": revenue,
+            # No sessions -> no denominator -> no rate (was a fabricated 0.0).
+            "conversion_rate_pct": round(conversions / sessions * 100, 2) if sessions else None,
         })
     out.sort(key=lambda r: -r["sessions"])
     return out
 
 
-def _aeo_context(db: DbSession, org_id: str, landing_url: str) -> dict | None:
-    """Best-effort link to this URL's most recent AEO scan, if one exists for this
-    org — never fabricated, None when nothing matches."""
+def _aeo_context(db: DbSession, org_id: str, key: str) -> dict | None:
+    """This page's most recent completed AEOMirror audit, matched on the normalized
+    URL (see page_key) — previously an exact match on the raw tracked href, which a
+    query string, trailing slash, "www." or http/https difference always broke.
+    Issue counts come from every signal's real issue list, not the 5-item
+    `top_issues` preview. Display-only evidence: an audit never changes the
+    traffic-based priority below, and None when nothing matches."""
     scan = (db.query(Scan)
-            .filter(Scan.organization_id == org_id, Scan.url == landing_url,
+            .filter(Scan.organization_id == org_id, Scan.normalized_url == key,
                     Scan.status == SCAN_COMPLETED)
             .order_by(Scan.created_at.desc()).first())
     if not scan or not scan.result:
         return None
-    issues = scan.result.get("top_issues") or scan.result.get("issues") or []
-    score = scan.result.get("overall_score", scan.result.get("ars"))
+    sections = scan.result.get("sections") or []
+    failing = [s for s in sections if s.get("status") in ("fail", "warn")]
     return {
         "scan_id": scan.id,
-        "score": score,
-        "open_issue_count": len(issues),
-        "top_issue": issues[0].get("label") if issues else None,
+        "score": scan.result.get("overall_score"),
+        "scanned_at": scan.result.get("scanned_at") or (scan.created_at.isoformat() if scan.created_at else None),
+        "issue_count": sum(len(s.get("issues") or []) for s in sections),
+        "failing_signals": [s.get("label") or s.get("id") for s in failing if s.get("status") == "fail"],
+        "warning_signals": [s.get("label") or s.get("id") for s in failing if s.get("status") == "warn"],
     }
 
 
-def _prioritize(rows: list[dict]) -> list[dict]:
+def _prioritize(rows: list[dict], *, conversion_measured: bool) -> list[dict]:
     """Explainable, evidence-based prioritization — every field a row is scored on is
-    disclosed in `reason`; never a revenue-uplift estimate (not labeled/disclosed per
-    product requirements, so simply not computed)."""
+    disclosed in `reason`; never a revenue-uplift estimate.
+
+    Conversion-based patterns are only evaluated when `conversion_measured` (at least
+    one server-confirmed conversion has ever been recorded for the site). Before
+    that, a 0% conversion rate is not evidence the page "converts poorly" — it means
+    conversions aren't being reported — and the old rule flagged nearly every page
+    with AI traffic as high priority on exactly that non-evidence."""
     for r in rows:
         sessions, ai_sessions = r["sessions"], r["ai_sessions"]
         conv_rate, revenue = r["conversion_rate_pct"], r["revenue_cents"]
@@ -196,7 +274,20 @@ def _prioritize(rows: list[dict]) -> list[dict]:
             continue
 
         ai_share = ai_sessions / sessions if sessions else 0
-        if ai_share >= 0.15 and conv_rate < 1.0:
+        if not conversion_measured:
+            if ai_share >= 0.15:
+                pattern, priority = "ai_traffic_conversion_unmeasured", "medium"
+                recommendation = ("Receives meaningful AI-referred traffic, but conversions aren't "
+                                  "being confirmed yet — set up conversion confirmation to learn "
+                                  "whether this traffic converts.")
+                reason = (f"{round(ai_share * 100)}% of {sessions} sessions are AI-referred; "
+                          "no confirmed conversions have ever been recorded for this site.")
+            else:
+                pattern, priority = "steady", "low"
+                recommendation = "No traffic pattern stands out for this page in the selected period."
+                reason = (f"{sessions} sessions, {ai_sessions} AI-referred. Conversion impact "
+                          "can't be assessed until conversion confirmation is set up.")
+        elif ai_share >= 0.15 and conv_rate < 1.0:
             pattern, priority = "high_ai_traffic_low_conversion", "high"
             recommendation = ("Gets meaningful AI-referred traffic but converts poorly — "
                               "review this page's call-to-action and content clarity.")
@@ -208,8 +299,8 @@ def _prioritize(rows: list[dict]) -> list[dict]:
             reason = f"Conversion rate is {conv_rate}% on only {sessions} sessions."
         elif ai_share >= 0.1 and revenue > 0:
             pattern, priority = "strong_ai_business_outcome", "medium"
-            recommendation = "Already generating real revenue from AI traffic — a good candidate for further optimization."
-            reason = f"${revenue / 100:.2f} in confirmed revenue from {ai_sessions} AI-referred sessions."
+            recommendation = "Already generating confirmed revenue from AI traffic — a good candidate for further optimization."
+            reason = f"{revenue / 100:.2f} in confirmed revenue from {ai_sessions} AI-referred sessions."
         else:
             pattern, priority = "steady", "low"
             recommendation = "No urgent pattern detected for this page in the selected period."
@@ -225,41 +316,69 @@ def _prioritize(rows: list[dict]) -> list[dict]:
     return rows
 
 
+_MAX_RAW_URLS = 5000   # bounds the per-raw-URL fetch before merging into normalized pages
+
+
 def landing_page_performance(db: DbSession, *, org_id: str, monitor_ids: list[str] | None,
                              start: datetime, end: datetime, limit: int = 50,
                              offset: int = 0, include_aeo: bool = True) -> list[dict]:
     ai_case = case((AnalyticsSession.channel.in_(AI_CHANNELS), 1), else_=0)
-    rows = (_session_query(db, org_id, monitor_ids, start, end)
-            .with_entities(AnalyticsSession.landing_url,
-                           func.count(AnalyticsSession.id).label("sessions"),
-                           func.coalesce(func.sum(ai_case), 0).label("ai_sessions"))
-            .group_by(AnalyticsSession.landing_url)
-            .order_by(func.count(AnalyticsSession.id).desc())
-            .limit(limit).offset(offset).all())
+    raw_rows = (_session_query(db, org_id, monitor_ids, start, end)
+                .with_entities(AnalyticsSession.landing_url,
+                               func.count(AnalyticsSession.id).label("sessions"),
+                               func.coalesce(func.sum(ai_case), 0).label("ai_sessions"))
+                .group_by(AnalyticsSession.landing_url)
+                .order_by(func.count(AnalyticsSession.id).desc())
+                .limit(_MAX_RAW_URLS).all())
 
-    urls = [r.landing_url for r in rows]
-    conv_map: dict[str, tuple[int, int]] = {}
-    if urls:
+    # Merge raw hrefs into normalized pages (page_key) BEFORE thresholding/ranking.
+    pages: dict[str, dict] = {}
+    raw_to_key: dict[str, str] = {}
+    for r in raw_rows:
+        key, path = page_key(r.landing_url)
+        raw_to_key[r.landing_url] = key
+        p = pages.setdefault(key, {"key": key, "path": path, "url": None, "url_sessions": -1,
+                                   "sessions": 0, "ai_sessions": 0, "variant_count": 0})
+        p["sessions"] += r.sessions or 0
+        p["ai_sessions"] += int(r.ai_sessions or 0)
+        p["variant_count"] += 1
+        if (r.sessions or 0) > p["url_sessions"]:   # display the most-visited variant
+            p["url"], p["url_sessions"] = r.landing_url, r.sessions or 0
+
+    conv_map: dict[str, list[int]] = {}
+    if raw_to_key:
         conv_rows = (_conversion_query(db, org_id, monitor_ids, start, end)
-                    .filter(AnalyticsSession.landing_url.in_(urls))
+                    .filter(AnalyticsSession.landing_url.in_(list(raw_to_key)))
                     .with_entities(AnalyticsSession.landing_url, func.count(AnalyticsConversion.id),
                                     func.coalesce(func.sum(
                                         case((AnalyticsConversion.event_type == "purchase",
                                               AnalyticsConversion.value_cents), else_=0)), 0))
                     .group_by(AnalyticsSession.landing_url).all())
-        conv_map = {url: (int(cnt), int(rev)) for url, cnt, rev in conv_rows}
+        for url, cnt, rev in conv_rows:
+            agg = conv_map.setdefault(raw_to_key[url], [0, 0])
+            agg[0] += int(cnt)
+            agg[1] += int(rev)
 
+    conversion_measured = conversion_tracking_configured(db, org_id, monitor_ids)
     results = []
-    for r in rows:
-        conv_count, revenue = conv_map.get(r.landing_url, (0, 0))
-        sessions = r.sessions or 0
+    for key, p in pages.items():
+        conv_count, revenue = conv_map.get(key, (0, 0))
+        sessions = p["sessions"]
         entry = {
-            "url": r.landing_url, "sessions": sessions, "ai_sessions": int(r.ai_sessions or 0),
-            "conversions": conv_count,
-            "conversion_rate_pct": round(conv_count / sessions * 100, 2) if sessions else 0.0,
+            "url": p["url"], "path": p["path"], "page_key": key,
+            "variant_count": p["variant_count"],
+            "sessions": sessions, "ai_sessions": p["ai_sessions"],
+            "conversions": conv_count if conversion_measured else None,
+            "conversion_rate_pct": (round(conv_count / sessions * 100, 2) if sessions else None)
+                                   if conversion_measured else None,
             "revenue_cents": revenue,
+            "conversion_measured": conversion_measured,
         }
-        if include_aeo:
-            entry["aeo"] = _aeo_context(db, org_id, r.landing_url)
         results.append(entry)
-    return _prioritize(results)
+
+    ranked = _prioritize(results, conversion_measured=conversion_measured)
+    page_slice = ranked[offset: offset + limit]
+    if include_aeo:   # only for the returned slice — bounded, never N+1 over every page
+        for e in page_slice:
+            e["aeo"] = _aeo_context(db, org_id, e["page_key"])
+    return page_slice
