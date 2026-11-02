@@ -132,8 +132,11 @@ def build_url_intelligence_summary(db, scan_row) -> dict:
     if not job:
         return {"available": False, "reason": "no_completed_crawl", "monitor_id": monitor.id}
 
-    findings = db.query(UrlFinding).filter(UrlFinding.crawl_job_id == job.id).all()
-    scored = sorted(findings, key=lambda f: priority_score(f)["score"], reverse=True)
+    from app.services.url_intelligence.overview import actionable, finding_kind
+    # Only findings that ask for action: never a legacy "no issues" placeholder, never
+    # one the analysis itself marked insufficient evidence.
+    findings = actionable(db.query(UrlFinding).filter(UrlFinding.crawl_job_id == job.id)).all()
+    scored = sorted(findings, key=lambda f: (-priority_score(f)["score"], f.id))
 
     is_pro = entitlements.is_pro(db, org_id)
     limit = _URL_INTEL_MAX_FINDINGS if is_pro else _URL_INTEL_FREE_PREVIEW
@@ -149,6 +152,9 @@ def build_url_intelligence_summary(db, scan_row) -> dict:
             "priority": f.priority, "confidence": f.confidence,
             "status": f.status, "verification_status": f.verification_status,
             "priority_score": s["score"], "priority_reason": s["reason"],
+            "kind": finding_kind(f), "evidence_basis": f.evidence_basis,
+            "affected_urls": ((f.evidence or {}).get("affected_urls") or [])[:10]
+                             if f.evidence_basis == "deterministic" else ([f.url] if f.url else []),
         }
 
     return {

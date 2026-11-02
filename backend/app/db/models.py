@@ -287,6 +287,8 @@ JOB_KIND_MANUAL = "manual"
 JOB_KIND_BULK_SCAN = "bulk_scan"
 JOB_KIND_GA4_SYNC = "ga4_sync"
 JOB_KIND_URL_CRAWL = "url_crawl"   # one bounded chunk of a CrawlJob; re-enqueues itself
+JOB_KIND_GSC_SYNC = "gsc_sync"     # connection_id -> SearchConsoleConnection
+JOB_KIND_PAGE_VALUE = "page_value"  # one bounded chunk of a PageValueRun; re-enqueues itself
 
 ALERT_OPEN = "open"
 ALERT_ACK = "acknowledged"
@@ -352,6 +354,10 @@ class ScheduledJob(Base):
         Index("uq_scheduled_jobs_active_per_crawl_job", "crawl_job_id", unique=True,
               sqlite_where=text("status IN ('pending','running') AND crawl_job_id IS NOT NULL"),
               postgresql_where=text("status IN ('pending','running') AND crawl_job_id IS NOT NULL")),
+        # And for page_value jobs: at most one active chunk per PageValueRun.
+        Index("uq_scheduled_jobs_active_per_page_value_run", "page_value_run_id", unique=True,
+              sqlite_where=text("status IN ('pending','running') AND page_value_run_id IS NOT NULL"),
+              postgresql_where=text("status IN ('pending','running') AND page_value_run_id IS NOT NULL")),
     )
     id = Column(String, primary_key=True, default=_uuid)
     # Monitor jobs reference a monitor; site_scan jobs reference a scan instead;
@@ -361,6 +367,7 @@ class ScheduledJob(Base):
     scan_id = Column(String, index=True, nullable=True)          # set for kind="site_scan"
     connection_id = Column(String, index=True, nullable=True)    # set for kind="ga4_sync"
     crawl_job_id = Column(String, index=True, nullable=True)     # set for kind="url_crawl"
+    page_value_run_id = Column(String, index=True, nullable=True)  # set for kind="page_value"
     organization_id = Column(String, index=True, nullable=True)
     kind = Column(String, nullable=False, default="scheduled")   # scheduled|manual|site_scan|ga4_sync
     status = Column(String, nullable=False, default=JOB_PENDING)
@@ -873,8 +880,19 @@ GA4_STATUS_ERROR = "error"
 # an AI Overview click. Never a database CHECK constraint: the label vocabulary is
 # allowed to grow (e.g. a new assistant) without a migration.
 AI_SOURCE_LABELS = (
-    "chatgpt", "perplexity", "gemini", "copilot", "claude",
+    "chatgpt", "perplexity", "gemini", "copilot", "claude", "other_ai",
     "other_identifiable", "unattributable",
+)
+# AI assistant labels: a session is "AI referral" ONLY with one of these (real referrer
+# evidence). "other_ai" = a recognised AI assistant outside the five named ones.
+AI_ASSISTANT_LABELS = ("chatgpt", "perplexity", "gemini", "claude", "copilot", "other_ai")
+
+# Reporting classes for the AI Traffic dashboard, derived deterministically from
+# GA4's own channel grouping + source/medium (classification.traffic_class). Google
+# organic search is ALWAYS organic_search — GA4 cannot separate an AI Overview click
+# from any other organic result, so it is never reported as AI traffic.
+TRAFFIC_CLASSES = AI_ASSISTANT_LABELS + (
+    "organic_search", "paid_search", "direct", "referral", "social", "other",
 )
 
 
@@ -951,6 +969,14 @@ class GoogleAnalyticsConnection(Base):
     # can fail on a sync that still succeeds overall, so their freshness is their own.
     overview_synced_at = Column(DateTime, nullable=True)
     landing_pages_synced_at = Column(DateTime, nullable=True)
+    events_synced_at = Column(DateTime, nullable=True)
+    # The property's reporting currency (Admin API); revenue is never shown without it.
+    currency_code = Column(String, nullable=True)
+    # Event names configured as key events in GA4 (Admin API). NULL = not checked yet.
+    key_event_names = Column(JSON, nullable=True)
+    # GA4's own data-quality flags from the latest successful sync, per report:
+    # {"traffic": {"thresholded": bool, "sampled": bool, "other_row": bool, "truncated": bool}, ...}
+    data_quality = Column(JSON, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow)
 
@@ -977,8 +1003,8 @@ class Ga4TrafficSnapshot(Base):
     __tablename__ = "ga4_traffic_snapshots"
     __table_args__ = (
         Index("ix_ga4_snap_org_date", "organization_id", "date"),
-        Index("uq_ga4_snap_dimension", "connection_id", "date", "channel_grouping",
-              "source", "medium", unique=True),
+        Index("uq_ga4_snap_dimension_v2", "connection_id", "date", "channel_grouping",
+              "source", "medium", "campaign", unique=True),
     )
     id = Column(String, primary_key=True, default=_uuid)
     organization_id = Column(String, index=True, nullable=False)
@@ -988,6 +1014,10 @@ class Ga4TrafficSnapshot(Base):
     source = Column(String, nullable=False, default="(not set)")
     medium = Column(String, nullable=False, default="(not set)")
     ai_source_label = Column(String, nullable=False)       # one of AI_SOURCE_LABELS
+    # GA4 sessionCampaignName, verbatim. NULL = synced before campaigns were recorded
+    # (that row aggregates every campaign) — never guessed.
+    campaign = Column(String, nullable=True)
+    revenue = Column(Float, nullable=True)   # GA4 totalRevenue (property currency); NULL = not synced
     sessions = Column(Integer, nullable=False, default=0)
     # Additive metrics (safe to SUM across any grouping) — see class docstring.
     new_users = Column(Integer, nullable=False, default=0)
@@ -1034,19 +1064,80 @@ class Ga4LandingPageSnapshot(Base):
     __tablename__ = "ga4_landing_page_snapshots"
     __table_args__ = (
         Index("ix_ga4_landing_org_date", "organization_id", "date"),
-        Index("uq_ga4_landing_dimension", "connection_id", "date", "landing_page", unique=True),
+        Index("uq_ga4_landing_dimension_v2", "connection_id", "date", "landing_page", "traffic_class", unique=True),
     )
     id = Column(String, primary_key=True, default=_uuid)
     organization_id = Column(String, index=True, nullable=False)
     connection_id = Column(String, index=True, nullable=False)
     date = Column(String, nullable=False)
     landing_page = Column(String, nullable=False, default="(not set)")
+    # TRAFFIC_CLASSES value the sessions arrived through. NULL = synced before the
+    # source split existed (the row covers every source).
+    traffic_class = Column(String, nullable=True)
+    revenue = Column(Float, nullable=True)
     sessions = Column(Integer, nullable=False, default=0)
     new_users = Column(Integer, nullable=False, default=0)
     engaged_sessions = Column(Integer, nullable=False, default=0)
     views = Column(Integer, nullable=False, default=0)
     engagement_duration_sec = Column(Float, nullable=False, default=0.0)
     key_events = Column(Integer, nullable=False, default=0)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow)
+
+
+class Ga4EventSnapshot(Base):
+    """One daily row per (event name, channel grouping, source, medium) from GA4's own
+    event counts — the only event-level data AEOMirror has. Aggregated counts, never
+    per-user or per-session records: a conversion here is "an event that happened in
+    a session from this source", which supports session-level attribution only.
+    `event_count` and `key_events` are additive; `revenue` is GA4 totalRevenue
+    attributed to the row (property currency), NULL when GA4 returned none."""
+    __tablename__ = "ga4_event_snapshots"
+    __table_args__ = (
+        Index("ix_ga4_event_conn_date", "connection_id", "date"),
+        Index("uq_ga4_event_dimension", "connection_id", "date", "event_name", "channel_grouping",
+              "source", "medium", unique=True),
+    )
+    id = Column(String, primary_key=True, default=_uuid)
+    organization_id = Column(String, index=True, nullable=False)
+    connection_id = Column(String, index=True, nullable=False)
+    date = Column(String, nullable=False)
+    event_name = Column(String, nullable=False)
+    channel_grouping = Column(String, nullable=False, default="(not set)")
+    source = Column(String, nullable=False, default="(not set)")
+    medium = Column(String, nullable=False, default="(not set)")
+    traffic_class = Column(String, nullable=False)      # TRAFFIC_CLASSES
+    event_count = Column(Integer, nullable=False, default=0)
+    key_events = Column(Integer, nullable=False, default=0)
+    revenue = Column(Float, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+EVENT_ROLE_CONVERSION = "conversion"
+EVENT_ROLE_FUNNEL = "funnel_step"
+EVENT_ROLES = (EVENT_ROLE_CONVERSION, EVENT_ROLE_FUNNEL)
+GA4_CONVERSION_TYPES = ("purchase", "lead", "booking", "signup", "custom")
+
+
+class Ga4EventMapping(Base):
+    """Which of a property's GA4 events this business counts as a conversion (and of
+    what type), or as a funnel step. Chosen by the user — a lead-generation business
+    never has to use ecommerce events. Scoped to (connection, property): switching
+    GA4 property clears them, because event names belong to a property."""
+    __tablename__ = "ga4_event_mappings"
+    __table_args__ = (
+        Index("uq_ga4_event_mapping", "connection_id", "event_name", unique=True),
+    )
+    id = Column(String, primary_key=True, default=_uuid)
+    organization_id = Column(String, index=True, nullable=False)
+    connection_id = Column(String, index=True, nullable=False)
+    property_id = Column(String, nullable=False)
+    event_name = Column(String, nullable=False)
+    role = Column(String, nullable=False)                 # EVENT_ROLES
+    conversion_type = Column(String, nullable=True)       # GA4_CONVERSION_TYPES when role=conversion
+    label = Column(String, nullable=True)
+    counts_revenue = Column(Boolean, nullable=False, default=False)
+    created_by_user_id = Column(String, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow)
 
@@ -1156,11 +1247,20 @@ CRAWL_PENDING = "pending"
 CRAWL_DISCOVERING = "discovering"
 CRAWL_CRAWLING = "crawling"
 CRAWL_ANALYZING = "analyzing"
+# Building evidence-backed recommendations from the persisted per-page issues (one
+# finding per issue per template, each counted only on pages that actually have it)
+# and carrying user status forward from the previous completed crawl.
+CRAWL_PREPARING = "preparing"
 CRAWL_COMPLETED = "completed"
 CRAWL_FAILED = "failed"
 CRAWL_CANCELLED = "cancelled"
 CRAWL_PHASES = (CRAWL_PENDING, CRAWL_DISCOVERING, CRAWL_CRAWLING, CRAWL_ANALYZING,
-                CRAWL_COMPLETED, CRAWL_FAILED, CRAWL_CANCELLED)
+                CRAWL_PREPARING, CRAWL_COMPLETED, CRAWL_FAILED, CRAWL_CANCELLED)
+CRAWL_ACTIVE_PHASES = (CRAWL_PENDING, CRAWL_DISCOVERING, CRAWL_CRAWLING, CRAWL_ANALYZING,
+                       CRAWL_PREPARING)
+# Bumped whenever evidence extraction, issue rules or template grouping change in a
+# way that makes two crawls' findings not comparable. Comparisons require equality.
+CRAWL_ENGINE_VERSION = "2"
 
 URL_DISCOVERED = "discovered"    # found (sitemap/internal link), not yet eligibility-checked
 URL_ELIGIBLE = "eligible"        # SSRF+robots+dedup passed, queued to crawl
@@ -1200,6 +1300,7 @@ class CrawlJob(Base):
     normalized_seed_url = Column(String, nullable=False)
     max_urls = Column(Integer, nullable=False)
     phase = Column(String, nullable=False, default=CRAWL_PENDING)
+    engine_version = Column(String, nullable=True)   # CRAWL_ENGINE_VERSION at creation; NULL = legacy
     # Resumability checkpoint for the current phase: discovery frontier / remaining
     # sitemap URLs / crawl cursor / analyze cursor. Shape is private to
     # app.services.url_intelligence.discovery — never read elsewhere.
@@ -1230,6 +1331,7 @@ class CrawlUrl(Base):
         Index("ix_crawl_urls_job_page_type", "crawl_job_id", "page_type"),
         Index("ix_crawl_urls_job_template", "crawl_job_id", "template_id"),
         Index("uq_crawl_urls_job_normalized", "crawl_job_id", "normalized_key", unique=True),
+        Index("ix_crawl_urls_job_issues", "crawl_job_id", "issue_severity", "issue_count"),
     )
     id = Column(String, primary_key=True, default=_uuid)
     crawl_job_id = Column(String, index=True, nullable=False)
@@ -1246,6 +1348,17 @@ class CrawlUrl(Base):
     template_id = Column(String, nullable=True)
     content_fingerprint = Column(String, nullable=True)
     evidence = Column(JSON, nullable=True)     # deterministic evidence (Phase 4)
+    # Summary of the deterministic per-page issues (services/url_intelligence/issues.py),
+    # stored at crawl time so the URL inventory can filter/sort without loading `evidence`.
+    # NULL on rows crawled before engine v2 (shown as "not evaluated", never as 0).
+    page_title = Column(String, nullable=True)
+    issue_codes = Column(JSON, nullable=True)
+    issue_count = Column(Integer, nullable=True)
+    issue_severity = Column(Integer, nullable=True)   # highest severity rank: 4 critical .. 1 low, 0 none
+    # How many crawled pages of this job link to this URL (each linking page counted
+    # once). A lower bound: only pages this crawl fetched are counted, and only the
+    # first 200 same-site links of each. NULL = crawled before this was recorded.
+    inbound_link_count = Column(Integer, nullable=True)
     analyzed = Column(Boolean, nullable=False, default=False)
     error = Column(String, nullable=True)
     discovered_at = Column(DateTime, default=datetime.utcnow)
@@ -1264,6 +1377,7 @@ class UrlFinding(Base):
         Index("ix_url_findings_job_priority", "crawl_job_id", "priority"),
         Index("ix_url_findings_job_status", "crawl_job_id", "status"),
         Index("ix_url_findings_org_created", "organization_id", "created_at"),
+        Index("ix_url_findings_job_issue_key", "crawl_job_id", "issue_key"),
     )
     id = Column(String, primary_key=True, default=_uuid)
     crawl_job_id = Column(String, index=True, nullable=False)
@@ -1287,6 +1401,14 @@ class UrlFinding(Base):
     status = Column(String, nullable=False, default=FINDING_OPEN)
     verification_status = Column(String, nullable=True)
     content_fingerprint = Column(String, nullable=True)   # cache/dedupe key for re-analysis
+    # Stable identity of the underlying issue across crawls of the same site
+    # ("det:<issue_code>:<template_id>" or "ai:<template_id>:<category>") — used to carry
+    # user status forward and to compare crawls. NULL on legacy rows.
+    issue_key = Column(String, nullable=True)
+    # How the finding is supported: "deterministic" (checked on every affected page),
+    # "ai_representative" (AI reading of one representative page, applied to its
+    # template, not verified page by page). NULL on legacy rows.
+    evidence_basis = Column(String, nullable=True)
     model_used = Column(String, nullable=True)
     tokens_input = Column(Integer, nullable=True)
     tokens_output = Column(Integer, nullable=True)
@@ -1295,3 +1417,140 @@ class UrlFinding(Base):
     last_checked_at = Column(DateTime, default=datetime.utcnow)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow)
+
+
+# ==================== Google Search Console (read-only) ====================
+# A SEPARATE Google connection from GA4: its own OAuth grant with only the
+# webmasters.readonly scope, its own encrypted refresh token. The GA4 connection's
+# scope and token are never touched. Search Console reports Google Search clicks and
+# impressions — never AI-assistant prompts — and is never mixed into AI traffic.
+
+class SearchConsoleConnection(Base):
+    __tablename__ = "search_console_connections"
+    __table_args__ = (
+        Index("ix_gsc_conn_org", "organization_id", unique=True),
+    )
+    id = Column(String, primary_key=True, default=_uuid)
+    organization_id = Column(String, index=True, nullable=False)
+    encrypted_refresh_token = Column(Text, nullable=True)   # None while status=revoked
+    # "https://www.example.com/" (URL-prefix property) or "sc-domain:example.com".
+    site_url = Column(String, nullable=True)
+    permission_level = Column(String, nullable=True)
+    connected_by_user_id = Column(String, nullable=False)
+    connected_at = Column(DateTime, default=datetime.utcnow)
+    status = Column(String, nullable=False, default=GA4_STATUS_PENDING_PROPERTY)
+    last_synced_at = Column(DateTime, nullable=True)
+    last_sync_status = Column(String, nullable=True)
+    last_sync_error_code = Column(String, nullable=True)   # safe code only, never an API body
+    next_sync_at = Column(DateTime, nullable=True, index=True)
+    # The date window (YYYY-MM-DD, inclusive) the stored page rows cover.
+    window_start = Column(String, nullable=True)
+    window_end = Column(String, nullable=True)
+    rows_fetched = Column(Integer, nullable=True)
+    # True when the sync stopped at its page cap: more pages may exist than were stored.
+    truncated = Column(Boolean, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow)
+
+
+class GscPageSnapshot(Base):
+    """One page's Google Search totals over the connection's current window (Search
+    Analytics, dimension=page, type=web). Replaced as a whole on every sync. `page_key`
+    is analytics.aggregation.page_key(page) so it joins to crawled URLs the same way
+    first-party analytics does."""
+    __tablename__ = "gsc_page_snapshots"
+    __table_args__ = (
+        Index("uq_gsc_page", "connection_id", "page", unique=True),
+        Index("ix_gsc_page_key", "connection_id", "page_key"),
+    )
+    id = Column(String, primary_key=True, default=_uuid)
+    organization_id = Column(String, index=True, nullable=False)
+    connection_id = Column(String, index=True, nullable=False)
+    page = Column(String, nullable=False)
+    page_key = Column(String, nullable=False)
+    clicks = Column(Integer, nullable=False, default=0)
+    impressions = Column(Integer, nullable=False, default=0)
+    position = Column(Float, nullable=True)   # Google's impression-weighted average position
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+# ==================== Page Opportunities (business-value scoring) ====================
+# A PageValueRun scores every URL of one completed CrawlJob against the stored GA4,
+# Search Console and first-party data, in bounded chunks on the shared ScheduledJob
+# queue (kind=page_value), resumable from `cursor`. Only the latest completed run per
+# website is kept; a new run's rows replace it when the run completes.
+PV_PENDING = "pending"
+PV_RUNNING = "running"
+PV_COMPLETED = "completed"
+PV_FAILED = "failed"
+PV_CANCELLED = "cancelled"
+PV_ACTIVE = (PV_PENDING, PV_RUNNING)
+
+
+class PageValueRun(Base):
+    __tablename__ = "page_value_runs"
+    __table_args__ = (
+        Index("ix_pv_runs_monitor_created", "monitor_id", "created_at"),
+    )
+    id = Column(String, primary_key=True, default=_uuid)
+    organization_id = Column(String, index=True, nullable=False)
+    monitor_id = Column(String, index=True, nullable=False)
+    crawl_job_id = Column(String, index=True, nullable=False)
+    status = Column(String, nullable=False, default=PV_PENDING)
+    trigger = Column(String, nullable=True)        # crawl_completed | ga4_sync | gsc_sync | manual
+    requested_by_user_id = Column(String, nullable=True)
+    cursor = Column(String, nullable=True)         # last processed crawl_urls.id
+    total_urls = Column(Integer, nullable=True)
+    processed_urls = Column(Integer, nullable=False, default=0)
+    # What data each score was computed from: sources, windows, site maxima.
+    inputs = Column(JSON, nullable=True)
+    error = Column(String, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    started_at = Column(DateTime, nullable=True)
+    finished_at = Column(DateTime, nullable=True)
+    updated_at = Column(DateTime, default=datetime.utcnow)
+
+
+class PageValueScore(Base):
+    """One URL's business classification, measured signals and Business Value Score
+    for one run. A NULL measured column means "not measured" (no source available) —
+    never zero."""
+    __tablename__ = "page_value_scores"
+    __table_args__ = (
+        Index("uq_pv_score_run_url", "run_id", "crawl_url_id", unique=True),
+        Index("ix_pv_score_run_score", "run_id", "score"),
+        Index("ix_pv_score_run_priority", "run_id", "priority_rank"),
+        Index("ix_pv_score_run_type", "run_id", "business_page_type"),
+    )
+    id = Column(String, primary_key=True, default=_uuid)
+    run_id = Column(String, index=True, nullable=False)
+    organization_id = Column(String, index=True, nullable=False)
+    monitor_id = Column(String, nullable=False)
+    crawl_job_id = Column(String, nullable=False)
+    crawl_url_id = Column(String, nullable=False)
+    url = Column(String, nullable=False)
+    page_title = Column(String, nullable=True)
+    business_page_type = Column(String, nullable=False)
+    classification_confidence = Column(Float, nullable=False)
+    classification_status = Column(String, nullable=False)   # confirmed | likely | uncertain
+    classification_evidence = Column(JSON, nullable=True)
+    is_commercial = Column(Boolean, nullable=False, default=False)
+    ai_sessions = Column(Integer, nullable=True)
+    organic_sessions = Column(Integer, nullable=True)
+    total_sessions = Column(Integer, nullable=True)
+    conversions = Column(Integer, nullable=True)
+    conversion_source = Column(String, nullable=True)   # ga4_key_events | first_party_verified
+    revenue = Column(Float, nullable=True)
+    revenue_currency = Column(String, nullable=True)
+    gsc_clicks = Column(Integer, nullable=True)
+    gsc_impressions = Column(Integer, nullable=True)
+    gsc_position = Column(Float, nullable=True)
+    inbound_links = Column(Integer, nullable=True)
+    issue_count = Column(Integer, nullable=True)
+    main_issue_code = Column(String, nullable=True)
+    score = Column(Float, nullable=False)
+    measured_signals = Column(Integer, nullable=False, default=0)
+    score_components = Column(JSON, nullable=True)
+    priority = Column(String, nullable=True)        # high | medium | low | none | not_evaluated
+    priority_rank = Column(Integer, nullable=False, default=0)
+    created_at = Column(DateTime, default=datetime.utcnow)

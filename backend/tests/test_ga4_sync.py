@@ -95,7 +95,7 @@ def _patch_secondary_reports_empty(monkeypatch):
         return None
     monkeypatch.setattr(ga4, "fetch_daily_overview", fake_overview)
     monkeypatch.setattr(ga4, "fetch_landing_pages", fake_landing)
-    monkeypatch.setattr(ga4, "fetch_key_events_configured", fake_key_events)
+    monkeypatch.setattr(ga4, "fetch_key_event_names", fake_key_events)
 
 
 @pytest.fixture(autouse=True)

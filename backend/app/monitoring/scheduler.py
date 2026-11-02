@@ -21,7 +21,7 @@ from sqlalchemy.orm import Session
 from app.config import settings
 from app.db.models import (
     GA4_STATUS_ACTIVE, JOB_COMPLETED, JOB_FAILED, JOB_KIND_BULK_SCAN, JOB_KIND_GA4_SYNC,
-    JOB_KIND_URL_CRAWL, JOB_PENDING, JOB_RUNNING, MONITOR_ACTIVE, GoogleAnalyticsConnection,
+    JOB_KIND_GSC_SYNC, JOB_KIND_PAGE_VALUE, JOB_KIND_URL_CRAWL, JOB_PENDING, JOB_RUNNING, MONITOR_ACTIVE, GoogleAnalyticsConnection,
     Monitor, ScheduledJob,
 )
 
@@ -268,3 +268,114 @@ def fail_job(db: Session, job: ScheduledJob, error, now: datetime | None = None)
         job.status = JOB_FAILED
         job.finished_at = now
     db.commit()
+
+
+def has_active_page_value_job(db: Session, run_id: str) -> ScheduledJob | None:
+    return (db.query(ScheduledJob)
+            .filter(ScheduledJob.page_value_run_id == run_id,
+                    ScheduledJob.status.in_((JOB_PENDING, JOB_RUNNING)))
+            .first())
+
+
+def enqueue_page_value_chunk(db: Session, run_id: str, org_id: str | None,
+                             now: datetime | None = None) -> ScheduledJob:
+    """Queue the next bounded chunk of a PageValueRun — same at-most-one-active-chunk
+    guarantee as enqueue_url_crawl_chunk (partial unique index on page_value_run_id)."""
+    existing = has_active_page_value_job(db, run_id)
+    if existing:
+        return existing
+    now = now or datetime.utcnow()
+    job = ScheduledJob(
+        page_value_run_id=run_id, organization_id=org_id,
+        kind=JOB_KIND_PAGE_VALUE, status=JOB_PENDING, attempts=0,
+        max_attempts=settings.monitor_job_max_attempts,
+        scheduled_for=now, run_after=now, created_at=now, updated_at=now,
+    )
+    db.add(job)
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        return has_active_page_value_job(db, run_id)
+    db.refresh(job)
+    return job
+
+
+def enqueue_due_gsc_syncs(db: Session, now: datetime | None = None) -> int:
+    """Search Console twin of enqueue_due_ga4_syncs (shares connection_id and its
+    one-active-job-per-connection index; connection ids are unique across both)."""
+    from app.db.models import SearchConsoleConnection
+    now = now or datetime.utcnow()
+    due = (db.query(SearchConsoleConnection)
+           .filter(SearchConsoleConnection.status == GA4_STATUS_ACTIVE,
+                   SearchConsoleConnection.site_url.isnot(None),
+                   SearchConsoleConnection.next_sync_at.isnot(None),
+                   SearchConsoleConnection.next_sync_at <= now)
+           .all())
+    created = 0
+    for conn in due:
+        if enqueue_manual_gsc_sync(db, conn, now, _count_only=True):
+            created += 1
+    return created
+
+
+def enqueue_manual_gsc_sync(db: Session, connection, now: datetime | None = None,
+                            _count_only: bool = False):
+    existing = has_active_ga4_sync_job(db, connection.id)
+    if existing:
+        return None if _count_only else existing
+    now = now or datetime.utcnow()
+    job = ScheduledJob(
+        connection_id=connection.id, organization_id=connection.organization_id,
+        kind=JOB_KIND_GSC_SYNC, status=JOB_PENDING, attempts=0,
+        max_attempts=settings.monitor_job_max_attempts,
+        scheduled_for=now, run_after=now, created_at=now, updated_at=now,
+    )
+    db.add(job)
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        return None if _count_only else has_active_ga4_sync_job(db, connection.id)
+    db.refresh(job)
+    return job
+
+
+# A crawl chunk is bounded (url_crawl_fetch_batch_size pages, each under the fetch
+# timeout), so one still "running" this long after it started was abandoned by a worker
+# that stopped mid-chunk (deploy, restart, crash). Left alone it would block the crawl
+# forever: the one-active-chunk-per-crawl index stops a continuation from being queued.
+STALLED_CRAWL_CHUNK_MINUTES = 30
+
+
+def requeue_stalled_crawl_chunks(db: Session, now: datetime | None = None) -> int:
+    """Return abandoned crawl chunks to the queue through the normal retry path
+    (fail_job: retried with backoff, or failed once attempts run out — then the crawl
+    itself is marked failed, exactly as the runner does). Chunks are safe to re-run:
+    every page's status is persisted as it is processed."""
+    from app.db.models import CRAWL_FAILED, CrawlJob
+    now = now or datetime.utcnow()
+    cutoff = now - timedelta(minutes=STALLED_CRAWL_CHUNK_MINUTES)
+    stale = (db.query(ScheduledJob)
+             .filter(ScheduledJob.kind.in_((JOB_KIND_URL_CRAWL, JOB_KIND_PAGE_VALUE)),
+                     ScheduledJob.status == JOB_RUNNING, ScheduledJob.started_at < cutoff)
+             .all())
+    for job in stale:
+        fail_job(db, job, "the worker stopped while this chunk was running", now)
+        if job.status == JOB_FAILED and job.kind == JOB_KIND_PAGE_VALUE:
+            from app.db.models import PV_ACTIVE, PV_FAILED, PageValueRun
+            run = db.get(PageValueRun, job.page_value_run_id)
+            if run and run.status in PV_ACTIVE:
+                run.status, run.finished_at = PV_FAILED, now
+                run.error = "Scoring could not be completed. Please try again."
+                db.commit()
+        elif job.status == JOB_FAILED:
+            crawl = db.get(CrawlJob, job.crawl_job_id)
+            if crawl and crawl.phase not in ("completed", "failed", "cancelled"):
+                crawl.phase = CRAWL_FAILED
+                crawl.error = "The crawl could not be completed. Please try again."
+                crawl.finished_at = now
+                db.commit()
+    if stale:
+        logger.warning("requeued %d stalled crawl chunk(s)", len(stale))
+    return len(stale)

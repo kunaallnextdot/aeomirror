@@ -6,7 +6,10 @@ comparison, so this is a new small module rather than a forced reuse of that one
 """
 from __future__ import annotations
 
+import asyncio
 from datetime import datetime
+
+import anyio
 
 from sqlalchemy.orm import Session
 
@@ -17,6 +20,48 @@ from app.db.models import (
     VERIFY_REGRESSED, VERIFY_UNCHANGED, VERIFY_VERIFIED,
 )
 from app.services.url_intelligence.evidence import content_fingerprint, extract_evidence
+from app.services.url_intelligence.issues import page_issues
+
+_VERIFY_SAMPLE = 5   # affected pages re-checked per verification (bounded request time)
+
+
+async def _recheck(url: str, code: str, page_type: str | None) -> bool | None:
+    """True = issue still present, False = gone, None = page couldn't be re-checked."""
+    try:
+        safe = validate_url(url)
+        bundle = await fetch(safe)
+    except (FetchError, UnsafeUrlError):
+        return None
+    evidence = await anyio.to_thread.run_sync(extract_evidence, bundle)
+    return code in page_issues(evidence, page_type)
+
+
+async def _verify_deterministic(db: Session, finding: UrlFinding) -> str:
+    """Re-check THIS issue on a sample of the pages it was found on. Verified only when
+    every re-checked page no longer has it; the sample size is recorded with the result
+    so a 5-page check is never presented as a check of all pages."""
+    ev = dict(finding.evidence or {})
+    code = ev.get("issue_code")
+    urls = (ev.get("affected_urls") or [])[:_VERIFY_SAMPLE]
+    results = await asyncio.gather(*(_recheck(u, code, finding.page_type) for u in urls)) if code else []
+    checked = [r for r in results if r is not None]
+    if not checked:
+        status = VERIFY_NOT_COMPARABLE
+    elif not any(checked):
+        status = VERIFY_VERIFIED
+    elif all(checked):
+        status = VERIFY_UNCHANGED
+    else:
+        status = VERIFY_PARTIALLY_IMPROVED
+    ev["last_verification"] = {
+        "at": datetime.utcnow().isoformat(), "affected_count": ev.get("affected_count"),
+        "pages": [{"url": u, "still_present": r} for u, r in zip(urls, results)],
+    }
+    finding.evidence = ev          # reassigned so the JSON change is persisted
+    finding.verification_status = status
+    finding.last_checked_at = datetime.utcnow()
+    db.commit()
+    return status
 
 
 async def verify_finding(db: Session, finding: UrlFinding) -> str:
@@ -25,6 +70,8 @@ async def verify_finding(db: Session, finding: UrlFinding) -> str:
     last_checked_at and, when the URL still belongs to an existing CrawlUrl row,
     refreshes that row's evidence/fingerprint too. Never raises — an unreachable URL
     is NOT_COMPARABLE, not a crash."""
+    if finding.evidence_basis == "deterministic":
+        return await _verify_deterministic(db, finding)
     if not finding.url:
         finding.verification_status = VERIFY_NOT_COMPARABLE
         finding.last_checked_at = datetime.utcnow()

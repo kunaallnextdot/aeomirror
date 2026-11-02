@@ -20,7 +20,8 @@ into a finding.
 Cost control (Phase 6): content-fingerprint cache reuse (an unchanged template isn't
 re-analyzed within `url_crawl_ai_cache_days`), and a global per-day call ceiling
 (`url_crawl_ai_daily_cap`, mirroring `ai_calls_today()`) — once hit, remaining
-templates in the job get a deterministic-only fallback finding, not a queued retry.
+templates get no AI finding (their deterministic issues are still recorded), not a
+queued retry.
 """
 from __future__ import annotations
 
@@ -121,35 +122,6 @@ def _validate_ai_output(obj: dict) -> dict | None:
     return {k: obj[k].strip()[:2000] for k in required}
 
 
-def _deterministic_fallback(evidence: dict) -> dict:
-    """Used when the AI call fails/returns nothing/fails validation, or the daily
-    budget is exhausted. Built ONLY from the deterministic evidence's own
-    missing_content_elements — never invents a problem the evidence doesn't show."""
-    missing = evidence.get("missing_content_elements") or []
-    if not missing:
-        return {
-            "finding_title": "No deterministic content issues detected",
-            "category": "other", "why_it_matters": "No gaps were found in the checked fields.",
-            "recommended_fix": "No action needed from this deterministic check.",
-            "expected_benefit": "N/A", "priority": "low", "confidence": "insufficient_evidence",
-            "evidence_limitations": "AI analysis was not performed for this template; this "
-                                    "result reflects deterministic checks only.",
-            "verification_procedure": "Re-run analysis once AI capacity is available.",
-        }
-    return {
-        "finding_title": f"Deterministic content gaps: {', '.join(missing[:3])}",
-        "category": "semantic_completeness",
-        "why_it_matters": "These elements are commonly used by AI assistants and search "
-                          "engines to understand and cite a page.",
-        "recommended_fix": "Address the missing elements listed in evidence_limitations.",
-        "expected_benefit": "May improve how reliably this page is understood and cited.",
-        "priority": "medium", "confidence": "medium",
-        "evidence_limitations": f"Deterministic-only (AI analysis not performed): {missing}",
-        "verification_procedure": "Re-crawl this URL after making changes and confirm the "
-                                  "missing elements are no longer flagged.",
-    }
-
-
 def _ai_calls_today(db: Session) -> int:
     day_start = datetime(datetime.utcnow().year, datetime.utcnow().month, datetime.utcnow().day)
     return (db.query(UsageEvent)
@@ -169,10 +141,14 @@ def _cached_finding(db: Session, org_id: str, template_id: str, fingerprint: str
 
 
 def analyze_template(db: Session, job: CrawlJob, representative: CrawlUrl,
-                     affected_url_count: int) -> UrlFinding:
-    """Analyze one representative URL for its whole template cluster and persist
-    exactly one UrlFinding. Never raises — any failure degrades to the deterministic
-    fallback so a single bad AI response can never break the crawl job."""
+                     affected_url_count: int) -> UrlFinding | None:
+    """Analyze one representative URL for its whole template cluster and persist at
+    most one UrlFinding (evidence_basis="ai_representative": an AI reading of ONE page,
+    applied to its template, never verified page by page). Returns None — and persists
+    nothing — when there is no valid AI result (AI unavailable, budget exhausted,
+    invalid output): the page's deterministic issues are recorded by the preparing
+    step (recommendations.py) regardless, so nothing is lost and nothing is invented.
+    Never raises, so a single bad AI response can never break the crawl job."""
     evidence = representative.evidence or {}
     fingerprint = representative.content_fingerprint or ""
 
@@ -189,6 +165,7 @@ def analyze_template(db: Session, job: CrawlJob, representative: CrawlUrl,
             confidence=cached.confidence, evidence_limitations=cached.evidence_limitations,
             verification_procedure=cached.verification_procedure,
             content_fingerprint=fingerprint, model_used=cached.model_used, cache_hit=True,
+            issue_key=f"ai:{representative.template_id}:{cached.category}", evidence_basis="ai_representative",
         )
         db.add(finding)
         job.ai_calls_cached += 1
@@ -199,7 +176,9 @@ def analyze_template(db: Session, job: CrawlJob, representative: CrawlUrl,
     model_used: str | None = None
     tokens_in = tokens_out = None
 
-    if job.ai_calls_total - job.ai_calls_cached < settings.url_crawl_ai_daily_cap \
+    # No key, no call: an unconfigured AI is never counted as an attempted analysis
+    # (the overview reports "AI analysis did not run" from these counters).
+    if settings.ai_enabled and job.ai_calls_total - job.ai_calls_cached < settings.url_crawl_ai_daily_cap \
             and _ai_calls_today(db) < settings.url_crawl_ai_daily_cap:
         text, usage = ai.complete_with_usage(
             _SYSTEM_PROMPT, _evidence_summary(evidence),
@@ -220,7 +199,8 @@ def analyze_template(db: Session, job: CrawlJob, representative: CrawlUrl,
                 job.ai_tokens_output_total += tokens_out or 0
 
     if result is None:
-        result = _deterministic_fallback(evidence)
+        db.commit()   # keep the attempt counters; no finding without a valid AI result
+        return None
 
     finding = UrlFinding(
         crawl_job_id=job.id, crawl_url_id=representative.id, organization_id=job.organization_id,
@@ -234,6 +214,7 @@ def analyze_template(db: Session, job: CrawlJob, representative: CrawlUrl,
         verification_procedure=result["verification_procedure"],
         content_fingerprint=fingerprint, model_used=model_used,
         tokens_input=tokens_in, tokens_output=tokens_out, cache_hit=False,
+        issue_key=f"ai:{representative.template_id}:{result['category']}", evidence_basis="ai_representative",
     )
     db.add(finding)
     db.commit()

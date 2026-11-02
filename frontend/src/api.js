@@ -522,6 +522,20 @@ export function getGa4Channels(params) {
 export function getGa4LandingPages(params) {
   return request(`/integrations/google/landing-pages${_ga4Query(params)}`, GA4_OPTS);
 }
+// AI Traffic & Conversion Intelligence: overview, conversions, landing pages and
+// source comparison computed from synced GA4 data (no live Google call).
+export function getGa4Intelligence(params) {
+  return request(`/integrations/google/intelligence${_ga4Query(params)}`, GA4_OPTS);
+}
+// Events the property actually records, key-event flags and conversion mappings.
+export function getGa4Events(params) {
+  return request(`/integrations/google/events${_ga4Query(params)}`, GA4_OPTS);
+}
+export function saveGa4EventMappings(mappings) {
+  return request(`/integrations/google/event-mappings`, {
+    method: "PUT", body: JSON.stringify({ mappings }), ...GA4_OPTS,
+  });
+}
 
 /* =====================================================================
    First-party website analytics / AI Business Impact — GA4-independent. One
@@ -588,6 +602,17 @@ function _qs(params = {}) {
 export function listCrawlUrls(monitorId, jobId, params) {
   return request(`/monitors/${encodeURIComponent(monitorId)}/crawl-jobs/${encodeURIComponent(jobId)}/urls${_qs(params)}`);
 }
+// One page's full evidence, checked issues, applicable findings and stored traffic.
+export function getCrawlUrl(monitorId, jobId, urlId) {
+  return request(`/monitors/${encodeURIComponent(monitorId)}/crawl-jobs/${encodeURIComponent(jobId)}/urls/${encodeURIComponent(urlId)}`);
+}
+// Site Intelligence landing view: latest analysis state + latest completed results.
+export function getSiteIntelligence(monitorId) {
+  return request(`/monitors/${encodeURIComponent(monitorId)}/site-intelligence`);
+}
+export function compareSiteIntelligence(monitorId, params) {
+  return request(`/monitors/${encodeURIComponent(monitorId)}/site-intelligence/compare${_qs(params)}`);
+}
 export function listCrawlTemplates(monitorId, jobId) {
   return request(`/monitors/${encodeURIComponent(monitorId)}/crawl-jobs/${encodeURIComponent(jobId)}/templates`);
 }
@@ -611,6 +636,47 @@ export function recrawlFinding(monitorId, jobId, findingId) {
   return request(
     `/monitors/${encodeURIComponent(monitorId)}/crawl-jobs/${encodeURIComponent(jobId)}/findings/${encodeURIComponent(findingId)}/recrawl`,
     { method: "POST" });
+}
+/* Page Opportunities (app/api/routes_page_opportunities.py): business-value scoring of
+   a website's crawled pages, read from the latest completed scoring run. */
+const _pv = (monitorId) => `/monitors/${encodeURIComponent(monitorId)}/page-opportunities`;
+export function getPageOpportunities(monitorId) {
+  return request(_pv(monitorId));
+}
+export function listPageOpportunities(monitorId, params) {
+  return request(`${_pv(monitorId)}/pages${_qs(params)}`);
+}
+export function getPageOpportunity(monitorId, crawlUrlId) {
+  return request(`${_pv(monitorId)}/pages/${encodeURIComponent(crawlUrlId)}`);
+}
+export function refreshPageOpportunities(monitorId) {
+  return request(`${_pv(monitorId)}/refresh`, { method: "POST" });
+}
+export function cancelPageOpportunitiesRun(monitorId, runId) {
+  return request(`${_pv(monitorId)}/runs/${encodeURIComponent(runId)}/cancel`, { method: "POST" });
+}
+
+/* Google Search Console (read-only, webmasters.readonly) — a separate connection from
+   GA4 (app/api/routes_search_console.py). */
+export function getSearchConsoleStatus() {
+  return request(`/integrations/search-console/status`, GA4_OPTS);
+}
+export function connectSearchConsole() {
+  return request(`/integrations/search-console/connect`, GA4_OPTS);
+}
+export function listSearchConsoleSites() {
+  return request(`/integrations/search-console/sites`, GA4_OPTS);
+}
+export function selectSearchConsoleSite(siteUrl) {
+  return request(`/integrations/search-console/select-site`, {
+    method: "POST", body: JSON.stringify({ site_url: siteUrl }), ...GA4_OPTS,
+  });
+}
+export function triggerSearchConsoleSync() {
+  return request(`/integrations/search-console/sync`, { method: "POST", ...GA4_OPTS });
+}
+export function disconnectSearchConsole() {
+  return request(`/integrations/search-console`, { method: "DELETE", ...GA4_OPTS });
 }
 export function getPromptRun(id) { return request(`/prompt-runs/${encodeURIComponent(id)}`); }
 export function getPromptRunSummary(id) {

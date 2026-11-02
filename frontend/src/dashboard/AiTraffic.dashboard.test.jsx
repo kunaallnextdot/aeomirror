@@ -18,6 +18,9 @@ vi.mock("../api.js", () => ({
   getGa4Trends: vi.fn(),
   getGa4Channels: vi.fn(),
   getGa4LandingPages: vi.fn(),
+  getGa4Intelligence: vi.fn(),
+  getGa4Events: vi.fn(),
+  saveGa4EventMappings: vi.fn(),
   connectGoogleAnalytics: vi.fn(),
   listGa4Properties: vi.fn(),
   selectGa4Property: vi.fn(),
@@ -34,6 +37,8 @@ import {
   getGa4Status, getGa4Traffic, getGa4Overview, getGa4Trends, getGa4Channels,
   getGa4LandingPages,
 } from "../api.js";
+import { getGa4Intelligence, getGa4Events, saveGa4EventMappings } from "../api.js";
+import { intelFixture, eventsFixture } from "./__fixtures__/ga4Intelligence.js";
 import AiTraffic from "./AiTraffic.jsx";
 
 function renderAt() {
@@ -66,7 +71,21 @@ beforeEach(() => {
   getGa4Trends.mockResolvedValue({ date_range: { start: "2026-09-29", end: "2026-10-27" }, daily: [] });
   getGa4Channels.mockResolvedValue({ channels: [], total: 0, page: 1, page_size: 25 });
   getGa4LandingPages.mockResolvedValue({ pages: [], total: 0, page: 1, page_size: 25 });
+  getGa4Intelligence.mockResolvedValue(intelFixture());
+  getGa4Events.mockResolvedValue(eventsFixture());
 });
+
+// The source/medium/campaign table is progressive disclosure inside "Traffic source
+// comparison": open it the way a user would before interacting with it.
+async function openSourceDetail() {
+  const toggle = await screen.findByRole("button", { name: /source \/ medium detail/i });
+  if (toggle.getAttribute("aria-expanded") !== "true") fireEvent.click(toggle);
+  return await waitFor(() => {
+    const el = document.querySelector(".sp-ga4-embedded");
+    if (!el) throw new Error("detail not open yet");
+    return el;
+  });
+}
 
 describe("Executive Overview", () => {
   it("shows real KPI values from the API, distinguishing zero from unavailable", async () => {
@@ -188,8 +207,7 @@ describe("Acquisition Channels", () => {
   it("renders real channel rows with engagement and conversion rates, and never a Users column", async () => {
     getGa4Channels.mockResolvedValue(CHANNEL_ROWS);
     renderAt();
-    await waitFor(() => screen.getByText(/acquisition channels/i));
-    const section = screen.getByText(/acquisition channels/i).closest(".sp-ga4-card");
+    const section = await openSourceDetail();
     within(section).getByText("Organic Search");
     within(section).getByText("50.0%");
     within(section).getByText(/users aren't shown per channel/i);
@@ -199,7 +217,7 @@ describe("Acquisition Channels", () => {
   it("typing in the search box re-fetches channels with the q param", async () => {
     getGa4Channels.mockResolvedValue(CHANNEL_ROWS);
     renderAt();
-    await waitFor(() => screen.getByText(/acquisition channels/i));
+    await openSourceDetail();
     fireEvent.change(screen.getByPlaceholderText(/search channel, source, or medium/i), {
       target: { value: "chatgpt" },
     });
@@ -212,8 +230,7 @@ describe("Acquisition Channels", () => {
   it("clicking a sortable column header toggles the sort param", async () => {
     getGa4Channels.mockResolvedValue(CHANNEL_ROWS);
     renderAt();
-    await waitFor(() => screen.getByText(/acquisition channels/i));
-    const section = screen.getByText(/acquisition channels/i).closest(".sp-ga4-card");
+    const section = await openSourceDetail();
     fireEvent.click(within(section).getByText("New users"));
     await waitFor(() => {
       const last = getGa4Channels.mock.calls.at(-1)[0];
@@ -271,44 +288,8 @@ describe("Landing Pages", () => {
   });
 });
 
-describe("AI Traffic Intelligence", () => {
-  it("renders a card per identifiable AI assistant plus plain rows for other/unattributable", async () => {
-    getGa4Traffic.mockResolvedValue({
-      synced: true, by_source: {},
-      by_source_detail: {
-        chatgpt: { sessions: 42, new_users: 10, engaged_sessions: 30, views: 80, key_events: 2, engagement_rate: 0.7, conversion_rate: 0.05 },
-        perplexity: { sessions: 0, new_users: 0, engaged_sessions: 0, views: 0, key_events: 0, engagement_rate: null, conversion_rate: null },
-        gemini: { sessions: 0, new_users: 0, engaged_sessions: 0, views: 0, key_events: 0, engagement_rate: null, conversion_rate: null },
-        copilot: { sessions: 0, new_users: 0, engaged_sessions: 0, views: 0, key_events: 0, engagement_rate: null, conversion_rate: null },
-        claude: { sessions: 0, new_users: 0, engaged_sessions: 0, views: 0, key_events: 0, engagement_rate: null, conversion_rate: null },
-        other_identifiable: { sessions: 5, new_users: 0, engaged_sessions: 0, views: 0, key_events: 0, engagement_rate: null, conversion_rate: null },
-        unattributable: { sessions: 999, new_users: 0, engaged_sessions: 0, views: 0, key_events: 0, engagement_rate: null, conversion_rate: null },
-      },
-    });
-    renderAt();
-    await waitFor(() => screen.getByText(/ai traffic intelligence/i));
-    screen.getByText("ChatGPT");
-    screen.getByText("42 sessions");   // the ChatGPT engine card
-    expect(screen.getAllByText("No sessions").length).toBe(4);   // perplexity/gemini/copilot/claude
-    screen.getByText("999");           // unattributable plain row
-  });
-
-  it("uses a singular badge for exactly one session, and explains the non-AI rows", async () => {
-    getGa4Traffic.mockResolvedValue({
-      synced: true, by_source: {},
-      by_source_detail: { claude: { sessions: 1, engaged_sessions: 1, key_events: 0, engagement_rate: 1 } },
-    });
-    renderAt();
-    await waitFor(() => screen.getByText(/ai traffic intelligence/i));
-    screen.getByText("1 session");
-    expect(screen.queryByText("1 sessions")).toBeNull();
-    screen.getByText(/a named referrer that isn't a known ai assistant/i);
-    screen.getByText(/direct, google organic search, or no referrer/i);
-  });
-});
-
 describe("Partial failure (the production /overview incident)", () => {
-  it("an /overview failure is shown on the Overview section only — Trends, Channels, Landing Pages, and AI Traffic still render", async () => {
+  it("an /overview failure is shown on the Overview card only — trends, conversions, landing pages and source comparison still render", async () => {
     const { ScanError } = await import("../api.js");
     getGa4Overview.mockRejectedValue(new ScanError("Could not load your Google Analytics overview right now.", 502));
     getGa4Channels.mockResolvedValue({
@@ -322,11 +303,13 @@ describe("Partial failure (the production /overview incident)", () => {
     const overview = screen.getByText(/executive overview/i).closest(".sp-ga4-card");
     within(overview).getByText(/could not load your google analytics overview right now/i);
     screen.getByText(/traffic trends/i);
-    screen.getByText("Organic Search");
-    screen.getByText(/landing pages/i);
-    screen.getByText(/ai traffic intelligence/i);
-    // Conversions depends on /overview — it says so honestly instead of showing zeros.
-    screen.getByText(/conversion totals come from the overview report/i);
+    screen.getByText(/top landing pages/i);
+    // Conversions and the source comparison come from synced data, not the live
+    // /overview call, so they still render.
+    screen.getByText(/conversion performance/i);
+    screen.getByText(/traffic source comparison/i);
+    const detail = await openSourceDetail();
+    within(detail).getByText("Organic Search");
   });
 
   it("a failure in one table doesn't hide the overview", async () => {
@@ -334,76 +317,9 @@ describe("Partial failure (the production /overview incident)", () => {
     getGa4LandingPages.mockRejectedValue(new ScanError("Could not load landing pages.", 500));
     renderAt();
     await waitFor(() => screen.getByText(/executive overview/i));
-    const pages = screen.getByText(/^landing pages$/i).closest(".sp-ga4-card");
+    const pages = screen.getByText(/^top landing pages$/i).closest(".sp-ga4-card");
     within(pages).getByText(/could not load landing pages/i);
     expect(screen.queryByText(/could not load your website intelligence dashboard/i)).toBeNull();
-  });
-});
-
-describe("Conversions", () => {
-  it("shows key events, conversion rate, and top channels/pages when key events are configured and recorded", async () => {
-    getGa4Overview.mockResolvedValue({
-      date_range: { start: "2026-09-29", end: "2026-10-27" },
-      previous_date_range: { start: "2026-08-31", end: "2026-09-28" },
-      current: M({ sessions: 500, key_events: 25, conversion_rate: 0.05 }),
-      previous: M({ key_events: 15 }),
-      key_events_configured: true,
-    });
-    getGa4Channels.mockResolvedValue({
-      channels: [
-        { channel: "Organic Search", source: "google", medium: "organic", ai_source_label: "unattributable",
-          sessions: 300, new_users: 0, engaged_sessions: 0, views: 0, key_events: 10,
-          engagement_rate: null, conversion_rate: null },
-      ],
-      total: 1, page: 1, page_size: 25,
-    });
-    getGa4LandingPages.mockResolvedValue({
-      pages: [{ landing_page: "/pricing", sessions: 100, engaged_sessions: 0, views: 0,
-                key_events: 8, engagement_rate: null, sessions_change: 0, scan: null }],
-      total: 1, page: 1, page_size: 25,
-    });
-    renderAt();
-    await waitFor(() => screen.getByText(/^conversions$/i));
-    const section = screen.getByText(/^conversions$/i).closest(".sp-ga4-card");
-    within(section).getByText("25");
-    within(section).getByText("5.0%");
-    within(section).getByText("Organic Search");
-    within(section).getByText("/pricing");
-  });
-
-  it("honestly explains that conversions aren't configured, rather than showing a fabricated zero", async () => {
-    getGa4Overview.mockResolvedValue({
-      date_range: { start: "2026-09-29", end: "2026-10-27" },
-      previous_date_range: { start: "2026-08-31", end: "2026-09-28" },
-      current: M({ sessions: 500, key_events: 0 }), previous: M(),
-      key_events_configured: false,
-    });
-    renderAt();
-    await waitFor(() => screen.getByText(/^conversions$/i));
-    const section = screen.getByText(/^conversions$/i).closest(".sp-ga4-card");
-    within(section).getByText(/can't be measured yet/i);
-    expect(within(section).queryByText("Key events")).toBeNull();
-  });
-});
-
-describe("Insights", () => {
-  it("surfaces an engagement-rate-change insight only when comparison data actually supports it", async () => {
-    getGa4Overview.mockResolvedValue({
-      date_range: { start: "2026-09-29", end: "2026-10-27" },
-      previous_date_range: { start: "2026-08-31", end: "2026-09-28" },
-      current: M({ sessions: 100, engaged_sessions: 40, engagement_rate: 0.4 }),
-      previous: M({ sessions: 100, engaged_sessions: 60, engagement_rate: 0.6 }),
-      key_events_configured: null,
-    });
-    renderAt();
-    await waitFor(() => screen.getByText(/insights/i));
-    screen.getByText(/engagement rate declined by 20.0 percentage points/i);
-  });
-
-  it("renders no Insights section at all when nothing in the data supports a finding", async () => {
-    renderAt();
-    await waitFor(() => screen.getByText(/landing pages/i));
-    expect(screen.queryByText(/^insights$/i)).toBeNull();
   });
 });
 
@@ -430,7 +346,7 @@ describe("Switching GA4 property while already active", () => {
 describe("Request efficiency", () => {
   it("searching a table refetches only that table, once typing pauses — never the live GA4 overview", async () => {
     renderAt();
-    await waitFor(() => screen.getByText(/acquisition channels/i));
+    await openSourceDetail();
     await waitFor(() => expect(getGa4Channels).toHaveBeenCalledTimes(1));
     const counts = () => [getGa4Traffic, getGa4Overview, getGa4Trends, getGa4LandingPages]
       .map((f) => f.mock.calls.length);
@@ -463,6 +379,7 @@ describe("Never shows stale data", () => {
     let resolveStale;
     renderAt();
     await waitFor(() => expect(getGa4Channels).toHaveBeenCalledTimes(1));
+    await openSourceDetail();
     getGa4Channels.mockImplementationOnce(() => new Promise((r) => { resolveStale = r; }));   // the search request
     fireEvent.change(screen.getByPlaceholderText(/search channel, source, or medium/i), { target: { value: "x" } });
     await waitFor(() => expect(getGa4Channels).toHaveBeenCalledTimes(2));
@@ -479,6 +396,7 @@ describe("Never shows stale data", () => {
   it("an earlier search that answers last never overwrites the later search", async () => {
     renderAt();
     await waitFor(() => expect(getGa4Channels).toHaveBeenCalledTimes(1));
+    await openSourceDetail();
     let resolveFirst;
     getGa4Channels.mockImplementationOnce(() => new Promise((r) => { resolveFirst = r; }));
     const input = screen.getByPlaceholderText(/search channel, source, or medium/i);
@@ -509,5 +427,15 @@ describe("Never shows stale data", () => {
     await waitFor(() => screen.getByText("Acme EU"));
     fireEvent.click(screen.getByText("Acme EU"));
     await waitFor(() => expect(getGa4Traffic).toHaveBeenCalledTimes(2));
+  });
+});
+
+describe("Reporting period", () => {
+  it("'28 days' is exactly 28 days including today, never 29", async () => {
+    renderAt();
+    await waitFor(() => expect(getGa4Intelligence).toHaveBeenCalled());
+    const { startDate, endDate } = getGa4Intelligence.mock.calls[0][0];
+    const days = Math.round((Date.parse(endDate) - Date.parse(startDate)) / 86400000) + 1;
+    expect(days).toBe(28);
   });
 });

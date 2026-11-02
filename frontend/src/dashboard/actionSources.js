@@ -441,7 +441,7 @@ const URL_INTEL_PRIORITY_LABEL = { critical: "Critical", high: "High", medium: "
 export function normalizeUrlIntelligenceFindings(urlIntelligence, scanId) {
   if (!urlIntelligence?.available) return [];
   const destination = urlIntelligence.monitor_id
-    ? { to: `/app/monitoring/${encodeURIComponent(urlIntelligence.monitor_id)}/intelligence`,
+    ? { to: `/app/site-intelligence/${encodeURIComponent(urlIntelligence.monitor_id)}`,
         label: "Open Site Intelligence" }
     : reportDest(scanId, null);
   return (urlIntelligence.findings || []).map((f) => ({
@@ -449,12 +449,18 @@ export function normalizeUrlIntelligenceFindings(urlIntelligence, scanId) {
     type: f.category,
     title: f.finding_title,
     problem: f.why_it_matters || f.finding_title,
-    why: f.affected_url_count > 1
-      ? `Affects ${f.affected_url_count} page(s) sharing this template.` : null,
+    // Say exactly how the finding is supported: checked on each listed page, or an AI
+    // reading of one representative page applied to its template (not checked per page).
+    why: f.evidence_basis === "deterministic"
+      ? `Found on ${f.affected_url_count} page(s), each checked individually.`
+      : f.affected_url_count > 1
+        ? `AI analysis of one representative page; applies to the ${f.affected_url_count} pages sharing its template (not checked on each).`
+        : null,
+    findingKind: f.kind || null,
     priority: URL_INTEL_PRIORITY_LABEL[f.priority] || "Low",
     confidence: f.confidence,
-    evidencePreview: f.url ? [f.url] : [],
-    fullEvidence: f.url ? [f.url] : [],
+    evidencePreview: (f.affected_urls?.length ? f.affected_urls : f.url ? [f.url] : []).slice(0, 3),
+    fullEvidence: f.affected_urls?.length ? f.affected_urls : f.url ? [f.url] : [],
     fixText: f.recommended_fix,
     verified: f.verification_status === "verified",
     destination,

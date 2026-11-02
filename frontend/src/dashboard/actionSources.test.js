@@ -214,8 +214,21 @@ describe("actionSources — normalizeUrlIntelligenceFindings", () => {
     expect(item.source).toBe("Site Crawl Intelligence");
     expect(item.priority).toBe("High");
     expect(item.confidence).toBe("high");
-    expect(item.destination).toEqual({ to: "/app/monitoring/mon1/intelligence", label: "Open Site Intelligence" });
+    expect(item.destination).toEqual({ to: "/app/site-intelligence/mon1", label: "Open Site Intelligence" });
     expect(item.why).toMatch(/3 page/);
+    // Legacy/AI finding: says it was read from one representative page, not checked on each.
+    expect(item.why).toMatch(/representative page/);
+  });
+
+  it("a deterministic finding says each affected page was checked, and lists those pages", () => {
+    const summary = SUMMARY();
+    Object.assign(summary.findings[0], { evidence_basis: "deterministic", kind: "confirmed",
+      affected_urls: ["https://acme.example/a", "https://acme.example/b", "https://acme.example/c", "https://acme.example/d"] });
+    const [item] = normalizeUrlIntelligenceFindings(summary, "s1");
+    expect(item.why).toBe("Found on 3 page(s), each checked individually.");
+    expect(item.fullEvidence).toHaveLength(4);
+    expect(item.evidencePreview).toHaveLength(3);
+    expect(item.findingKind).toBe("confirmed");
   });
 
   it("unavailable (no monitor/no completed crawl) -> empty, never fabricated", () => {

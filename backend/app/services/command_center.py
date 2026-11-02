@@ -569,6 +569,28 @@ def _action_center(db: DbSession, org_id: str, monitor: Monitor) -> tuple[dict, 
     return ind, findings
 
 
+def _page_opportunities(db: DbSession, org_id: str, monitor: Monitor, is_pro: bool) -> dict:
+    """Summary of the website's latest completed Page Opportunities run (counts only —
+    the pages' own fixes stay in the Action Center, so no second card is created)."""
+    from app.db.models import PV_COMPLETED, PageValueRun, PageValueScore
+    link = f"/app/site-intelligence/{monitor.id}?view=opportunities"
+    if not is_pro:
+        return {"status": "unavailable", "source": "url_intelligence", "as_of": None,
+                "reason": "Page Opportunities is a Pro feature.", "link": link}
+    run = (db.query(PageValueRun)
+           .filter(PageValueRun.organization_id == org_id, PageValueRun.monitor_id == monitor.id,
+                   PageValueRun.status == PV_COMPLETED)
+           .order_by(PageValueRun.created_at.desc()).first())
+    if run is None:
+        return {"status": "not_configured", "source": "url_intelligence", "as_of": None,
+                "reason": "Pages haven't been scored yet (needs a completed site crawl).", "link": link}
+    q = db.query(PageValueScore).filter(PageValueScore.run_id == run.id)
+    return {"status": "available", "source": "url_intelligence", "as_of": _iso(run.finished_at),
+            "high_priority": q.filter(PageValueScore.priority == "high").count(),
+            "commercial_pages": q.filter(PageValueScore.is_commercial.is_(True)).count(),
+            "scored_pages": q.count(), "link": link}
+
+
 # ------------------------------------------------------------------ entry point
 
 # How each indicator is measured, for indicators that don't set their own.
@@ -585,6 +607,9 @@ _PROVENANCE = {
                       "query": "Open/in-progress findings from this website's latest completed crawl",
                       "aggregation": "Count by priority."},
     "ga4": {"kind": "measured", "query": "The organization's GA4 connection and its website link"},
+    "page_opportunities": {"kind": "calculated",
+                           "query": "This website's latest completed Page Opportunities scoring run",
+                           "aggregation": "Pages by priority and commercial page type."},
 }
 
 def build(db: DbSession, *, org_id: str, monitor: Monitor, start: datetime, end: datetime,
@@ -599,9 +624,11 @@ def build(db: DbSession, *, org_id: str, monitor: Monitor, start: datetime, end:
     conversions["status"] = ("available" if conversions["configured"] or ga4.get("key_events_configured")
                              else "not_configured")
     action, f_ac = _action_center(db, org_id, monitor)
+    opportunities = _page_opportunities(db, org_id, monitor, is_pro)
 
     indicators = {"technical": technical, "ai_visibility": visibility, "traffic": traffic,
-                  "ga4": ga4, "conversions": conversions, "action_center": action}
+                  "ga4": ga4, "conversions": conversions, "action_center": action,
+                  "page_opportunities": opportunities}
     for key, prov in _PROVENANCE.items():
         indicators[key].setdefault("provenance", prov)
 

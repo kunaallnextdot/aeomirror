@@ -4,7 +4,7 @@
    jest-dom, so assertions use getByText (throws if absent) / queryByText + toBeNull
    (presence/absence), never .toBeInTheDocument(). */
 import React from "react";
-import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import { render, screen, fireEvent, waitFor, within } from "@testing-library/react";
 import { MemoryRouter, Routes, Route } from "react-router-dom";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
@@ -20,6 +20,9 @@ vi.mock("../api.js", () => ({
   getGa4Trends: vi.fn(),
   getGa4Channels: vi.fn(),
   getGa4LandingPages: vi.fn(),
+  getGa4Intelligence: vi.fn(),
+  getGa4Events: vi.fn(),
+  saveGa4EventMappings: vi.fn(),
   connectGoogleAnalytics: vi.fn(),
   listGa4Properties: vi.fn(),
   selectGa4Property: vi.fn(),
@@ -41,6 +44,8 @@ import {
   getGa4LandingPages, connectGoogleAnalytics, listGa4Properties,
   selectGa4Property, triggerGa4Sync, disconnectGoogleAnalytics, ScanError,
 } from "../api.js";
+import { getGa4Intelligence, getGa4Events, saveGa4EventMappings } from "../api.js";
+import { intelFixture, eventsFixture } from "./__fixtures__/ga4Intelligence.js";
 import AiTraffic from "./AiTraffic.jsx";
 
 const ZERO_METRICS = {
@@ -73,6 +78,8 @@ beforeEach(() => {
   getGa4Trends.mockResolvedValue({ date_range: { start: "2026-01-01", end: "2026-01-28" }, daily: [] });
   getGa4Channels.mockResolvedValue({ channels: [], total: 0, page: 1, page_size: 25 });
   getGa4LandingPages.mockResolvedValue({ pages: [], total: 0, page: 1, page_size: 25 });
+  getGa4Intelligence.mockResolvedValue(intelFixture());
+  getGa4Events.mockResolvedValue(eventsFixture());
   // jsdom's window.location is a non-configurable property (can't vi.spyOn it
   // directly) — redefine it on the object itself rather than reassigning `window.
   // location`, which jsdom also rejects.
@@ -274,9 +281,11 @@ describe("AiTraffic", () => {
       },
     });
     renderAt();
-    await waitFor(() => screen.getByText(/ai traffic intelligence/i));
-    screen.getByText("42 sessions");   // the ChatGPT engine card
-    screen.getByText("500");
+    await waitFor(() => screen.getByText(/traffic source comparison/i));
+    const table = screen.getByText(/traffic source comparison/i).closest(".sp-ga4-card");
+    const chatgpt = within(table).getByText("ChatGPT").closest("tr");
+    within(chatgpt).getByText("42");          // sessions, straight from the API
+    within(chatgpt).getByText("21%");         // share of all sessions
     // The honest-limitation note is always shown alongside real numbers.
     screen.getByText(/ai overview clicks cannot currently be separated/i);
   });

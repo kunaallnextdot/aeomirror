@@ -85,7 +85,7 @@ def test_parse_landing_page_report_pairs_date_and_landing_page():
     ]}
     rows = ga4._parse_landing_page_report(payload)
     assert rows == [{
-        "date": "20261027", "landing_page": "/pricing",
+        "date": "20261027", "landing_page": "/pricing", "revenue": None,   # not requested -> not reported
         "sessions": 10, "new_users": 4, "engaged_sessions": 6,
         "views": 15, "engagement_duration_sec": 80.0, "key_events": 0,
     }]
@@ -360,11 +360,11 @@ def test_run_sync_upserts_daily_overview_and_landing_page_snapshots_and_refreshe
                   "engaged_sessions": 4, "views": 10, "engagement_duration_sec": 30.0,
                   "key_events": 1}]
     async def fake_key_events(token, property_id):
-        return True
+        return ["purchase"]
     monkeypatch.setattr(ga4, "fetch_daily_traffic", fake_traffic)
     monkeypatch.setattr(ga4, "fetch_daily_overview", fake_overview)
     monkeypatch.setattr(ga4, "fetch_landing_pages", fake_landing)
-    monkeypatch.setattr(ga4, "fetch_key_events_configured", fake_key_events)
+    monkeypatch.setattr(ga4, "fetch_key_event_names", fake_key_events)
 
     db = SessionLocal()
     try:
@@ -402,11 +402,11 @@ def test_run_sync_secondary_report_failure_does_not_fail_the_whole_sync(monkeypa
     async def fake_landing_fails(token, property_id, start, end):
         return None
     async def fake_key_events_unknown(token, property_id):
-        return None
+        return None   # Admin API failed -> unknown
     monkeypatch.setattr(ga4, "fetch_daily_traffic", fake_traffic)
     monkeypatch.setattr(ga4, "fetch_daily_overview", fake_overview_fails)
     monkeypatch.setattr(ga4, "fetch_landing_pages", fake_landing_fails)
-    monkeypatch.setattr(ga4, "fetch_key_events_configured", fake_key_events_unknown)
+    monkeypatch.setattr(ga4, "fetch_key_event_names", fake_key_events_unknown)
 
     db = SessionLocal()
     try:
@@ -440,7 +440,7 @@ def test_each_dataset_records_its_own_last_successful_sync(monkeypatch):
     monkeypatch.setattr(ga4, "fetch_daily_traffic", fake_traffic)
     monkeypatch.setattr(ga4, "fetch_daily_overview", fake_overview_ok)
     monkeypatch.setattr(ga4, "fetch_landing_pages", fake_landing_fails)
-    monkeypatch.setattr(ga4, "fetch_key_events_configured", fake_key_events)
+    monkeypatch.setattr(ga4, "fetch_key_event_names", fake_key_events)
 
     db = SessionLocal()
     try:

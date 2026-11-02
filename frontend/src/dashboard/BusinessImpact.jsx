@@ -392,6 +392,13 @@ function Indicators({ ind, siteId }) {
         value={a.open_total != null ? fmtNum(a.open_total) : null}
         detail={a.open_by_priority ? `open · ${a.open_by_priority.critical || 0} critical, ${a.open_by_priority.high || 0} high` : null}
         linkTo={a.link} linkLabel="Findings" />
+      {ind.page_opportunities && (
+        <IndicatorCard title="Page opportunities" icon={Target} data={ind.page_opportunities}
+          value={ind.page_opportunities.high_priority != null ? fmtNum(ind.page_opportunities.high_priority) : null}
+          detail={ind.page_opportunities.high_priority != null
+            ? `high-priority pages · ${fmtNum(ind.page_opportunities.commercial_pages)} commercial pages scored` : null}
+          linkTo={ind.page_opportunities.link} linkLabel="Pages" />
+      )}
     </div>
   );
 }

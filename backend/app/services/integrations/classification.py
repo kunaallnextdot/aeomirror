@@ -32,6 +32,14 @@ _KNOWN_AI_HOSTS: dict[str, str] = {
     "claude.ai": "claude",
 }
 
+# Other AI assistants that send a recognisable referrer host. Curated and conservative:
+# a host is listed only when it IS an AI assistant's chat product, so a session from it
+# can honestly be called AI referral traffic. Same exact-or-subdomain matching.
+_OTHER_AI_HOSTS: tuple[str, ...] = (
+    "you.com", "poe.com", "meta.ai", "chat.deepseek.com", "chat.mistral.ai", "grok.com",
+    "phind.com", "duck.ai", "kimi.ai", "chat.qwen.ai",
+)
+
 # GA4's own sentinel strings for "no value" / unset dimensions.
 _UNSET_VALUES = {"", "(not set)", "(none)", "(direct)", "not set", "none", "direct"}
 
@@ -63,6 +71,8 @@ def classify_source(source: str | None, medium: str | None) -> str:
         for known_domain, label in _KNOWN_AI_HOSTS.items():
             if _host_matches(host, known_domain):
                 return label
+        if any(_host_matches(host, h) for h in _OTHER_AI_HOSTS):
+            return "other_ai"
 
     # Ordinary Google organic search — GA4 cannot separate an AI Overview click from
     # any other organic result click, so this is never upgraded to a specific label.
@@ -75,3 +85,35 @@ def classify_source(source: str | None, medium: str | None) -> str:
 
     # Some other real, identifiable referrer GA4 reported, just not a known assistant.
     return "other_identifiable"
+
+
+# GA4 default channel groups -> reporting class. Anything not listed (Email,
+# Affiliates, Display, Audio, SMS, Cross-network, Organic Video, Unassigned, …) is
+# "other": counted, never folded into a class it doesn't belong to.
+_CHANNEL_CLASS = {
+    "organic search": "organic_search", "organic shopping": "organic_search",
+    "paid search": "paid_search", "paid shopping": "paid_search",
+    "direct": "direct", "referral": "referral",
+    "organic social": "social", "paid social": "social",
+}
+
+
+def traffic_class(channel_grouping: str | None, source: str | None, medium: str | None,
+                  ai_label: str | None = None) -> str:
+    """One of app.db.models.TRAFFIC_CLASSES for a GA4 (channel group, source, medium).
+
+    1. A recognised AI assistant referrer (classify_source) -> that assistant.
+    2. Otherwise GA4's OWN default channel grouping decides — AEOMirror does not
+       re-derive search/social/paid from hosts when GA4 already has.
+    3. Google organic is organic_search, never AI: an AI Overview click is
+       indistinguishable from any other organic click in GA4 data.
+    Unknown or unassigned traffic is "other" — never guessed into a class."""
+    label = ai_label or classify_source(source, medium)
+    if label in ("chatgpt", "perplexity", "gemini", "claude", "copilot", "other_ai"):
+        return label
+    group = (channel_grouping or "").strip().lower()
+    if group in _CHANNEL_CLASS:
+        return _CHANNEL_CLASS[group]
+    if _normalize_host(medium) == "organic":
+        return "organic_search"
+    return "other"

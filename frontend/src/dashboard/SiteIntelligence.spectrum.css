@@ -1,4 +1,4 @@
-/* Spectrum styling for Site Intelligence (/app/monitoring/:id/intelligence). `sp-si-*`
+/* Spectrum styling for Site Intelligence (/app/site-intelligence/:monitorId). `sp-si-*`
    classes, reusing existing design tokens — no new palette. Token-for-token port of
    SiteIntelligence.aurora.css; the Aurora original is left intact. No red/amber/green —
    danger (was peach) -> violet, warning/attention (was lemon) -> lav, positive (was
@@ -75,3 +75,91 @@
 .sp-si-locked-banner{display:flex;align-items:center;gap:8px;width:100%;margin-top:12px;
   background:var(--sp-t-lav);border:1px solid var(--sp-lav-d);border-radius:var(--sp-r-s);
   padding:10px 14px;font-size:12.5px;color:var(--sp-lav-d);cursor:pointer;font-family:inherit}
+
+/* ================= Site Intelligence v2 (first-class page) ================= */
+.sp-si-toolbar{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:14px}
+.sp-si-toolbar-l,.sp-si-toolbar-r{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.sp-si-select,.sp-si-filters select,.sp-si-finding-actions select{border:1px solid var(--sp-line);border-radius:var(--sp-r-s);
+  padding:8px 10px;background:var(--sp-solid);color:var(--sp-ink);font-size:13px;font-family:inherit;max-width:100%}
+.sp-si-select{min-width:220px;font-weight:600}
+.sp-si-linkbtn,.sp-si-link{display:inline-flex;align-items:center;gap:5px;background:none;border:none;padding:0;
+  color:var(--sp-primary);font-size:12.5px;font-weight:600;cursor:pointer;text-decoration:none;font-family:inherit}
+.sp-si-muted{color:var(--sp-muted);font-size:12px}
+.sp-si-empty h2{margin-bottom:8px}
+.sp-si-empty-inline{font-size:13px;color:var(--sp-muted);margin:6px 0}
+
+.sp-si-status-top{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:6px}
+.sp-si-status-top h2{margin:0}
+.sp-si-status.st-failed{border-color:var(--sp-violet)}
+.sp-si-progress{display:flex;flex-direction:column;gap:6px;margin:6px 0 4px}
+.sp-si-bar{height:6px;border-radius:var(--sp-r-pill);background:var(--sp-line-2);overflow:hidden}
+.sp-si-bar span{display:block;height:100%;background:var(--sp-primary)}
+.sp-si-progress-txt{font-size:12.5px;color:var(--sp-ink-2)}
+.sp-si-warn{display:flex;align-items:center;gap:6px;font-size:12.5px;color:var(--sp-lav-d);background:var(--sp-t-lav);
+  border-radius:var(--sp-r-s);padding:8px 10px;margin:8px 0 0}
+
+.sp-si-metrics{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,120px),1fr));gap:10px;margin:10px 0}
+.sp-si-metrics div{border:1px solid var(--sp-line-2);border-radius:var(--sp-r-s);padding:9px 11px;min-width:0}
+.sp-si-metrics dt{font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--sp-muted)}
+.sp-si-metrics dd{margin:2px 0 0;font-family:var(--sp-font-numeric);font-size:19px;font-weight:700;color:var(--sp-ink)}
+.sp-si-coverage{font-size:12.5px;color:var(--sp-ink-2);line-height:1.7;margin:4px 0 0}
+.sp-si-warnings{list-style:none;padding:0;margin:10px 0 0;display:flex;flex-direction:column;gap:4px}
+.sp-si-warnings li{display:flex;gap:6px;align-items:flex-start;font-size:12.5px;color:var(--sp-lav-d)}
+
+.sp-si-finding-title{background:none;border:none;padding:0;text-align:left;font:inherit;font-size:13.5px;font-weight:600;
+  color:var(--sp-ink);cursor:pointer;display:inline-flex;align-items:center;gap:6px;flex:1;min-width:0}
+.sp-si-tags{display:flex;flex-wrap:wrap;gap:6px;margin:2px 0 4px}
+.sp-si-tag{font-size:11px;padding:2px 8px;border-radius:var(--sp-r-pill);background:var(--sp-t-grey);color:var(--sp-ink-2)}
+.sp-si-tag.k-confirmed{background:var(--sp-t-blue);color:var(--sp-blue-d)}
+.sp-si-tag.k-potential{background:var(--sp-t-lav);color:var(--sp-lav-d)}
+.sp-si-tag.k-insufficient_evidence{background:var(--sp-t-grey);color:var(--sp-muted)}
+.sp-si-finding-body{display:flex;flex-direction:column;gap:8px;margin-top:8px;font-size:13px;color:var(--sp-ink-2)}
+.sp-si-finding-body p{margin:0}
+.sp-si-urls{margin:4px 0 0;padding-left:18px;font-size:12.5px;word-break:break-all}
+.sp-si-urls code,.sp-si-issues code{font-size:12px;background:var(--sp-t-grey);padding:1px 5px;border-radius:4px}
+.sp-si-more{margin-top:12px;background:none;border:1px solid var(--sp-line);border-radius:var(--sp-r-s);padding:8px 12px;
+  font:inherit;font-size:12.5px;color:var(--sp-primary);cursor:pointer}
+.sp-si-allfindings{margin-top:14px}
+
+.sp-si-views{display:flex;flex-wrap:wrap;gap:6px;margin:4px 0 10px}
+.sp-si-views button{border:1px solid var(--sp-line);background:var(--sp-solid);color:var(--sp-ink-2);border-radius:var(--sp-r-pill);
+  padding:5px 11px;font:inherit;font-size:12.5px;cursor:pointer}
+.sp-si-views button.on{background:var(--sp-t-blue);color:var(--sp-primary);border-color:transparent;font-weight:600}
+.sp-si-filters{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:10px}
+.sp-si-search{display:flex;align-items:center;gap:6px;border:1px solid var(--sp-line);border-radius:var(--sp-r-s);
+  padding:0 10px;background:var(--sp-solid);flex:1;min-width:min(100%,220px);color:var(--sp-muted)}
+.sp-si-search input{border:none;outline:none;background:transparent;padding:8px 0;font:inherit;font-size:13px;color:var(--sp-ink);width:100%}
+.sp-si-table-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch}
+.sp-si-inventory{min-width:720px}
+.sp-si-inventory td{word-break:normal;vertical-align:top}
+.sp-si-rowlink{background:none;border:none;padding:0;font:inherit;font-weight:600;color:var(--sp-ink);cursor:pointer;text-align:left}
+.sp-si-rowlink:hover{color:var(--sp-primary)}
+.sp-si-url{word-break:break-all;max-width:420px}
+.sp-si-pager{display:flex;align-items:center;justify-content:flex-end;gap:10px;margin-top:10px}
+
+.sp-si-drawer-backdrop{position:fixed;inset:0;background:rgba(11,16,36,.32);z-index:60;display:flex;justify-content:flex-end}
+.sp-si-drawer{background:var(--sp-solid);width:min(560px,100%);height:100%;overflow-y:auto;padding:18px 20px;
+  box-shadow:var(--sp-sh-l);font-size:13px;color:var(--sp-ink-2);font-family:var(--sp-font-body);line-height:1.5}
+.sp-si-drawer-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px}
+.sp-si-drawer-head h2{margin:0;font-family:var(--sp-font-heading);font-size:16px;color:var(--sp-ink)}
+.sp-si-drawer h3{font-size:13px;color:var(--sp-ink);margin:18px 0 6px}
+.sp-si-close{background:none;border:1px solid var(--sp-line);border-radius:var(--sp-r-s);padding:5px;cursor:pointer;color:var(--sp-ink)}
+.sp-si-detail-url{display:inline-flex;gap:5px;align-items:center;color:var(--sp-primary);word-break:break-all;font-weight:600}
+.sp-si-kv{display:grid;grid-template-columns:minmax(110px,max-content) 1fr;gap:5px 12px;margin:8px 0}
+.sp-si-kv dt{color:var(--sp-muted)}
+.sp-si-kv dd{margin:0;color:var(--sp-ink);word-break:break-word}
+.sp-si-issues{list-style:none;padding:0;margin:0;display:flex;flex-direction:column;gap:10px}
+.sp-si-issues li{border:1px solid var(--sp-line-2);border-radius:var(--sp-r-s);padding:9px 11px;display:flex;flex-direction:column;gap:4px}
+.sp-si-raw summary{cursor:pointer;color:var(--sp-muted);font-size:12px}
+.sp-si-raw pre{font-size:11px;background:var(--sp-t-grey);padding:10px;border-radius:var(--sp-r-s);overflow:auto;max-height:280px}
+.sp-si-collapse{display:flex;align-items:center;justify-content:space-between;width:100%;background:none;border:none;
+  padding:0;cursor:pointer;font:inherit;color:var(--sp-ink)}
+.sp-si-collapse h2{margin:0}
+
+@media(max-width:640px){
+  .sp-si-select{min-width:0;width:100%}
+  .sp-si-toolbar-l,.sp-si-toolbar-r{width:100%}
+  .sp-si-kv{grid-template-columns:1fr}
+  .sp-si-kv dt{margin-top:6px}
+}
+@media(prefers-reduced-motion:reduce){.sp-si-spin{animation:none}}

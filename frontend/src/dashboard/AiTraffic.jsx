@@ -22,38 +22,37 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useSearchParams } from "react-router-dom";
 import {
   AlertTriangle, ArrowRight, BarChart3, ChevronDown, ChevronUp, Info, Lock,
-  RefreshCw, Repeat, Search, Sparkles, Unplug,
+  RefreshCw, Repeat, Search, Unplug,
 } from "lucide-react";
 import {
-  Area, AreaChart, Bar, BarChart as RBarChart, CartesianGrid, ResponsiveContainer,
+  Area, AreaChart, CartesianGrid, ResponsiveContainer,
   Tooltip as RTooltip, XAxis, YAxis,
 } from "recharts";
 import {
-  connectGoogleAnalytics, disconnectGoogleAnalytics, getGa4Channels,
-  getGa4LandingPages, getGa4Overview, getGa4Status, getGa4Traffic, getGa4Trends,
-  listGa4Properties, selectGa4Property, triggerGa4Sync, ScanError,
+  connectGoogleAnalytics, disconnectGoogleAnalytics, getGa4Channels, getGa4Events,
+  getGa4Intelligence, getGa4LandingPages, getGa4Overview, getGa4Status, getGa4Traffic,
+  getGa4Trends, listGa4Properties, selectGa4Property, triggerGa4Sync, ScanError,
 } from "../api.js";
+import {
+  ClassStrip, ConversionPerformance, FreshnessNote, SourceComparison,
+} from "./AiTrafficIntelligence.jsx";
 import { fmtDate } from "./ui.jsx";
 import { useAuth } from "../auth/AuthContext.jsx";
 import { useUpgrade } from "./UpgradeModal.jsx";
-import { Shell, Cell, Button, EngineCard, Skeleton } from "../shared/spectrum.jsx";
+import { Shell, Cell, Button, Skeleton } from "../shared/spectrum.jsx";
 import GoogleConsentModal from "./GoogleConsentModal.jsx";
 // GoogleConsentModal.jsx's au-gcm-* rules have moved into AiTraffic.spectrum.css
 // (final-integration pass) — the Aurora stylesheet is no longer needed here.
 import "./AiTraffic.spectrum.css";
 
+// Mirrors classify_source() in backend/app/services/integrations/classification.py.
 const AI_LABELS = {
   chatgpt: "ChatGPT", perplexity: "Perplexity", gemini: "Gemini", copilot: "Copilot",
-  claude: "Claude", other_identifiable: "Other identified sources", unattributable: "Unattributable",
+  claude: "Claude", other_ai: "Other AI assistants", other_identifiable: "Other identified sources",
+  unattributable: "Unattributable",
 };
-const AI_ENGINE_ORDER = ["chatgpt", "perplexity", "gemini", "copilot", "claude"];
+const AI_ENGINE_ORDER = ["chatgpt", "perplexity", "gemini", "copilot", "claude", "other_ai"];
 const AI_OTHER_ORDER = ["other_identifiable", "unattributable"];
-// Mirrors classify_source() in backend/app/services/integrations/classification.py.
-const AI_OTHER_DESCRIPTIONS = {
-  other_identifiable: "A named referrer that isn't a known AI assistant.",
-  unattributable: "Direct, Google organic search, or no referrer — not counted as AI.",
-};
-const sessionsLabel = (n) => (!n ? "No sessions" : `${fmtInt(n)} session${n === 1 ? "" : "s"}`);
 
 const ERROR_MESSAGES = {
   access_denied: "You cancelled the Google sign-in.",
@@ -126,12 +125,14 @@ export default function AiTraffic() {
 
   // ---- date range + comparison ----
   const [rangeDays, setRangeDays] = useState(28);
-  const [customStart, setCustomStart] = useState(isoDaysAgo(28));
+  const [customStart, setCustomStart] = useState(isoDaysAgo(27));
   const [customEnd, setCustomEnd] = useState(todayIso());
   const [compareEnabled, setCompareEnabled] = useState(true);
   const { startDate, endDate } = useMemo(() => {
     if (rangeDays === "custom") return { startDate: customStart, endDate: customEnd };
-    return { startDate: isoDaysAgo(rangeDays), endDate: todayIso() };
+    // N days INCLUDING today (e.g. 28 days = today and the 27 before it) — the same
+    // inclusive window as Business Impact and the backend default.
+    return { startDate: isoDaysAgo(rangeDays - 1), endDate: todayIso() };
   }, [rangeDays, customStart, customEnd]);
 
   // ---- dashboard data ----
@@ -139,6 +140,9 @@ export default function AiTraffic() {
   const [trends, setTrends] = useState(null);
   const [channels, setChannels] = useState(null);
   const [landingPages, setLandingPages] = useState(null);
+  const [intel, setIntel] = useState(null);      // /intelligence: the four sections' figures
+  const [events, setEvents] = useState(null);    // /events: availability + conversion mapping
+  const [mappingVersion, setMappingVersion] = useState(0);   // bumped after a mapping save
   const [dashLoading, setDashLoading] = useState(false);
   const [dashError, setDashError] = useState(null);
   const [sectionErrors, setSectionErrors] = useState({});
@@ -183,7 +187,7 @@ export default function AiTraffic() {
   // Everything the dashboard's data depends on besides table sort/search: a different
   // property, a newer sync, or another date range must never show the previous data.
   const dataKey = status?.status === "active"
-    ? `${status.ga4_property_id}|${status.last_synced_at}|${startDate}|${endDate}` : null;
+    ? `${status.ga4_property_id}|${status.last_synced_at}|${startDate}|${endDate}|${mappingVersion}` : null;
   const loadedKey = useRef(null);   // dataKey once the full load has issued its table requests
   // Per-table request counter: only the newest request's response is ever applied, so
   // a slow older one (previous range, sort or search) can't overwrite newer data.
@@ -204,6 +208,7 @@ export default function AiTraffic() {
         setTraffic(tr);
         if (!tr?.synced) {
           setOverview(null); setTrends(null); setChannels(null); setLandingPages(null);
+          setIntel(null); setEvents(null);
           setDashLoading(false); return;
         }
         const t = tableParams.current;
@@ -217,13 +222,15 @@ export default function AiTraffic() {
           getGa4Trends(rangeParams),
           getGa4Channels({ ...rangeParams, sort: t.channelSort, q: t.channelQ || undefined }),
           getGa4LandingPages({ ...rangeParams, sort: t.landingSort, q: t.landingQ || undefined }),
+          getGa4Intelligence(rangeParams),
+          getGa4Events(rangeParams),
         ]);
         if (cancelled) return;
-        const [ov, trend, ch, lp] = settled.map((r) => (r.status === "fulfilled" ? r.value : null));
+        const [ov, trend, ch, lp, it, ev] = settled.map((r) => (r.status === "fulfilled" ? r.value : null));
         const reason = (r, fallback) => (r.status === "rejected"
           ? (r.reason instanceof ScanError ? r.reason.message : fallback) : null);
         const fresh = (k) => tableSeq.current[k] === seq[k];   // no newer table request since
-        setOverview(ov); setTrends(trend);
+        setOverview(ov); setTrends(trend); setIntel(it?.synced ? it : null); setEvents(ev);
         if (fresh("channels")) setChannels(ch);
         if (fresh("landingPages")) setLandingPages(lp);
         setSectionErrors((s) => ({
@@ -231,6 +238,7 @@ export default function AiTraffic() {
           trends: reason(settled[1], "Could not load traffic trends."),
           channels: fresh("channels") ? reason(settled[2], "Could not load acquisition channels.") : s.channels,
           landingPages: fresh("landingPages") ? reason(settled[3], "Could not load landing pages.") : s.landingPages,
+          intelligence: reason(settled[4], "Could not load conversion and source comparison data."),
         }));
       } catch (e) {
         if (!cancelled) {
@@ -520,28 +528,49 @@ export default function AiTraffic() {
             <Skeleton h={400} />
           ) : (
             <>
-              {sectionErrors.overview
-                ? <SectionError title="Executive overview" message={sectionErrors.overview} />
-                : <OverviewCards overview={overview} compareEnabled={compareEnabled} loading={dashLoading} />}
-              {sectionErrors.trends
-                ? <SectionError title="Traffic trends" message={sectionErrors.trends} />
-                : <TrendsSection trends={trends} />}
-              {sectionErrors.channels
-                ? <SectionError title="Acquisition channels" message={sectionErrors.channels} />
-                : <ChannelsTable channels={channels} sort={channelSort} setSort={setChannelSort}
-                                 query={channelQuery} setQuery={setChannelQuery} />}
-              {sectionErrors.landingPages
-                ? <SectionError title="Landing pages" message={sectionErrors.landingPages} />
-                : <LandingPagesTable landingPages={landingPages} sort={landingSort} setSort={setLandingSort}
-                                      query={landingQuery} setQuery={setLandingQuery} />}
-              <AiSourceSection traffic={traffic} />
-              {sectionErrors.overview
-                ? <SectionError title="Conversions"
-                                message="Unavailable — conversion totals come from the overview report, which didn't load." />
-                : <ConversionsSection overview={overview} channels={channels} landingPages={landingPages} />}
-              <InsightsSection overview={overview} channels={channels} landingPages={landingPages}
-                               traffic={traffic} compareEnabled={compareEnabled}
-                               filtered={Boolean(channelQ || landingQ)} />
+              <FreshnessNote intel={intel} />
+
+              {/* 1. Traffic overview */}
+              <section aria-labelledby="ga4-s1" className="sp-ga4-section">
+                <h2 id="ga4-s1" className="sp-ga4-section-title">Traffic overview</h2>
+                {sectionErrors.intelligence ? null : <ClassStrip intel={intel} />}
+                {sectionErrors.overview
+                  ? <SectionError title="Executive overview" message={sectionErrors.overview} />
+                  : <OverviewCards overview={overview} compareEnabled={compareEnabled} loading={dashLoading} />}
+                {sectionErrors.trends
+                  ? <SectionError title="Traffic trends" message={sectionErrors.trends} />
+                  : <TrendsSection trends={trends} />}
+              </section>
+
+              {/* 2. Conversion performance */}
+              <section aria-label="Conversion performance" className="sp-ga4-section">
+                {sectionErrors.intelligence
+                  ? <SectionError title="Conversion performance" message={sectionErrors.intelligence} />
+                  : <ConversionPerformance intel={intel} events={events} canManage={canManage}
+                                           onSaved={() => setMappingVersion((v) => v + 1)} />}
+              </section>
+
+              {/* 3. Top landing pages */}
+              <section aria-label="Top landing pages" className="sp-ga4-section">
+                {sectionErrors.landingPages
+                  ? <SectionError title="Top landing pages" message={sectionErrors.landingPages} />
+                  : <LandingPagesTable landingPages={landingPages} sort={landingSort} setSort={setLandingSort}
+                                        query={landingQuery} setQuery={setLandingQuery} />}
+              </section>
+
+              {/* 4. Traffic source comparison (source/medium detail disclosed on demand) */}
+              <section aria-label="Traffic source comparison" className="sp-ga4-section">
+                {sectionErrors.intelligence
+                  ? <SectionError title="Traffic source comparison" message={sectionErrors.intelligence} />
+                  : (
+                    <SourceComparison intel={intel}>
+                      {sectionErrors.channels
+                        ? <p className="sp-ga4-empty-inline">{sectionErrors.channels}</p>
+                        : <ChannelsTable embedded channels={channels} sort={channelSort} setSort={setChannelSort}
+                                         query={channelQuery} setQuery={setChannelQuery} />}
+                    </SourceComparison>
+                  )}
+              </section>
             </>
           )}
 
@@ -551,8 +580,8 @@ export default function AiTraffic() {
               AI-source counts only cover traffic Google Analytics can identify by
               referrer. Some AI traffic may appear as direct or another channel.
               Google AI Overview clicks cannot currently be separated from ordinary
-              Google organic search by this integration, so they stay in
-              "Unattributable" rather than being guessed. These are session counts,
+              Google organic search by this integration, so they are counted as
+              organic search rather than guessed as AI. These are session counts,
               not a complete measure of AI influence.
             </p>
           </Cell>
@@ -731,12 +760,14 @@ function SortHeader({ label, field, sort, setSort }) {
   );
 }
 
-function ChannelsTable({ channels, sort, setSort, query, setQuery }) {
+function ChannelsTable({ channels, sort, setSort, query, setQuery, embedded = false }) {
   if (!channels) return null;
   const rows = channels.channels;
+  // Embedded inside "Traffic source comparison" as its progressive-disclosure detail.
+  const Wrap = embedded ? "div" : Cell;
   return (
-    <Cell className="sp-ga4-card">
-      <h2>Acquisition channels</h2>
+    <Wrap className={embedded ? "sp-ga4-embedded" : "sp-ga4-card"}>
+      {!embedded && <h2>Acquisition channels</h2>}
       <div className="sp-ga4-table-toolbar">
         <Search size={13} />
         <input placeholder="Search channel, source, or medium…" value={query}
@@ -783,7 +814,7 @@ function ChannelsTable({ channels, sort, setSort, query, setQuery }) {
         channels, so a channel-level total would double-count visitors who used more
         than one channel. See the Overview above for your real total user count.
       </p>
-    </Cell>
+    </Wrap>
   );
 }
 
@@ -795,7 +826,7 @@ function LandingPagesTable({ landingPages, sort, setSort, query, setQuery }) {
   const rows = landingPages.pages;
   return (
     <Cell className="sp-ga4-card">
-      <h2>Landing pages</h2>
+      <h2>Top landing pages</h2>
       {landingPages.synced === false && (
         <p className="sp-ga4-helper">The landing-page report hasn't synced successfully yet; it retries on the next sync.</p>
       )}
@@ -815,6 +846,8 @@ function LandingPagesTable({ landingPages, sort, setSort, query, setQuery }) {
               <tr>
                 <SortHeader label="Page" field="landing_page" sort={sort} setSort={setSort} />
                 <SortHeader label="Sessions" field="sessions" sort={sort} setSort={setSort} />
+                <th title="Sessions referred by a recognised AI assistant">AI</th>
+                <th title="Organic search sessions (includes any Google AI Overviews clicks)">Organic</th>
                 <th>vs. previous</th>
                 <SortHeader label="Engaged" field="engaged_sessions" sort={sort} setSort={setSort} />
                 <SortHeader label="Eng. rate" field="engagement_rate" sort={sort} setSort={setSort} />
@@ -833,6 +866,8 @@ function LandingPagesTable({ landingPages, sort, setSort, query, setQuery }) {
                     <tr className={weakEngagement ? "pri-high" : ""}>
                       <td className="sp-ga4-dim">{p.landing_page}</td>
                       <td>{fmtInt(p.sessions)}</td>
+                      <td>{fmtInt(p.ai_sessions)}</td>
+                      <td>{fmtInt(p.organic_sessions)}</td>
                       <td>{delta ? <span className={delta.dir}>{delta.text}</span> : "—"}</td>
                       <td>{fmtInt(p.engaged_sessions)}</td>
                       <td>{fmtPct(p.engagement_rate)}</td>
@@ -846,7 +881,7 @@ function LandingPagesTable({ landingPages, sort, setSort, query, setQuery }) {
                     </tr>
                     {isOpen && (
                       <tr className="sp-ga4-detail-row">
-                        <td colSpan={7}>
+                        <td colSpan={9}>
                           {weakEngagement && (
                             <p className="sp-ga4-page-insight">
                               This page received {fmtInt(p.sessions)} sessions this period but
@@ -875,198 +910,4 @@ function LandingPagesTable({ landingPages, sort, setSort, query, setQuery }) {
       )}
     </Cell>
   );
-}
-
-/* ============================= AI Traffic Intelligence ============================= */
-
-function AiSourceSection({ traffic }) {
-  if (!traffic) return null;
-  const detail = traffic.by_source_detail || {};
-  return (
-    <Cell className="sp-ga4-card">
-      <h2>AI traffic intelligence</h2>
-      <div className="sp-ga4-engine-grid">
-        {AI_ENGINE_ORDER.map((key) => {
-          const d = detail[key] || { sessions: 0 };
-          return (
-            <EngineCard key={key} engine={key} status={d.sessions > 0 ? "yes" : "no"}
-                        statusLabel={sessionsLabel(d.sessions)}>
-              <dl className="sp-ga4-engine-stats">
-                <dt>Engaged sessions</dt><dd>{fmtInt(d.engaged_sessions)}</dd>
-                <dt>Engagement rate</dt><dd>{fmtPct(d.engagement_rate)}</dd>
-                <dt>Key events</dt><dd>{fmtInt(d.key_events)}</dd>
-              </dl>
-            </EngineCard>
-          );
-        })}
-      </div>
-      <ul className="sp-ga4-other-sources">
-        {AI_OTHER_ORDER.map((key) => {
-          const d = detail[key] || { sessions: 0 };
-          return (
-            <li key={key}>
-              <div>
-                <span className="sp-ga4-other-name">{AI_LABELS[key]}</span>
-                <span className="sp-ga4-other-desc">{AI_OTHER_DESCRIPTIONS[key]}</span>
-              </div>
-              <strong>{fmtInt(d.sessions)}</strong>
-            </li>
-          );
-        })}
-      </ul>
-    </Cell>
-  );
-}
-
-/* ============================= Conversions ============================= */
-/* No new backend call — reads the already-fetched overview/channels/landing-pages
-   responses and presents the conversion-relevant fields as their own section,
-   rather than only scattering them across other tables. */
-
-function ConversionsSection({ overview, channels, landingPages }) {
-  if (!overview?.current) return null;
-  const configured = overview.key_events_configured;
-  const { key_events, conversion_rate } = overview.current;
-  const prevKeyEvents = overview.previous?.key_events;
-  const delta = fmtDelta(key_events, prevKeyEvents);
-
-  const topChannels = (channels?.channels || [])
-    .filter((c) => c.key_events > 0)
-    .sort((a, b) => b.key_events - a.key_events)
-    .slice(0, 5);
-  const topPages = (landingPages?.pages || [])
-    .filter((p) => p.key_events > 0)
-    .sort((a, b) => b.key_events - a.key_events)
-    .slice(0, 5);
-
-  return (
-    <Cell className="sp-ga4-card">
-      <h2>Conversions</h2>
-      {configured === false ? (
-        <p className="sp-ga4-empty-inline">
-          No key events are configured on this GA4 property, so conversion impact
-          can't be measured yet. Configure one in Google Analytics (Admin → Events
-          → Mark as key event) to unlock this section.
-        </p>
-      ) : (
-        <>
-          {/* One responsive grid for metrics AND breakdowns, so the section fills the
-              row instead of two small cards beside a wide empty gap. */}
-          <div className="sp-ga4-conv-grid">
-            <div className="sp-ga4-kpi" title="GA4 keyEvents for the selected period.">
-              <div className="sp-ga4-kpi-label">Key events</div>
-              <div className="sp-ga4-kpi-value">{fmtInt(key_events)}</div>
-              {delta && (
-                <div className={`sp-ga4-kpi-delta ${delta.dir}`}>
-                  {delta.dir === "up" ? <ChevronUp size={12} /> : <ChevronDown size={12} />} {delta.text}
-                </div>
-              )}
-            </div>
-            <div className="sp-ga4-kpi" title="Derived: key events ÷ sessions.">
-              <div className="sp-ga4-kpi-label">Conversion rate</div>
-              <div className="sp-ga4-kpi-value">{fmtPct(conversion_rate)}</div>
-            </div>
-            {topChannels.length > 0 && (
-              <div className="sp-ga4-conv-panel">
-                <h3>By channel</h3>
-                <ul className="sp-ga4-sources">
-                  {topChannels.map((c, i) => (
-                    <li key={i}><span>{c.channel}</span><strong>{fmtInt(c.key_events)}</strong></li>
-                  ))}
-                </ul>
-              </div>
-            )}
-            {topPages.length > 0 && (
-              <div className="sp-ga4-conv-panel">
-                <h3>By landing page</h3>
-                <ul className="sp-ga4-sources">
-                  {topPages.map((p) => (
-                    <li key={p.landing_page}><span>{p.landing_page}</span><strong>{fmtInt(p.key_events)}</strong></li>
-                  ))}
-                </ul>
-              </div>
-            )}
-          </div>
-          {key_events === 0 && (
-            <p className="sp-ga4-helper">
-              Key events are configured, but none were recorded in this period.
-            </p>
-          )}
-        </>
-      )}
-    </Cell>
-  );
-}
-
-/* ============================= Insights (client-computed, evidence-based) ============================= */
-
-function InsightsSection({ overview, channels, landingPages, traffic, compareEnabled, filtered }) {
-  const insights = useMemo(() => buildInsights({ overview, channels, landingPages, traffic, compareEnabled, filtered }), [
-    overview, channels, landingPages, traffic, compareEnabled, filtered,
-  ]);
-  if (!insights.length) return null;
-  return (
-    <Cell className="sp-ga4-card">
-      <h2><Sparkles size={16} /> Insights</h2>
-      <ul className="sp-ga4-insights">
-        {insights.map((ins, i) => (
-          <li key={i}>
-            <p>{ins.text}</p>
-            {ins.next && <p className="sp-ga4-insight-next">{ins.next}</p>}
-          </li>
-        ))}
-      </ul>
-    </Cell>
-  );
-}
-
-/* Every insight here reads directly from already-fetched, already-displayed
-   numbers — no separate inference step, no fabricated correlation-as-causation
-   claims. Each one states what happened, the comparison baseline if used, and a
-   concrete next step. A "most"/ranking claim is only made over the complete,
-   unfiltered set it ranks — never over one filtered or paginated table page. */
-export function buildInsights({ overview, channels, landingPages, traffic, compareEnabled, filtered = false }) {
-  const out = [];
-  if (overview?.current && overview?.previous && compareEnabled) {
-    const er = fmtDelta(overview.current.engagement_rate, overview.previous.engagement_rate);
-    if (er && overview.current.engagement_rate != null && overview.previous.engagement_rate != null) {
-      const ptsRaw = (overview.current.engagement_rate - overview.previous.engagement_rate) * 100;
-      const pts = Math.abs(ptsRaw).toFixed(1);
-      out.push({
-        text: `Engagement rate ${er.dir === "up" ? "improved" : "declined"} by ${pts} percentage points compared with the previous period (${fmtPct(overview.previous.engagement_rate)} → ${fmtPct(overview.current.engagement_rate)}).`,
-        next: er.dir === "down" ? "Check which landing pages or channels changed — see the tables above." : null,
-      });
-    }
-  }
-  // Channel rows are per channel × source × medium; a channel's total is the sum of
-  // its rows, and only valid when every row is present (unfiltered, one page).
-  const ch = channels?.channels || [];
-  if (ch.length && !filtered && channels.total === ch.length) {
-    const byChannel = {};
-    ch.forEach((c) => { byChannel[c.channel] = (byChannel[c.channel] || 0) + c.sessions; });
-    const ranked = Object.entries(byChannel).sort((a, b) => b[1] - a[1]);
-    if (ranked[0][1] > 0 && (ranked.length === 1 || ranked[0][1] > ranked[1][1])) {
-      out.push({ text: `${ranked[0][0]} generated ${fmtInt(ranked[0][1])} sessions during this period, the most of any channel.` });
-    }
-  }
-  // AI assistant totals come from /traffic, which covers every row for the range.
-  const detail = traffic?.by_source_detail || {};
-  AI_ENGINE_ORDER.filter((k) => detail[k]?.sessions > 0).slice(0, 1).forEach((k) => {
-    out.push({ text: `${AI_LABELS[k]} is an identifiable AI referral source and generated ${fmtInt(detail[k].sessions)} sessions this period.` });
-  });
-  const pages = landingPages?.pages || [];
-  if (pages.length) {
-    // Compared with the property-wide engagement rate GA4 reported for the same
-    // range — the only baseline there is. Without it, no comparison is claimed.
-    const siteRate = overview?.current?.engagement_rate;
-    const weak = siteRate != null
-      && pages.find((p) => p.sessions >= 20 && p.engagement_rate != null && p.engagement_rate < 0.3 && p.engagement_rate < siteRate);
-    if (weak) {
-      out.push({
-        text: `${weak.landing_page} received ${fmtInt(weak.sessions)} sessions with a ${fmtPct(weak.engagement_rate)} engagement rate, below the ${fmtPct(siteRate)} rate for the whole property in this period.`,
-        next: weak.scan ? `See its AEO audit (score ${weak.scan.score}) for concrete fixes.` : "Consider running an AEOMirror scan on this page.",
-      });
-    }
-  }
-  return out;
 }

@@ -3,7 +3,7 @@
    stubbed so the test asserts the wrapper's param wiring, not the heavy view. */
 import React from "react";
 import { render, screen } from "@testing-library/react";
-import { MemoryRouter, Routes, Route, Outlet } from "react-router-dom";
+import { MemoryRouter, Routes, Route, Outlet, useParams } from "react-router-dom";
 import { describe, it, expect, vi } from "vitest";
 
 vi.mock("../dashboard/AnswerTracking.jsx", () => ({
@@ -78,3 +78,22 @@ describe("Scan Details entry route (/app/scans/latest)", () => {
     expect(screen.getByText("Could not load your dashboard.")).toBeTruthy();
   });
 });
+
+describe("Site Intelligence routes", () => {
+  it("the old /app/monitoring/:id/intelligence deep link redirects to the same website's Site Intelligence", async () => {
+    const { LegacySiteIntelligenceRedirect } = await import("./routes.jsx");
+    render(
+      <MemoryRouter initialEntries={["/app/monitoring/MON7/intelligence"]}>
+        <Routes>
+          <Route path="/app/monitoring/:monitorId/intelligence" element={<LegacySiteIntelligenceRedirect />} />
+          <Route path="/app/site-intelligence/:monitorId" element={<Landing />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+    expect(await screen.findByText("si:MON7")).toBeTruthy();
+  });
+});
+
+function Landing() {
+  return <div>si:{useParams().monitorId}</div>;
+}

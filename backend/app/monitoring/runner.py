@@ -14,7 +14,8 @@ from sqlalchemy.orm import Session
 
 from app.core.ssrf import validate_url
 from app.db.models import (
-    CRAWL_FAILED, JOB_FAILED, JOB_KIND_BULK_SCAN, JOB_KIND_GA4_SYNC, JOB_KIND_URL_CRAWL,
+    CRAWL_COMPLETED, CRAWL_FAILED, JOB_FAILED, JOB_KIND_BULK_SCAN, JOB_KIND_GA4_SYNC, JOB_KIND_GSC_SYNC,
+    JOB_KIND_PAGE_VALUE, JOB_KIND_URL_CRAWL,
     SCAN_FAILED, CrawlJob, GoogleAnalyticsConnection, Monitor, MonitorHistory, Scan,
 )
 from app.monitoring import scheduler
@@ -94,6 +95,12 @@ async def process_job(db: Session, job) -> None:
     if job.kind == JOB_KIND_URL_CRAWL:
         await _process_url_crawl_job(db, job)
         return
+    if job.kind == JOB_KIND_GSC_SYNC:
+        await _process_gsc_sync_job(db, job)
+        return
+    if job.kind == JOB_KIND_PAGE_VALUE:
+        _process_page_value_job(db, job)
+        return
 
     monitor = db.get(Monitor, job.monitor_id)
     if not monitor:
@@ -129,6 +136,70 @@ async def _process_ga4_sync_job(db: Session, job) -> None:
         db.rollback()
         logger.warning("ga4 sync job %s failed: %s", job.id, type(e).__name__)
         scheduler.fail_job(db, job, e)
+        return
+    _rescore_after_sync(db, connection.organization_id, "ga4_sync")
+
+
+def _rescore_after_sync(db: Session, org_id: str, trigger: str) -> None:
+    """New GA4 / Search Console numbers → rescore the affected websites' pages.
+    Best-effort: a failure here never turns a successful sync into a failed job."""
+    from app.services.url_intelligence import page_value
+    try:
+        page_value.request_runs_after_sync(db, org_id, trigger)
+    except Exception as e:   # noqa: BLE001
+        db.rollback()
+        logger.warning("page value rescore after %s failed: %s", trigger, type(e).__name__)
+
+
+async def _process_gsc_sync_job(db: Session, job) -> None:
+    """Search Console twin of _process_ga4_sync_job: re-load the connection and trust
+    its own organization_id, never the job row's."""
+    from app.db.models import SearchConsoleConnection
+    from app.services.integrations.search_console import run_sync
+
+    connection = db.get(SearchConsoleConnection, job.connection_id)
+    if not connection:
+        scheduler.fail_job(db, job, "connection no longer exists")
+        return
+    if connection.organization_id != job.organization_id:
+        scheduler.fail_job(db, job, "connection/job organization mismatch")
+        return
+    try:
+        await run_sync(db, connection)
+        scheduler.complete_job(db, job)
+    except Exception as e:
+        db.rollback()
+        logger.warning("gsc sync job %s failed: %s", job.id, type(e).__name__)
+        scheduler.fail_job(db, job, e)
+        return
+    _rescore_after_sync(db, connection.organization_id, "gsc_sync")
+
+
+def _process_page_value_job(db: Session, job) -> None:
+    """One bounded chunk of a PageValueRun, then a continuation if work remains —
+    the same resumable pattern as url_crawl."""
+    from app.db.models import PV_ACTIVE, PV_FAILED, PageValueRun
+    from app.services.url_intelligence import page_value
+
+    run = db.get(PageValueRun, job.page_value_run_id)
+    if not run or run.organization_id != job.organization_id:
+        scheduler.fail_job(db, job, "page value run no longer exists")
+        return
+    try:
+        page_value.run_chunk(db, run)
+        scheduler.complete_job(db, job)
+        if not page_value.is_terminal(run.status):
+            scheduler.enqueue_page_value_chunk(db, run.id, run.organization_id)
+    except Exception as e:
+        db.rollback()
+        logger.warning("page_value job %s failed: %s", job.id, type(e).__name__)
+        scheduler.fail_job(db, job, e)
+        if job.status == JOB_FAILED:
+            run = db.get(PageValueRun, job.page_value_run_id)
+            if run and run.status in PV_ACTIVE:
+                run.status, run.finished_at = PV_FAILED, datetime.utcnow()
+                run.error = "Scoring could not be completed. Please try again."
+                db.commit()
 
 
 def _mark_scan_failed(db: Session, scan_id: str, error: Exception) -> None:
@@ -167,6 +238,19 @@ async def _process_bulk_scan_job(db: Session, job) -> None:
             _mark_scan_failed(db, job.scan_id, e)
 
 
+def _score_completed_crawl(db: Session, crawl_job) -> None:
+    """A finished crawl → score its pages (Pro only; best-effort)."""
+    from app.billing import entitlements
+    from app.services.url_intelligence import page_value
+    try:
+        if entitlements.is_pro(db, crawl_job.organization_id):
+            page_value.request_run(db, org_id=crawl_job.organization_id, monitor_id=crawl_job.monitor_id,
+                                   trigger="crawl_completed")
+    except Exception as e:   # noqa: BLE001
+        db.rollback()
+        logger.warning("page value run after crawl %s failed: %s", crawl_job.id, type(e).__name__)
+
+
 async def _process_url_crawl_job(db: Session, job) -> None:
     """Execute ONE bounded chunk of a CrawlJob (discovery/crawl/analyze — see
     app.services.url_intelligence.orchestrator) and, if the job isn't finished yet,
@@ -185,6 +269,8 @@ async def _process_url_crawl_job(db: Session, job) -> None:
         scheduler.complete_job(db, job)
         if not orchestrator.is_terminal(crawl_job.phase):
             scheduler.enqueue_url_crawl_chunk(db, crawl_job.id, crawl_job.organization_id)
+        elif crawl_job.phase == CRAWL_COMPLETED:
+            _score_completed_crawl(db, crawl_job)
     except Exception as e:
         db.rollback()
         logger.warning("url_crawl job %s failed: %s", job.id, type(e).__name__)

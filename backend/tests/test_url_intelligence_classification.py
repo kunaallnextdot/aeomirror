@@ -34,7 +34,14 @@ def test_booking_page_classified_by_path():
 
 
 def test_no_signal_falls_back_to_other():
-    assert classify_page_type("https://example.com/", _EMPTY_EVIDENCE) == PAGE_OTHER
+    assert classify_page_type("https://example.com/some-page", _EMPTY_EVIDENCE) == PAGE_OTHER
+
+
+def test_the_site_root_is_the_homepage_by_path_alone():
+    from app.services.url_intelligence.classification import PAGE_HOMEPAGE
+    for url in ("https://example.com/", "https://example.com", "https://example.com/index.html"):
+        assert classify_page_type(url, _EMPTY_EVIDENCE) == PAGE_HOMEPAGE
+    assert classify_page_type("https://example.com/homes/12", _EMPTY_EVIDENCE) == PAGE_OTHER
 
 
 def test_legal_pages_never_get_high_business_intent_weight():

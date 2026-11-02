@@ -162,13 +162,32 @@ export function MonitorDetailRoute() {
   const { openReport } = useAppCtx();
   return <MonitorDetail key={monitorId} monitorId={monitorId}
                         onBack={() => navigate("/app/monitoring")} onOpenReport={openReport}
-                        onOpenIntelligence={() => navigate(`/app/monitoring/${encodeURIComponent(monitorId)}/intelligence`)} />;
+                        onOpenIntelligence={() => navigate(`/app/site-intelligence/${encodeURIComponent(monitorId)}`)} />;
 }
 
+/* /app/site-intelligence[/:monitorId] — the website comes from the URL (never a
+   hardcoded id); the page itself lets the user switch websites, which navigates. */
 export function SiteIntelligenceRoute() {
   const { monitorId } = useParams();
   const navigate = useNavigate();
-  return <SiteIntelligence monitorId={monitorId} onBack={() => navigate(`/app/monitoring/${encodeURIComponent(monitorId)}`)} />;
+  const [params, setParams] = useSearchParams();
+  const view = params.get("view") === "opportunities" ? "opportunities" : "health";
+  // ?gsc=connected|error&reason=… is where the Search Console OAuth callback lands.
+  const gsc = params.get("gsc");
+  const gscFlash = gsc ? { status: gsc, reason: params.get("reason") } : null;
+  const viewQs = view === "opportunities" ? "?view=opportunities" : "";
+  return <SiteIntelligence key={monitorId || "pick"} monitorId={monitorId || null} view={view} gscFlash={gscFlash}
+                           onChangeView={(v) => setParams(v === "opportunities" ? { view: v } : {}, { replace: true })}
+                           onSelectMonitor={(id, opts) => navigate(
+                             `/app/site-intelligence/${encodeURIComponent(id)}${opts?.replace && params.toString() ? `?${params}` : viewQs}`, opts)}
+                           onOpenMonitor={(id) => navigate(`/app/monitoring/${encodeURIComponent(id)}`)} />;
+}
+
+/* Old deep link (/app/monitoring/:monitorId/intelligence, used before Site
+   Intelligence had its own section): same website, new address. */
+export function LegacySiteIntelligenceRedirect() {
+  const { monitorId } = useParams();
+  return <Navigate to={`/app/site-intelligence/${encodeURIComponent(monitorId)}`} replace />;
 }
 
 export function AnswerTrackingRoute() {

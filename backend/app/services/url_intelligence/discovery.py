@@ -40,6 +40,7 @@ from app.scanner.bulk import normalize_dedup_key, normalize_url
 from app.scanner.signals.base import SignalContext
 from app.services.url_intelligence.classification import classify_page_type, classify_template
 from app.services.url_intelligence.evidence import content_fingerprint, extract_evidence
+from app.services.url_intelligence.issues import page_issues, severity_rank
 
 _LOC_RE = re.compile(r"<loc>\s*([^<\s]+)\s*</loc>", re.I)
 _MAX_SITEMAP_FETCHES_PER_CHUNK = 5
@@ -104,7 +105,7 @@ def _try_add_url(db: Session, job: CrawlJob, url: str, *, source: str, depth: in
     row = CrawlUrl(
         crawl_job_id=job.id, organization_id=job.organization_id, url=norm,
         normalized_key=key, discovery_source=source, discovery_depth=depth,
-        discovered_at=datetime.utcnow(),
+        discovered_at=datetime.utcnow(), inbound_link_count=0,
     )
     if not safe:
         row.status, row.skip_reason = URL_SKIPPED, "ssrf_blocked"
@@ -238,6 +239,22 @@ def _internal_link_targets(soup, base_url: str, host: str) -> list[str]:
     return targets
 
 
+def _count_inbound_links(db: Session, job: CrawlJob, source: CrawlUrl, targets: list[str]) -> None:
+    """+1 inbound link on every already-recorded URL this page links to (each linking
+    page counted once per target, self-links ignored). Runs after the page's own links
+    were queued, so a link to a just-discovered URL is counted too. A link to a URL not
+    recorded in this job (over budget, off-site) has nowhere to be counted."""
+    keys = {normalize_dedup_key(n) for n in (normalize_url(u) for u in targets) if n}
+    keys.discard(source.normalized_key)
+    keys = list(keys)
+    for i in range(0, len(keys), 500):
+        (db.query(CrawlUrl)
+         .filter(CrawlUrl.crawl_job_id == job.id, CrawlUrl.normalized_key.in_(keys[i:i + 500]))
+         .update({CrawlUrl.inbound_link_count: func.coalesce(CrawlUrl.inbound_link_count, 0) + 1},
+                 synchronize_session=False))
+    db.commit()
+
+
 async def run_crawl_chunk(db: Session, job: CrawlJob) -> bool:
     """One bounded chunk of the CRAWLING phase: fetch up to
     `url_crawl_fetch_batch_size` ELIGIBLE URLs, extract evidence, classify, and (within
@@ -281,13 +298,16 @@ async def run_crawl_chunk(db: Session, job: CrawlJob) -> bool:
         row.template_id = classify_template(safe, row.page_type, evidence)
         row.content_fingerprint = content_fingerprint(evidence)
         row.evidence = evidence
+        codes = page_issues(evidence, row.page_type)
+        row.page_title = (evidence.get("title") or "")[:300] or None
+        row.issue_codes, row.issue_count, row.issue_severity = codes, len(codes), severity_rank(codes)
         row.status = URL_CRAWLED
         row.crawled_at = datetime.utcnow()
         job.crawled_count += 1
         db.commit()
 
+        targets = _internal_link_targets(ctx.soup, safe, host)[:200]
         if row.discovery_depth < settings.url_crawl_max_depth and job.discovered_count < job.max_urls:
-            targets = _internal_link_targets(ctx.soup, safe, host)[:200]
             links.preload(targets)
             for target in targets:
                 if job.discovered_count >= job.max_urls:
@@ -296,6 +316,7 @@ async def run_crawl_chunk(db: Session, job: CrawlJob) -> bool:
                                        depth=row.discovery_depth + 1, batch=links)
                 if new_row and new_row.status == URL_DISCOVERED:
                     _eligibility_check(db, job, new_row, robots_txt)
+        _count_inbound_links(db, job, row, targets)
 
     job.updated_at = datetime.utcnow()
     db.commit()

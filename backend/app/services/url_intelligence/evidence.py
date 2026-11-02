@@ -103,6 +103,14 @@ def extract_evidence(page: PageBundle, *, crawl_depth: int = 0,
     product = _product_evidence(nodes)
     breadcrumbs = _breadcrumbs(soup)
 
+    # Images that carry content: tracking pixels and spacers declare role=presentation
+    # or an explicit empty alt="" (the correct markup for decorative images) and are
+    # not counted as missing alt text.
+    images = soup.find_all("img")
+    image_count = len(images)
+    images_missing_alt = sum(1 for img in images
+                             if img.get("alt") is None and img.get("role") != "presentation")
+
     missing: list[str] = []
     if not title:
         missing.append("missing_title")
@@ -137,6 +145,8 @@ def extract_evidence(page: PageBundle, *, crawl_depth: int = 0,
         "word_count": word_count,
         "internal_link_count": internal_links,
         "external_link_count": external_links,
+        "image_count": image_count,
+        "images_missing_alt": images_missing_alt,
         "breadcrumbs": breadcrumbs,
         "schema": jsonld,
         "product": product,

@@ -26,10 +26,10 @@ from __future__ import annotations
 from urllib.parse import urlparse
 
 from app.services.integrations.classification import (
-    _KNOWN_AI_HOSTS, _host_matches, _normalize_host,
+    _KNOWN_AI_HOSTS, _OTHER_AI_HOSTS, _host_matches, _normalize_host,
 )
 
-RULESET_VERSION = "2026-10-19.1"
+RULESET_VERSION = "2026-11-02.1"   # + other identifiable AI assistant hosts
 
 _PAID_MEDIUMS = {"cpc", "ppc", "paid", "paidsearch", "paid-search", "paid_search",
                  "display", "cpm", "paidsocial", "paid-social", "paid_social"}
@@ -91,6 +91,8 @@ def classify_channel(*, referrer: str | None, utm_source: str | None = None,
         for known_domain, label in _KNOWN_AI_HOSTS.items():
             if _host_matches(candidate, known_domain):
                 return label, ref_host or None
+        if _matches_any(candidate, _OTHER_AI_HOSTS):
+            return "other_identifiable_ai", ref_host or None
 
     # 3. No referrer and no UTM source at all -> direct, never guessed further.
     if not ref_host and not source_host:

@@ -21,14 +21,19 @@ from app.api.deps import AuthContext, get_context, require_permission
 from app.billing import entitlements
 from app.config import settings
 from app.db.models import (
-    AI_SOURCE_LABELS, GA4_STATUS_ACTIVE, Ga4DailyOverview, Ga4LandingPageSnapshot,
+    AI_ASSISTANT_LABELS, AI_SOURCE_LABELS, GA4_STATUS_ACTIVE, Ga4DailyOverview, Ga4LandingPageSnapshot,
     Ga4TrafficSnapshot, GoogleAnalyticsConnection, Monitor, Scan,
 )
 from app.db.session import get_db
 from app.monitoring import scheduler
-from app.schemas.integrations import LinkGa4WebsiteRequest, SelectGa4PropertyRequest
+from app.schemas.integrations import (
+    Ga4EventMappingsRequest, LinkGa4WebsiteRequest, SelectGa4PropertyRequest,
+)
 from app.services.analytics.aggregation import page_key
+from app.services.integrations import ai_intelligence
 from app.services.integrations import google_analytics as ga4
+from app.services.integrations import search_console
+from app.services.integrations.classification import traffic_class
 
 log = logging.getLogger("app.integrations.google_analytics.routes")
 router = APIRouter(prefix="/integrations/google", tags=["integrations"])
@@ -39,7 +44,7 @@ _SAFE_ERROR_CODES = {
     "access_denied", "invalid_state", "missing_code", "token_exchange_failed",
     "missing_refresh_token", "auth_revoked", "properties_unavailable",
     "property_not_accessible", "credential_unavailable", "quota_exceeded",
-    "property_inaccessible", "integration_disabled",
+    "property_inaccessible", "integration_disabled", "scope_not_granted",
 }
 
 
@@ -93,6 +98,10 @@ async def callback(code: str | None = Query(default=None),
     cannot require Bearer auth. Ownership comes entirely from the `state` row
     created by /connect; a missing/expired/already-consumed/unrecognized state is
     rejected outright, never trusted as implicit proof of anything."""
+    # The Search Console grant reuses this registered redirect URI; its state row says
+    # which flow it belongs to, and that flow's own handler re-validates the state.
+    if ga4.oauth_state_provider(db, state) == search_console.OAUTH_PROVIDER:
+        return await _search_console_callback(db, code=code, state=state, error=error)
     target = f"{settings.app_base_url.rstrip('/')}/app/analytics/ai-traffic"
     if not settings.ga4_integration_enabled:
         return RedirectResponse(url=f"{target}?ga4=error&reason=integration_disabled", status_code=302)
@@ -108,6 +117,20 @@ async def callback(code: str | None = Query(default=None),
         log.warning("ga4 callback failed: reason=%s", reason)
         return RedirectResponse(url=f"{target}?ga4=error&reason={reason}", status_code=302)
     return RedirectResponse(url=f"{target}?ga4=connected", status_code=302)
+
+
+async def _search_console_callback(db: Session, *, code, state, error):
+    target = f"{settings.app_base_url.rstrip('/')}/app/site-intelligence?view=opportunities"
+    if not settings.ga4_integration_enabled:
+        return RedirectResponse(url=f"{target}&gsc=error&reason=integration_disabled", status_code=302)
+    result = await search_console.handle_oauth_callback(db, code=code, state=state, error=error)
+    if result["status"] != "connected":
+        reason = result.get("error_code", "unknown")
+        if reason not in _SAFE_ERROR_CODES:
+            reason = "unknown"
+        log.warning("search console callback failed: reason=%s", reason)
+        return RedirectResponse(url=f"{target}&gsc=error&reason={reason}", status_code=302)
+    return RedirectResponse(url=f"{target}&gsc=connected", status_code=302)
 
 
 # ------------------------------- status -------------------------------
@@ -143,7 +166,10 @@ def status(ctx: AuthContext = Depends(require_permission("report:view")),
             "traffic": connection.last_synced_at,
             "overview": connection.overview_synced_at,
             "landing_pages": connection.landing_pages_synced_at,
+            "events": connection.events_synced_at,
         },
+        "currency_code": connection.currency_code,
+        "data_quality": connection.data_quality or {},
     }
 
 
@@ -463,6 +489,7 @@ def channels(start_date: str | None = Query(default=None),
         g = grouped.setdefault(key, {
             "channel": r.channel_grouping, "source": r.source, "medium": r.medium,
             "ai_source_label": r.ai_source_label,
+            "traffic_class": traffic_class(r.channel_grouping, r.source, r.medium, r.ai_source_label),
             "sessions": 0, "new_users": 0, "engaged_sessions": 0, "views": 0, "key_events": 0,
         })
         g["sessions"] += r.sessions
@@ -534,7 +561,14 @@ def landing_pages(start_date: str | None = Query(default=None),
             g = out.setdefault(r.landing_page, {
                 "landing_page": r.landing_page, "sessions": 0, "new_users": 0,
                 "engaged_sessions": 0, "views": 0, "key_events": 0,
+                # Rows synced before the source split exist (traffic_class NULL) count
+                # toward `sessions` only — never guessed into AI or organic.
+                "ai_sessions": 0, "organic_sessions": 0,
             })
+            if r.traffic_class in AI_ASSISTANT_LABELS:
+                g["ai_sessions"] += r.sessions
+            elif r.traffic_class == "organic_search":
+                g["organic_sessions"] += r.sessions
             g["sessions"] += r.sessions
             g["new_users"] += r.new_users
             g["engaged_sessions"] += r.engaged_sessions
@@ -622,3 +656,51 @@ async def disconnect(ctx: AuthContext = Depends(require_permission("org:update")
     connection = _owned_connection_or_404(db, ctx)
     await ga4.disconnect(db, connection)
     return {"status": "disconnected"}
+
+
+# ------------------------------- AI traffic & conversion intelligence -------------------------------
+
+@router.get("/intelligence")
+def intelligence(start_date: str | None = Query(default=None),
+                 end_date: str | None = Query(default=None),
+                 ctx: AuthContext = Depends(require_permission("report:view")),
+                 db: Session = Depends(get_db)):
+    """The AI Traffic dashboard's four sections from synced data only: traffic
+    overview, conversion performance, top landing pages, source comparison. See
+    services/integrations/ai_intelligence.py for every definition."""
+    _require_pro(db, ctx)
+    connection = _owned_connection_or_404(db, ctx)
+    start, end = _parse_date_range(start_date, end_date, default_days=27)
+    if connection.last_synced_at is None:
+        return {"synced": False, "date_range": {"start": start.isoformat(), "end": end.isoformat()}}
+    return {"synced": True, **ai_intelligence.build_intelligence(db, connection, start, end)}
+
+
+@router.get("/events")
+def events(start_date: str | None = Query(default=None),
+           end_date: str | None = Query(default=None),
+           ctx: AuthContext = Depends(require_permission("report:view")),
+           db: Session = Depends(get_db)):
+    """Which events the property actually records, which are GA4 key events, and how
+    each is mapped — the conversion configuration status."""
+    _require_pro(db, ctx)
+    connection = _owned_connection_or_404(db, ctx)
+    start, end = _parse_date_range(start_date, end_date, default_days=27)
+    return ai_intelligence.event_catalog(db, connection, start, end)
+
+
+@router.put("/event-mappings")
+def put_event_mappings(body: Ga4EventMappingsRequest,
+                       ctx: AuthContext = Depends(require_permission("org:update")),
+                       db: Session = Depends(get_db)):
+    _require_pro(db, ctx)
+    connection = _owned_connection_or_404(db, ctx)
+    if not connection.ga4_property_id:
+        raise HTTPException(status_code=409, detail="Select a GA4 property first.")
+    try:
+        saved = ai_intelligence.replace_mappings(
+            db, connection, [m.model_dump() for m in body.mappings], ctx.user.id)
+    except ai_intelligence.MappingError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+    return {"mappings": saved,
+            "conversion_definition": ai_intelligence.conversion_definition(db, connection)}

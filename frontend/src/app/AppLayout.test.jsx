@@ -315,4 +315,42 @@ describe("AppLayout — global shell/footer structure", () => {
     // No "Full Report" label survives — the confusing pair is gone, not duplicated.
     expect(nav.queryByRole("link", { name: /Full Report/ })).toBeNull();
   });
+
+  it("Site Intelligence is a first-class sidebar item, near the top of the Intelligence section, active on its own pages only", async () => {
+    render(
+      <MemoryRouter initialEntries={["/app/site-intelligence/m1"]}>
+        <Routes>
+          <Route path="/app" element={<AppLayout />}>
+            <Route path="site-intelligence/:monitorId" element={<div data-testid="page-content">SI</div>} />
+          </Route>
+        </Routes>
+      </MemoryRouter>,
+    );
+    await waitFor(() => expect(screen.getByTestId("page-content")).toBeTruthy());
+    const navEl = document.querySelector("nav.sp-dash-nav");
+    const nav = within(navEl);
+    const si = nav.getByRole("link", { name: /Site Intelligence/ });
+    expect(si.getAttribute("href")).toBe("/app/site-intelligence");
+    expect(si.className).toMatch(/\bon\b/);
+    expect(si.getAttribute("aria-current")).toBe("page");
+    expect(nav.getByRole("link", { name: /^Monitoring$/ }).className).not.toMatch(/\bon\b/);
+    const intel = nav.getByRole("group", { name: "Intelligence" });
+    expect(within(intel).getAllByRole("link")[0]).toBe(si);
+    expect(["Overview", "Intelligence", "Reports", "Account"].map((t) => nav.getByRole("group", { name: t }))).toHaveLength(4);
+  });
+
+  it("every sidebar destination appears exactly once", async () => {
+    renderShell();
+    await waitFor(() => expect(document.querySelector("nav.sp-dash-nav")).toBeTruthy());
+    const hrefs = within(document.querySelector("nav.sp-dash-nav")).getAllByRole("link").map((a) => a.getAttribute("href"));
+    expect(new Set(hrefs).size).toBe(hrefs.length);
+    expect(hrefs).toEqual(expect.arrayContaining(["/app/site-intelligence", "/app/action-center", "/app/monitoring",
+      "/app/website-summary", "/app/scans", "/app/scans/latest", "/app/compare", "/app/billing"]));
+  });
+
+  it("mobile (<900px): section headings are hidden so the bar stays a single wrapping row", () => {
+    const mobile = CSS.slice(CSS.indexOf("@media(max-width:900px)"));
+    expect(mobile).toMatch(/\.sp-dash-nav-group\{display:contents\}/);
+    expect(mobile).toMatch(/\.sp-dash-nav-head\{display:none\}/);
+  });
 });

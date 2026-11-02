@@ -60,8 +60,10 @@ def test_migrating_a_fresh_database_to_head_produces_the_tables_and_columns_the_
         inspector = inspect(engine)
         actual_tables = set(inspector.get_table_names())
 
-        for table_name in ("google_analytics_connections", "ga4_traffic_snapshots",
-                           "ga4_daily_overview", "ga4_landing_page_snapshots"):
+        # Every model table, not just the ones an incident happened to involve: the
+        # url_findings.updated_at drift (fixed by f7c1d3e9b2a4) went unnoticed for
+        # weeks because only the GA4 tables were checked here.
+        for table_name in sorted(Base.metadata.tables):
             assert table_name in actual_tables, (
                 f"migration chain never created '{table_name}' — "
                 "a model and its migration have drifted apart"
@@ -82,13 +84,13 @@ def test_migrating_a_fresh_database_to_head_produces_the_tables_and_columns_the_
 def test_alembic_head_matches_the_latest_ga4_migration():
     """A simpler tripwire: if someone adds a new migration without updating this
     test, it fails loudly instead of silently passing — forcing a conscious
-    decision about whether the new head is still d3a7f9c2e5b1 or something newer
+    decision about whether the new head is still a9d4e2f6c1b8 or something newer
     that should also be covered by the schema-sync test above."""
     cfg = _fresh_alembic_config(os.path.join(tempfile.gettempdir(), "unused.db"))
     from alembic.script import ScriptDirectory
     script = ScriptDirectory.from_config(cfg)
     heads = script.get_heads()
-    assert heads == ["d3a7f9c2e5b1"], (
-        f"expected alembic head to be d3a7f9c2e5b1, got {heads} — update this test "
+    assert heads == ["b7e3c1d5f9a2"], (
+        f"expected alembic head to be a9d4e2f6c1b8, got {heads} — update this test "
         "alongside whatever new migration moved the head"
     )

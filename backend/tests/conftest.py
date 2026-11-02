@@ -57,3 +57,23 @@ def _create_schema():
         db.close()
     yield
     Base.metadata.drop_all(bind=engine)
+
+
+_GOOGLE_HOSTS = ("googleapis.com", "google.com")
+
+
+@pytest.fixture(autouse=True)
+def _no_real_google_calls(monkeypatch):
+    """The suite must NEVER reach Google. A real httpx request to a Google host fails
+    like a network error (the GA4 fetchers then report "unknown"), so a test that
+    forgets to stub a newly added GA4 call degrades instead of calling the live API.
+    Tests that swap httpx.AsyncClient for a fake are unaffected."""
+    import httpx
+    real_send = httpx.AsyncClient.send
+
+    async def guarded_send(self, request, *args, **kwargs):
+        host = request.url.host or ""
+        if any(host == h or host.endswith("." + h) for h in _GOOGLE_HOSTS):
+            raise httpx.ConnectError("network access to Google is disabled in tests", request=request)
+        return await real_send(self, request, *args, **kwargs)
+    monkeypatch.setattr(httpx.AsyncClient, "send", guarded_send)
