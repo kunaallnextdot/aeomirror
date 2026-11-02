@@ -457,7 +457,7 @@ export function money(v, currency) {
 
 /* ---------------------------------------------------------------- detail */
 
-function OpportunityDetail({ monitorId, crawlUrlId, canRun, onClose }) {
+export function OpportunityDetail({ monitorId, crawlUrlId, canRun, onClose }) {
   const [d, setD] = useState(null);
   const [err, setErr] = useState(null);
   const closeRef = useRef(null);

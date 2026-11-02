@@ -15,7 +15,7 @@ from sqlalchemy.orm import Session
 from app.core.ssrf import validate_url
 from app.db.models import (
     CRAWL_COMPLETED, CRAWL_FAILED, JOB_FAILED, JOB_KIND_BULK_SCAN, JOB_KIND_GA4_SYNC, JOB_KIND_GSC_SYNC,
-    JOB_KIND_PAGE_VALUE, JOB_KIND_URL_CRAWL,
+    JOB_KIND_PAGE_VALUE, JOB_KIND_URL_CRAWL, JOB_KIND_URL_RECHECK,
     SCAN_FAILED, CrawlJob, GoogleAnalyticsConnection, Monitor, MonitorHistory, Scan,
 )
 from app.monitoring import scheduler
@@ -100,6 +100,9 @@ async def process_job(db: Session, job) -> None:
         return
     if job.kind == JOB_KIND_PAGE_VALUE:
         _process_page_value_job(db, job)
+        return
+    if job.kind == JOB_KIND_URL_RECHECK:
+        await _process_url_recheck_job(db, job)
         return
 
     monitor = db.get(Monitor, job.monitor_id)
@@ -205,6 +208,27 @@ def _process_page_value_job(db: Session, job) -> None:
                 run.status, run.finished_at = PV_FAILED, datetime.utcnow()
                 run.error = "Scoring could not be completed. Please try again."
                 db.commit()
+
+
+async def _process_url_recheck_job(db: Session, job) -> None:
+    """One bounded batch of a website's due fix re-checks and performance snapshots,
+    then a delayed continuation if more are due. Per-page failures are handled inside
+    the batch; only an unexpected error fails (and retries) the job."""
+    from app.services.url_intelligence import optimization
+
+    monitor = db.get(Monitor, job.recheck_monitor_id)
+    if not monitor or monitor.organization_id != job.organization_id:
+        scheduler.fail_job(db, job, "website no longer exists")
+        return
+    try:
+        res = await optimization.run_due_checks(db, monitor)
+        scheduler.complete_job(db, job)
+        if res["more"]:
+            scheduler.enqueue_url_recheck(db, monitor.id, monitor.organization_id, delay_seconds=60)
+    except Exception as e:
+        db.rollback()
+        logger.warning("url_recheck job %s failed: %s", job.id, type(e).__name__)
+        scheduler.fail_job(db, job, e)
 
 
 def _mark_scan_failed(db: Session, scan_id: str, error: Exception) -> None:

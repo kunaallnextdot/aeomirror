@@ -86,6 +86,7 @@ async def tick() -> dict:
         enqueued = scheduler.enqueue_due(db)
         enqueued += scheduler.enqueue_due_ga4_syncs(db)
         enqueued += scheduler.enqueue_due_gsc_syncs(db)
+        enqueued += scheduler.enqueue_due_url_rechecks(db)
         processed = 0
         for _ in range(settings.scheduler_batch_size):
             job = scheduler.claim_job(db)

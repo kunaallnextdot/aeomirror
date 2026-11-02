@@ -10,10 +10,12 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 
 vi.mock("../api.js", () => ({
   getPageIntelligence: vi.fn(), analyzePageNow: vi.fn(), generatePageSuggestions: vi.fn(),
+  getUrlOptimization: vi.fn(), changeUrlAction: vi.fn(),
   ScanError: class ScanError extends Error { constructor(m, c) { super(m); this.code = c; } },
 }));
 
-import { getPageIntelligence, analyzePageNow, generatePageSuggestions, ScanError } from "../api.js";
+import { getPageIntelligence, analyzePageNow, generatePageSuggestions, getUrlOptimization, changeUrlAction,
+  ScanError } from "../api.js";
 import PageIntelligence from "./PageIntelligence.jsx";
 
 const REC = {
@@ -63,6 +65,37 @@ const SUGG = {
   schema: { type: "Service", notes: "Add Service data." }, limitations: null, generated_at: "2026-11-02T10:00:00",
 };
 
+const ACT = (over = {}) => ({
+  code: "low_search_ctr", issue: "Few Google searchers click through", status: "new", tracked: false,
+  verification_method: "performance", last_result: null, next_check_at: null, recheck_requested: false, ...over,
+});
+const OPT = (over = {}) => ({
+  actions: [ACT(), ACT({ code: "missing_meta_description", issue: "Missing meta description", status: "ready_for_verification",
+                         tracked: true, verification_method: "page_check", next_check_at: "2026-11-02T10:00:00" })],
+  earlier_actions: [], next_action: { code: "low_search_ctr", issue: "Few Google searchers click through",
+                                      reasons: ["Business Value Score 72 (high value page)."] },
+  held_back: [],
+  change: { classification: "improvement", text: "Issues found on the previous crawl are no longer found.",
+            changes: [{ field: "title", label: "Title", before: "SEO", after: "SEO audits in Leeds" }],
+            new_issues: [], resolved_issues: [{ code: "missing_h1", issue: "No H1 heading" }] },
+  timeline: [
+    { at: "2026-11-02T10:00:00", kind: "verification", code: "missing_h1", issue: "No H1 heading",
+      text: "Verification by page re-check: fixed",
+      detail: { method: "recrawl", result: "fixed", before: { heading_counts: { h1: 0 } }, after: { heading_counts: { h1: 1 } },
+                before_observed: "Observed on this page: 0 H1 heading(s)" } },
+    { at: "2026-11-01T10:00:00", kind: "note", code: "missing_h1", issue: "No H1 heading", text: "Note added", note: "Dev ticket 42" },
+  ],
+  impact: [{ code: "missing_h1", issue: "No H1 heading", status: "verified", comparison: {
+    excluded_period: ["2026-09-01", "2026-09-10"], window_days: 28, disclaimer: "These are changes observed between the two periods, not proof that the fix caused them.",
+    sources: [{ source: "ga4", label: "Google Analytics 4", changes: { ai_sessions: { before: 10, after: 20, delta: 10, pct: 100 } },
+                before: { status: "complete", window: ["2026-08-04", "2026-08-31"], metrics: { ai_sessions: 10 } },
+                after: { status: "complete", window: ["2026-09-11", "2026-10-08"], metrics: { ai_sessions: 20 } } },
+              { source: "gsc", label: "Google Search Console", changes: {},
+                before: { status: "unavailable", window: [null, null], metrics: null, reason: "Search Console isn't connected." },
+                after: { status: "pending", window: [null, null], metrics: null, reason: "Waiting for a Search Console window." } }] } }],
+  ...over,
+});
+
 function renderPI(props = {}) {
   render(
     <MemoryRouter>
@@ -78,6 +111,7 @@ function renderPI(props = {}) {
 beforeEach(() => {
   vi.resetAllMocks();
   getPageIntelligence.mockResolvedValue(base());
+  getUrlOptimization.mockResolvedValue(OPT());
 });
 
 describe("states", () => {
@@ -208,5 +242,87 @@ describe("AI suggestions", () => {
     renderPI();
     fireEvent.click(await screen.findByText(/ai content suggestions/i));
     screen.getByText(/aren't configured on this server/i);
+  });
+});
+
+describe("fix tracking", () => {
+  it("each recommendation shows its status and a marked fix is never shown as verified", async () => {
+    renderPI();
+    const recs = (await screen.findByText(/recommended actions \(2\)/i)).closest("details");
+    const card = within(recs).getByText("Missing meta description").closest("details");
+    expect((await within(card).findAllByText("Ready for verification")).length).toBe(2);   // header + controls
+    within(card).getByText(/counts as verified only after a check/i);
+    within(card).getByText(/a page re-check is queued/i);
+    expect(within(card).queryByRole("button", { name: /mark fixed/i })).toBeNull();
+    within(card).getByRole("button", { name: /cancel re-check/i });
+    const perf = within(recs).getByText("Few Google searchers click through").closest("details");
+    within(perf).getByText(/a page check can't confirm it/i);
+    expect(within(perf).queryByRole("button", { name: /re-check now/i })).toBeNull();
+  });
+
+  it("actions call the API and the record refreshes; ignoring needs a reason", async () => {
+    changeUrlAction.mockResolvedValue(OPT({ actions: [ACT({ status: "in_progress", tracked: true })] }));
+    renderPI();
+    const recs = (await screen.findByText(/recommended actions \(2\)/i)).closest("details");
+    const perf = within(recs).getByText("Few Google searchers click through").closest("details");
+    fireEvent.click(await within(perf).findByRole("button", { name: "Start" }));
+    await waitFor(() => expect(within(perf).getAllByText("In progress").length).toBeGreaterThan(0));
+    expect(changeUrlAction).toHaveBeenCalledWith("m1", "u1", "low_search_ctr", "start", undefined);
+    fireEvent.click(within(perf).getByRole("button", { name: "Ignore" }));
+    const submit = within(perf).getAllByRole("button", { name: "Ignore" }).at(-1);
+    expect(submit.disabled).toBe(true);
+    fireEvent.change(within(perf).getByLabelText(/reason for ignoring/i), { target: { value: "Seasonal page" } });
+    fireEvent.click(submit);
+    await waitFor(() => expect(changeUrlAction).toHaveBeenLastCalledWith("m1", "u1", "low_search_ctr", "ignore", { reason: "Seasonal page" }));
+  });
+
+  it("a failed change is reported", async () => {
+    changeUrlAction.mockRejectedValue(new ScanError("This action is verified, so that change isn't possible.", 409));
+    renderPI();
+    const recs = (await screen.findByText(/recommended actions \(2\)/i)).closest("details");
+    const perf = within(recs).getByText("Few Google searchers click through").closest("details");
+    fireEvent.click(await within(perf).findByRole("button", { name: "Start" }));
+    await waitFor(() => expect(within(perf).getByRole("alert").textContent).toMatch(/isn't possible/));
+  });
+
+  it("viewers see status but no controls", async () => {
+    renderPI({ canRun: false });
+    const recs = (await screen.findByText(/recommended actions \(2\)/i)).closest("details");
+    await within(recs).findAllByText("Ready for verification");
+    expect(within(recs).queryByRole("button", { name: /start|mark fixed|ignore/i })).toBeNull();
+  });
+
+  it("shows the next action, the change since the last crawl, the timeline with evidence and labelled impact", async () => {
+    renderPI();
+    const sec = (await screen.findByText(/fix tracking and timeline/i)).closest("details");
+    within(sec).getByText(/next best action on this page/i);
+    within(sec).getByText(/since the previous crawl: improvement/i);
+    within(sec).getByText(/title: SEO → SEO audits in Leeds/i);
+    within(sec).getByText(/verification by page re-check: fixed/i);
+    within(sec).getByText(/“Dev ticket 42”/);
+    within(sec).getByText(/Observed on this page: 0 H1/);
+    within(sec).getByText("+10 (+100%)");
+    within(sec).getByText(/change period\) is left out/i);
+    within(sec).getByText(/not proof that the fix caused them/i);
+    within(sec).getByText(/Search Console isn't connected/);
+    within(sec).getByText("Waiting for data");
+  });
+
+  it("a recommendation already verified isn't shown as the most important problem", async () => {
+    getUrlOptimization.mockResolvedValue(OPT({ actions: [ACT({ status: "verified", tracked: true }),
+      ACT({ code: "missing_meta_description", issue: "Missing meta description", status: "new" })] }));
+    renderPI();
+    await waitFor(() => {
+      const top = screen.getByText(/most important problem/i).closest(".sp-po-action");
+      expect(within(top).queryByText("Few Google searchers click through")).toBeNull();
+      within(top).getByText("Missing meta description");
+    });
+  });
+
+  it("a fix-tracking load failure doesn't break the analysis", async () => {
+    getUrlOptimization.mockRejectedValue(new ScanError("URL optimization tracking is a Pro feature.", 402));
+    renderPI();
+    await screen.findByText(/most important problem/i);
+    await screen.findByText(/pro feature/i);
   });
 });

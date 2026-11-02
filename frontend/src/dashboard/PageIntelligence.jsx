@@ -7,7 +7,8 @@
 import React, { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { ArrowRight, Sparkles } from "lucide-react";
-import { analyzePageNow, generatePageSuggestions, getPageIntelligence, ScanError } from "../api.js";
+import { analyzePageNow, changeUrlAction, generatePageSuggestions, getPageIntelligence, getUrlOptimization, ScanError } from "../api.js";
+import { ActionBar, FixImpact, StatusPill, Timeline } from "./OptimizationParts.jsx";
 import { fmtDate } from "./ui.jsx";
 import { Button, Skeleton } from "../shared/spectrum.jsx";
 
@@ -26,6 +27,8 @@ export default function PageIntelligence({ monitorId, crawlUrlId, canRun, fallba
   const [err, setErr] = useState(null);
   const [busy, setBusy] = useState(null);
   const [actionErr, setActionErr] = useState(null);
+  const [opt, setOpt] = useState(null);       // the URL's optimization record (fix tracking)
+  const [optErr, setOptErr] = useState(null);
 
   useEffect(() => {
     let alive = true;
@@ -34,10 +37,16 @@ export default function PageIntelligence({ monitorId, crawlUrlId, canRun, fallba
       .catch((e) => { if (alive) setErr(msgOf(e, "Could not load the page analysis.")); });
     return () => { alive = false; };
   }, [monitorId, crawlUrlId]);
+  const loadOpt = () => getUrlOptimization(monitorId, crawlUrlId)
+    .then((r) => { setOpt(r); setOptErr(null); })
+    .catch((e) => setOptErr(msgOf(e, "Could not load fix tracking.")));
+  useEffect(() => { loadOpt(); }, [monitorId, crawlUrlId]);   // eslint-disable-line react-hooks/exhaustive-deps
+  const changeAction = async (code, op, extra) => setOpt(await changeUrlAction(monitorId, crawlUrlId, code, op, extra));
+  const actionFor = (code) => opt?.actions.find((x) => x.code === code);
 
   const analyze = async () => {
     setBusy("analyze"); setActionErr(null);
-    try { setD(await analyzePageNow(monitorId, crawlUrlId)); }
+    try { setD(await analyzePageNow(monitorId, crawlUrlId)); loadOpt(); }
     catch (e) { setActionErr(msgOf(e, "Could not analyse this page.")); }
     finally { setBusy(null); }
   };
@@ -49,7 +58,10 @@ export default function PageIntelligence({ monitorId, crawlUrlId, canRun, fallba
   };
 
   const a = d?.analysis;
-  const top = a?.summary?.top_issue;
+  // A recommendation a check has since verified (or the team ignored) is no longer the
+  // most important problem, even though the analysis predates that check.
+  const settled = (code) => ["verified", "ignored"].includes(actionFor(code)?.status);
+  const top = a ? (opt ? a.recommendations.find((r) => !settled(r.code)) || null : a.summary?.top_issue) : null;
   return (
     <div className="sp-pi">
       {err && <p className="sp-si-job-error">{err}</p>}
@@ -109,7 +121,8 @@ export default function PageIntelligence({ monitorId, crawlUrlId, canRun, fallba
           <details className="sp-pi-sec" open>
             <summary>Recommended actions ({a.recommendations.length})</summary>
             {!a.recommendations.length ? <p className="sp-si-muted">Nothing to change based on the evidence available.</p>
-              : a.recommendations.map((r) => <RecCard key={r.code} r={r} />)}
+              : a.recommendations.map((r) => <RecCard key={r.code} r={r} act={actionFor(r.code)} canRun={canRun}
+                                                      onChange={(op, extra) => changeAction(r.code, op, extra)} />)}
           </details>
         </>
       )}
@@ -128,6 +141,9 @@ export default function PageIntelligence({ monitorId, crawlUrlId, canRun, fallba
             ) : <p className="sp-si-muted">Ask an admin or member to generate suggestions.</p>}
         </details>
       )}
+
+      {opt && <FixTracking opt={opt} />}
+      {optErr && !opt && <p className="sp-si-muted">{optErr}</p>}
 
       {d && (d.history.length > 0 || d.verification.length > 0) && (
         <details className="sp-pi-sec">
@@ -186,11 +202,12 @@ function Comparison({ c }) {
   );
 }
 
-function RecCard({ r }) {
+function RecCard({ r, act, canRun, onChange }) {
   return (
     <details className="sp-pi-rec">
       <summary>
         <span className={`sp-si-pri pri-${r.priority}`}>{PRIORITY[r.priority]}</span> <strong>{r.issue}</strong>
+        {act && <> <StatusPill status={act.status} /></>}
         <span className="sp-si-muted"> · {r.confidence} confidence · {EFFORT[r.effort]} · {BENEFIT[r.benefit_category]}</span>
       </summary>
       <dl className="sp-si-kv">
@@ -207,6 +224,7 @@ function RecCard({ r }) {
         {r.action_center_finding && <><dt>Action Center</dt><dd>Tracked as “{r.action_center_finding.title}”.{" "}
           <Link className="sp-si-link" to="/app/action-center">Open</Link></dd></>}
       </dl>
+      {act && <ActionBar a={act} canRun={canRun} onChange={onChange} />}
     </details>
   );
 }
@@ -242,5 +260,42 @@ function Suggestions({ s }) {
       {s.limitations && <p className="sp-si-muted">Limitations: {s.limitations}</p>}
       <p className="sp-si-muted">Generated {fmtDate(s.generated_at)}. Text in [brackets] needs facts only you can supply.</p>
     </div>
+  );
+}
+
+const CHANGE = { improvement: "Improvement", regression: "Regression", unrelated_change: "Changed, no issue affected",
+  no_change: "No meaningful change", cannot_evaluate: "Can't compare", first_crawl: "First crawl" };
+
+function FixTracking({ opt }) {
+  const n = opt.next_action;
+  return (
+    <details className="sp-pi-sec">
+      <summary>Fix tracking and timeline</summary>
+      {n ? (
+        <div className="sp-opt-nextbox"><span className="sp-si-muted">Next best action on this page:</span> <strong>{n.issue}</strong>
+          <div className="sp-si-muted">{n.reasons.join(" ")}</div></div>
+      ) : <p className="sp-si-muted">No open action needs starting on this page.</p>}
+      {opt.held_back.length > 0 && <ul className="sp-po-why">{opt.held_back.map((h) => <li key={h.code}>{h.issue}: {h.reason}</li>)}</ul>}
+      {opt.change && (
+        <>
+          <h4>Since the previous crawl: {CHANGE[opt.change.classification]}</h4>
+          <p className="sp-si-muted">{opt.change.text}</p>
+          {opt.change.changes.length > 0 && <ul className="sp-po-why">{opt.change.changes.map((c) => (
+            <li key={c.field}>{c.label}: {String(c.before ?? "none")} → {String(c.after ?? "none")}</li>))}</ul>}
+          {opt.change.new_issues.length > 0 && <p>New: {opt.change.new_issues.map((x) => x.issue).join(", ")}</p>}
+          {opt.change.resolved_issues.length > 0 && <p>No longer found: {opt.change.resolved_issues.map((x) => x.issue).join(", ")}</p>}
+        </>
+      )}
+      {opt.earlier_actions.length > 0 && (
+        <><h4>Tracked actions no longer recommended</h4>
+          <ul className="sp-po-why">{opt.earlier_actions.map((x) => <li key={x.code}>{x.issue} — <StatusPill status={x.status} /></li>)}</ul></>
+      )}
+      {opt.impact.length > 0 && (
+        <><h4>Performance before and after</h4>
+          {opt.impact.map((x) => <div key={x.code}><strong>{x.issue}</strong><FixImpact cmp={x.comparison} /></div>)}</>
+      )}
+      <h4>Activity</h4>
+      <Timeline items={opt.timeline} />
+    </details>
   );
 }

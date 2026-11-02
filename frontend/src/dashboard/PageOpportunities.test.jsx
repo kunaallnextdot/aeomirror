@@ -13,7 +13,8 @@ vi.mock("../api.js", () => ({
   refreshPageOpportunities: vi.fn(), cancelPageOpportunitiesRun: vi.fn(),
   getSearchConsoleStatus: vi.fn(), connectSearchConsole: vi.fn(), listSearchConsoleSites: vi.fn(),
   selectSearchConsoleSite: vi.fn(), getPageIntelligence: vi.fn(), analyzePageNow: vi.fn(),
-  generatePageSuggestions: vi.fn(),
+  generatePageSuggestions: vi.fn(), getUrlOptimization: vi.fn(), changeUrlAction: vi.fn(),
+  getOptimization: vi.fn(), listOptimizationUrls: vi.fn(), cancelOptimizationRechecks: vi.fn(),
   listMonitors: vi.fn(), getSiteIntelligence: vi.fn(), createCrawlJob: vi.fn(), cancelCrawlJob: vi.fn(),
   listCrawlUrls: vi.fn(), getCrawlUrl: vi.fn(), compareSiteIntelligence: vi.fn(), listCrawlTemplates: vi.fn(),
   getSiteProfile: vi.fn(), listUrlFindings: vi.fn(), updateFindingStatus: vi.fn(),
@@ -28,7 +29,7 @@ vi.mock("../auth/AuthContext.jsx", () => ({ useAuth: () => ({ hasPermission: (p)
 import {
   getPageOpportunities, listPageOpportunities, getPageOpportunity, refreshPageOpportunities,
   getSearchConsoleStatus, connectSearchConsole, listSearchConsoleSites, selectSearchConsoleSite,
-  listMonitors, getSiteIntelligence, getPageIntelligence, ScanError,
+  listMonitors, getSiteIntelligence, getPageIntelligence, getUrlOptimization, ScanError,
 } from "../api.js";
 import PageOpportunities, { PO_POLL_MS } from "./PageOpportunities.jsx";
 import SiteIntelligence from "./SiteIntelligence.jsx";
@@ -103,6 +104,7 @@ beforeEach(() => {
   getSearchConsoleStatus.mockResolvedValue({ status: "not_connected" });
   getPageIntelligence.mockResolvedValue({ status: "not_analyzed", analysis: null, history: [], verification: [],
                                           suggestions: null, ai_suggestions_available: false });
+  getUrlOptimization.mockRejectedValue(new ScanError("Page not found.", 404));
 });
 afterEach(() => { vi.useRealTimers(); });
 

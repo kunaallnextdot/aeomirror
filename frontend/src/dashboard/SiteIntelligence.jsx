@@ -26,6 +26,7 @@ import {
 } from "../api.js";
 import { fmtDate } from "./ui.jsx";
 import PageOpportunities from "./PageOpportunities.jsx";
+import Optimization from "./Optimization.jsx";
 import { useUpgrade } from "./UpgradeModal.jsx";
 import { useAuth } from "../auth/AuthContext.jsx";
 import { Shell, Cell, Button, Skeleton } from "../shared/spectrum.jsx";
@@ -172,10 +173,12 @@ export default function SiteIntelligence({ monitorId, onSelectMonitor, onOpenMon
 
       {known && monitorId && (
         <div className="sp-si-viewtabs" role="tablist" aria-label="Site Intelligence view">
-          <button type="button" role="tab" aria-selected={view !== "opportunities"} onClick={() => onChangeView("health")}>
+          <button type="button" role="tab" aria-selected={view !== "opportunities" && view !== "optimization"} onClick={() => onChangeView("health")}>
             Site health</button>
           <button type="button" role="tab" aria-selected={view === "opportunities"} onClick={() => onChangeView("opportunities")}>
             Page opportunities</button>
+          <button type="button" role="tab" aria-selected={view === "optimization"} onClick={() => onChangeView("optimization")}>
+            Optimization</button>
         </div>
       )}
 
@@ -184,7 +187,12 @@ export default function SiteIntelligence({ monitorId, onSelectMonitor, onOpenMon
                            onGated={onGated} onShowSiteHealth={() => onChangeView("health")} gscFlash={gscFlash} />
       )}
 
-      {view !== "opportunities" && <>
+      {known && monitorId && view === "optimization" && (
+        <Optimization key={monitorId} monitorId={monitorId} canRun={canRun} onGated={onGated}
+                      onShowOpportunities={() => onChangeView("opportunities")} />
+      )}
+
+      {view !== "opportunities" && view !== "optimization" && <>
       {known && data === undefined && <><Skeleton h={120} /><div style={{ height: 14 }} /><Skeleton h={240} /></>}
 
       {known && data && !data.latest_job && (

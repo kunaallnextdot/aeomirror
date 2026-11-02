@@ -13,7 +13,7 @@ from app.api import (
     routes_admin, routes_answer_simulator, routes_answer_tracking, routes_auth, routes_billing,
     routes_business_impact, routes_contact, routes_dashboard, routes_digest, routes_integrations,
     routes_misc, routes_monitors, routes_org, routes_public, routes_reports, routes_scan,
-    routes_page_intelligence, routes_page_opportunities, routes_search_console, routes_tracking, routes_url_intelligence,
+    routes_optimization, routes_page_intelligence, routes_page_opportunities, routes_search_console, routes_tracking, routes_url_intelligence,
 )
 from app.config import settings
 from app.core.observability import (
@@ -92,6 +92,7 @@ app.include_router(routes_business_impact.router)   # /business-impact/* (AI Bus
 app.include_router(routes_url_intelligence.router)  # /monitors/{id}/crawl-jobs/* (URL Intelligence + Expert Action Center)
 app.include_router(routes_page_opportunities.router)  # /monitors/{id}/page-opportunities/*
 app.include_router(routes_page_intelligence.router)   # /monitors/{id}/page-intelligence/*
+app.include_router(routes_optimization.router)   # /monitors/{id}/optimization/*
 app.include_router(routes_search_console.router)      # /integrations/search-console/* (read-only)
 
 # NOTE: schema creation is intentionally NOT done at startup. Alembic migrations

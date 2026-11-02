@@ -21,7 +21,7 @@ from sqlalchemy.orm import Session
 from app.config import settings
 from app.db.models import (
     GA4_STATUS_ACTIVE, JOB_COMPLETED, JOB_FAILED, JOB_KIND_BULK_SCAN, JOB_KIND_GA4_SYNC,
-    JOB_KIND_GSC_SYNC, JOB_KIND_PAGE_VALUE, JOB_KIND_URL_CRAWL, JOB_PENDING, JOB_RUNNING, MONITOR_ACTIVE, GoogleAnalyticsConnection,
+    JOB_KIND_GSC_SYNC, JOB_KIND_PAGE_VALUE, JOB_KIND_URL_CRAWL, JOB_KIND_URL_RECHECK, JOB_PENDING, JOB_RUNNING, MONITOR_ACTIVE, GoogleAnalyticsConnection,
     Monitor, ScheduledJob,
 )
 
@@ -301,6 +301,60 @@ def enqueue_page_value_chunk(db: Session, run_id: str, org_id: str | None,
     return job
 
 
+def has_active_url_recheck_job(db: Session, monitor_id: str) -> ScheduledJob | None:
+    return (db.query(ScheduledJob)
+            .filter(ScheduledJob.recheck_monitor_id == monitor_id,
+                    ScheduledJob.status.in_((JOB_PENDING, JOB_RUNNING)))
+            .first())
+
+
+def enqueue_url_recheck(db: Session, monitor_id: str, org_id: str | None, now: datetime | None = None,
+                        delay_seconds: int = 0) -> ScheduledJob:
+    """Queue a bounded batch of a website's due fix re-checks — at most one active batch
+    per website (partial unique index on recheck_monitor_id), deduplicated like the others."""
+    existing = has_active_url_recheck_job(db, monitor_id)
+    if existing:
+        return existing
+    now = now or datetime.utcnow()
+    run_after = now + timedelta(seconds=delay_seconds)
+    job = ScheduledJob(
+        recheck_monitor_id=monitor_id, organization_id=org_id,
+        kind=JOB_KIND_URL_RECHECK, status=JOB_PENDING, attempts=0,
+        max_attempts=settings.monitor_job_max_attempts,
+        scheduled_for=now, run_after=run_after, created_at=now, updated_at=now,
+    )
+    db.add(job)
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        return has_active_url_recheck_job(db, monitor_id)
+    db.refresh(job)
+    return job
+
+
+def enqueue_due_url_rechecks(db: Session, now: datetime | None = None) -> int:
+    """One re-check batch per website with a due single-page check or performance
+    snapshot (Pro organizations only — the data and checks are Pro features)."""
+    from sqlalchemy import or_
+    from app.billing import entitlements
+    from app.db.models import ACTION_IGNORED, UrlAction
+    now = now or datetime.utcnow()
+    due = (db.query(UrlAction.monitor_id, UrlAction.organization_id)
+           .filter(UrlAction.status != ACTION_IGNORED,
+                   or_(UrlAction.next_check_at <= now, UrlAction.next_snapshot_at <= now))
+           .distinct().all())
+    created, pro = 0, {}
+    for monitor_id, org_id in due:
+        if org_id not in pro:
+            pro[org_id] = entitlements.is_pro(db, org_id)
+        if not pro[org_id] or has_active_url_recheck_job(db, monitor_id):
+            continue
+        enqueue_url_recheck(db, monitor_id, org_id, now)
+        created += 1
+    return created
+
+
 def enqueue_due_gsc_syncs(db: Session, now: datetime | None = None) -> int:
     """Search Console twin of enqueue_due_ga4_syncs (shares connection_id and its
     one-active-job-per-connection index; connection ids are unique across both)."""
@@ -357,7 +411,7 @@ def requeue_stalled_crawl_chunks(db: Session, now: datetime | None = None) -> in
     now = now or datetime.utcnow()
     cutoff = now - timedelta(minutes=STALLED_CRAWL_CHUNK_MINUTES)
     stale = (db.query(ScheduledJob)
-             .filter(ScheduledJob.kind.in_((JOB_KIND_URL_CRAWL, JOB_KIND_PAGE_VALUE)),
+             .filter(ScheduledJob.kind.in_((JOB_KIND_URL_CRAWL, JOB_KIND_PAGE_VALUE, JOB_KIND_URL_RECHECK)),
                      ScheduledJob.status == JOB_RUNNING, ScheduledJob.started_at < cutoff)
              .all())
     for job in stale:
@@ -372,7 +426,7 @@ def requeue_stalled_crawl_chunks(db: Session, now: datetime | None = None) -> in
                 run.status, run.finished_at = PV_FAILED, now
                 run.error = "Scoring could not be completed. Please try again."
                 db.commit()
-        elif job.status == JOB_FAILED:
+        elif job.status == JOB_FAILED and job.kind == JOB_KIND_URL_CRAWL:
             crawl = db.get(CrawlJob, job.crawl_job_id)
             if crawl and crawl.phase not in ("completed", "failed", "cancelled"):
                 crawl.phase = CRAWL_FAILED

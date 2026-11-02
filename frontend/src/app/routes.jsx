@@ -171,13 +171,13 @@ export function SiteIntelligenceRoute() {
   const { monitorId } = useParams();
   const navigate = useNavigate();
   const [params, setParams] = useSearchParams();
-  const view = params.get("view") === "opportunities" ? "opportunities" : "health";
+  const view = ["opportunities", "optimization"].includes(params.get("view")) ? params.get("view") : "health";
   // ?gsc=connected|error&reason=… is where the Search Console OAuth callback lands.
   const gsc = params.get("gsc");
   const gscFlash = gsc ? { status: gsc, reason: params.get("reason") } : null;
-  const viewQs = view === "opportunities" ? "?view=opportunities" : "";
+  const viewQs = view !== "health" ? `?view=${view}` : "";
   return <SiteIntelligence key={monitorId || "pick"} monitorId={monitorId || null} view={view} gscFlash={gscFlash}
-                           onChangeView={(v) => setParams(v === "opportunities" ? { view: v } : {}, { replace: true })}
+                           onChangeView={(v) => setParams(v !== "health" ? { view: v } : {}, { replace: true })}
                            onSelectMonitor={(id, opts) => navigate(
                              `/app/site-intelligence/${encodeURIComponent(id)}${opts?.replace && params.toString() ? `?${params}` : viewQs}`, opts)}
                            onOpenMonitor={(id) => navigate(`/app/monitoring/${encodeURIComponent(id)}`)} />;

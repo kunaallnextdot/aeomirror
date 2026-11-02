@@ -670,6 +670,27 @@ export function generatePageSuggestions(monitorId, crawlUrlId) {
   return request(`${_pi(monitorId, crawlUrlId)}/suggestions`, { method: "POST" });
 }
 
+/* URL-wise optimization (app/api/routes_optimization.py): the overview, important URLs,
+   one URL's unified record and its fix lifecycle. Marking a fix ready only queues a check. */
+const _opt = (monitorId) => `/monitors/${encodeURIComponent(monitorId)}/optimization`;
+export function getOptimization(monitorId) {
+  return request(_opt(monitorId));
+}
+export function listOptimizationUrls(monitorId, params) {
+  return request(`${_opt(monitorId)}/urls${_qs(params)}`);
+}
+export function getUrlOptimization(monitorId, crawlUrlId) {
+  return request(`${_opt(monitorId)}/urls/${encodeURIComponent(crawlUrlId)}`);
+}
+export function changeUrlAction(monitorId, crawlUrlId, code, op, extra = {}) {
+  return request(`${_opt(monitorId)}/urls/${encodeURIComponent(crawlUrlId)}/actions/${encodeURIComponent(code)}`, {
+    method: "POST", body: JSON.stringify({ op, ...extra }),
+  });
+}
+export function cancelOptimizationRechecks(monitorId) {
+  return request(`${_opt(monitorId)}/rechecks/cancel`, { method: "POST" });
+}
+
 /* Google Search Console (read-only, webmasters.readonly) — a separate connection from
    GA4 (app/api/routes_search_console.py). */
 export function getSearchConsoleStatus() {

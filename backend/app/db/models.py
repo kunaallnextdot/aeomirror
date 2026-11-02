@@ -289,6 +289,7 @@ JOB_KIND_GA4_SYNC = "ga4_sync"
 JOB_KIND_URL_CRAWL = "url_crawl"   # one bounded chunk of a CrawlJob; re-enqueues itself
 JOB_KIND_GSC_SYNC = "gsc_sync"     # connection_id -> SearchConsoleConnection
 JOB_KIND_PAGE_VALUE = "page_value"  # one bounded chunk of a PageValueRun; re-enqueues itself
+JOB_KIND_URL_RECHECK = "url_recheck"  # due fix re-checks of one website (recheck_monitor_id); bounded
 
 ALERT_OPEN = "open"
 ALERT_ACK = "acknowledged"
@@ -358,6 +359,11 @@ class ScheduledJob(Base):
         Index("uq_scheduled_jobs_active_per_page_value_run", "page_value_run_id", unique=True,
               sqlite_where=text("status IN ('pending','running') AND page_value_run_id IS NOT NULL"),
               postgresql_where=text("status IN ('pending','running') AND page_value_run_id IS NOT NULL")),
+        # And for url_recheck jobs: at most one active re-check batch per website. Its own
+        # column, so a re-check never blocks (or is blocked by) the monitor's scan job.
+        Index("uq_scheduled_jobs_active_per_recheck_monitor", "recheck_monitor_id", unique=True,
+              sqlite_where=text("status IN ('pending','running') AND recheck_monitor_id IS NOT NULL"),
+              postgresql_where=text("status IN ('pending','running') AND recheck_monitor_id IS NOT NULL")),
     )
     id = Column(String, primary_key=True, default=_uuid)
     # Monitor jobs reference a monitor; site_scan jobs reference a scan instead;
@@ -368,6 +374,7 @@ class ScheduledJob(Base):
     connection_id = Column(String, index=True, nullable=True)    # set for kind="ga4_sync"
     crawl_job_id = Column(String, index=True, nullable=True)     # set for kind="url_crawl"
     page_value_run_id = Column(String, index=True, nullable=True)  # set for kind="page_value"
+    recheck_monitor_id = Column(String, index=True, nullable=True)  # set for kind="url_recheck"
     organization_id = Column(String, index=True, nullable=True)
     kind = Column(String, nullable=False, default="scheduled")   # scheduled|manual|site_scan|ga4_sync
     status = Column(String, nullable=False, default=JOB_PENDING)
@@ -1612,3 +1619,125 @@ class PageValueScore(Base):
     priority = Column(String, nullable=True)        # high | medium | low | none | not_evaluated
     priority_rank = Column(Integer, nullable=False, default=0)
     created_at = Column(DateTime, default=datetime.utcnow)
+
+
+# ==================== URL-wise optimization (fix lifecycle + verification) ====================
+# One UrlAction per (website, page, recommendation code), created only when a user acts
+# on a Page Intelligence recommendation or a check verifies it. Untouched issues keep a
+# status derived from the page's analysis history ("new" / "needs attention"), so no
+# source data is copied: the recommendation itself always comes from the latest
+# PageAnalysis, and the action row holds only lifecycle state.
+ACTION_NEW = "new"
+ACTION_NEEDS_ATTENTION = "needs_attention"
+ACTION_IN_PROGRESS = "in_progress"
+ACTION_READY = "ready_for_verification"
+ACTION_VERIFIED = "verified"
+ACTION_PARTIAL = "partially_fixed"
+ACTION_NOT_FIXED = "not_fixed"
+ACTION_REOPENED = "reopened"
+ACTION_IGNORED = "ignored"
+ACTION_STATUSES = (ACTION_NEW, ACTION_NEEDS_ATTENTION, ACTION_IN_PROGRESS, ACTION_READY, ACTION_VERIFIED,
+                   ACTION_PARTIAL, ACTION_NOT_FIXED, ACTION_REOPENED, ACTION_IGNORED)
+# Verification outcomes: only ever the result of re-running the deterministic checks on
+# fetched or crawled evidence. A score change never produces one.
+RESULT_FIXED = "fixed"
+RESULT_PARTIAL = "partially_fixed"
+RESULT_NOT_FIXED = "not_fixed"
+RESULT_UNABLE = "unable_to_verify"
+
+
+class UrlAction(Base):
+    __tablename__ = "url_actions"
+    __table_args__ = (
+        Index("uq_url_actions_page_code", "monitor_id", "normalized_key", "code", unique=True),
+        Index("ix_url_actions_monitor_status", "monitor_id", "status"),
+        Index("ix_url_actions_due", "next_check_at"),
+        Index("ix_url_actions_snapshot_due", "next_snapshot_at"),
+    )
+    id = Column(String, primary_key=True, default=_uuid)
+    organization_id = Column(String, index=True, nullable=False)
+    monitor_id = Column(String, nullable=False)
+    normalized_key = Column(String, nullable=False)
+    url = Column(String, nullable=False)
+    code = Column(String, nullable=False)                 # Page Intelligence recommendation code
+    issue = Column(String, nullable=False)                # its title when the action was created
+    priority = Column(String, nullable=True)              # its priority when last seen
+    page_type = Column(String, nullable=True)             # business page type the checks ran with
+    status = Column(String, nullable=False, default=ACTION_NEW)
+    ignored_reason = Column(String, nullable=True)
+    # The "before": the relevant evidence of the crawl the issue was found in, kept so a
+    # later verification is compared with what was actually observed then.
+    baseline_crawl_job_id = Column(String, nullable=True)
+    baseline_evidence = Column(JSON, nullable=True)
+    baseline_observed = Column(String, nullable=True)
+    rules_version = Column(String, nullable=True)         # Page Intelligence RULES_VERSION of the baseline
+    engine_version = Column(String, nullable=True)        # crawl engine version of the baseline
+    work_started_at = Column(DateTime, nullable=True)     # first moved to in progress / ready
+    ready_at = Column(DateTime, nullable=True)
+    verified_at = Column(DateTime, nullable=True)
+    last_result = Column(String, nullable=True)           # RESULT_* of the latest check
+    last_checked_at = Column(DateTime, nullable=True)
+    last_check_method = Column(String, nullable=True)     # recrawl | crawl
+    check_error = Column(String, nullable=True)           # why the latest check couldn't verify
+    unable_count = Column(Integer, nullable=False, default=0)       # consecutive unable-to-verify
+    not_fixed_count = Column(Integer, nullable=False, default=0)    # consecutive not-fixed results
+    not_fixed_fingerprint = Column(String, nullable=True)  # page content when last found not fixed
+    # Scheduling: when the next single-page re-check is due (NULL = none scheduled) and
+    # the order due checks run in (business value x issue priority; requests first).
+    next_check_at = Column(DateTime, nullable=True)
+    check_priority = Column(Float, nullable=False, default=0.0)
+    recheck_requested_at = Column(DateTime, nullable=True)
+    next_snapshot_at = Column(DateTime, nullable=True)    # when after-fix performance is next looked at
+    created_by_user_id = Column(String, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow)
+
+
+class UrlActionEvent(Base):
+    """The activity timeline of one page's actions: user changes and notes, every
+    verification with its before-and-after evidence, reopenings, rule-version
+    re-baselines and completed performance snapshots. Append-only."""
+    __tablename__ = "url_action_events"
+    __table_args__ = (
+        Index("ix_url_action_events_action", "action_id", "created_at"),
+        Index("ix_url_action_events_page", "monitor_id", "normalized_key", "created_at"),
+        Index("ix_url_action_events_org_kind", "organization_id", "kind", "created_at"),
+    )
+    id = Column(String, primary_key=True, default=_uuid)
+    organization_id = Column(String, index=True, nullable=False)
+    monitor_id = Column(String, nullable=False)
+    normalized_key = Column(String, nullable=False)
+    action_id = Column(String, nullable=True)
+    code = Column(String, nullable=True)
+    # status | note | recheck_requested | recheck_cancelled | verification | rules_changed | snapshot
+    kind = Column(String, nullable=False)
+    from_status = Column(String, nullable=True)
+    to_status = Column(String, nullable=True)
+    note = Column(Text, nullable=True)
+    detail = Column(JSON, nullable=True)
+    user_id = Column(String, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class UrlPerformanceSnapshot(Base):
+    """One source's measured performance for one action's page over one dated window,
+    before or after the fix. Windows are fixed-length and exclude the change period;
+    `status` says whether the window is complete, still pending (not over yet, or within
+    the source's reporting delay) or unavailable (with the reason)."""
+    __tablename__ = "url_performance_snapshots"
+    __table_args__ = (
+        Index("uq_url_perf_snapshot", "action_id", "period", "source", unique=True),
+    )
+    id = Column(String, primary_key=True, default=_uuid)
+    organization_id = Column(String, index=True, nullable=False)
+    monitor_id = Column(String, nullable=False)
+    action_id = Column(String, nullable=False)
+    normalized_key = Column(String, nullable=False)
+    period = Column(String, nullable=False)          # before | after
+    source = Column(String, nullable=False)          # ga4 | first_party | gsc | answer_tracking
+    window_start = Column(String, nullable=True)     # YYYY-MM-DD inclusive
+    window_end = Column(String, nullable=True)
+    status = Column(String, nullable=False)          # complete | pending | unavailable
+    metrics = Column(JSON, nullable=True)
+    reason = Column(String, nullable=True)
+    captured_at = Column(DateTime, default=datetime.utcnow)

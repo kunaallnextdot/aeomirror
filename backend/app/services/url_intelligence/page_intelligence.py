@@ -913,6 +913,15 @@ def run_analysis_chunk(db: Session, run: PageValueRun, chunk_size: int = CHUNK_S
         run.analysis_status = "completed"
     run.updated_at = datetime.utcnow()
     db.commit()
+    if run.analysis_status == "completed":
+        # The new crawl is evidence for every tracked fix: verify / reopen / re-baseline.
+        from app.services.url_intelligence import optimization
+        try:
+            optimization.sync_after_analysis(db, run)
+        except Exception:   # noqa: BLE001 — never turns a completed analysis into a failure
+            db.rollback()
+            import logging
+            logging.getLogger("app.page_intelligence").warning("optimization sync failed for run %s", run.id)
 
 
 # --------------------------------------------------------------------------- read models
