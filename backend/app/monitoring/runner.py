@@ -188,7 +188,7 @@ def _process_page_value_job(db: Session, job) -> None:
     try:
         page_value.run_chunk(db, run)
         scheduler.complete_job(db, job)
-        if not page_value.is_terminal(run.status):
+        if page_value.needs_work(run):
             scheduler.enqueue_page_value_chunk(db, run.id, run.organization_id)
     except Exception as e:
         db.rollback()
@@ -196,7 +196,12 @@ def _process_page_value_job(db: Session, job) -> None:
         scheduler.fail_job(db, job, e)
         if job.status == JOB_FAILED:
             run = db.get(PageValueRun, job.page_value_run_id)
-            if run and run.status in PV_ACTIVE:
+            if run and run.status == "completed" and run.analysis_status in page_value.ANALYSIS_ACTIVE:
+                # Scores are complete and stay; earlier page analyses are kept.
+                run.analysis_status = "failed"
+                run.analysis_error = "Page analysis stopped early. Already analysed pages are kept."
+                db.commit()
+            elif run and run.status in PV_ACTIVE:
                 run.status, run.finished_at = PV_FAILED, datetime.utcnow()
                 run.error = "Scoring could not be completed. Please try again."
                 db.commit()

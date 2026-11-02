@@ -12,7 +12,8 @@ vi.mock("../api.js", () => ({
   getPageOpportunities: vi.fn(), listPageOpportunities: vi.fn(), getPageOpportunity: vi.fn(),
   refreshPageOpportunities: vi.fn(), cancelPageOpportunitiesRun: vi.fn(),
   getSearchConsoleStatus: vi.fn(), connectSearchConsole: vi.fn(), listSearchConsoleSites: vi.fn(),
-  selectSearchConsoleSite: vi.fn(),
+  selectSearchConsoleSite: vi.fn(), getPageIntelligence: vi.fn(), analyzePageNow: vi.fn(),
+  generatePageSuggestions: vi.fn(),
   listMonitors: vi.fn(), getSiteIntelligence: vi.fn(), createCrawlJob: vi.fn(), cancelCrawlJob: vi.fn(),
   listCrawlUrls: vi.fn(), getCrawlUrl: vi.fn(), compareSiteIntelligence: vi.fn(), listCrawlTemplates: vi.fn(),
   getSiteProfile: vi.fn(), listUrlFindings: vi.fn(), updateFindingStatus: vi.fn(),
@@ -27,7 +28,7 @@ vi.mock("../auth/AuthContext.jsx", () => ({ useAuth: () => ({ hasPermission: (p)
 import {
   getPageOpportunities, listPageOpportunities, getPageOpportunity, refreshPageOpportunities,
   getSearchConsoleStatus, connectSearchConsole, listSearchConsoleSites, selectSearchConsoleSite,
-  listMonitors, getSiteIntelligence, ScanError,
+  listMonitors, getSiteIntelligence, getPageIntelligence, ScanError,
 } from "../api.js";
 import PageOpportunities, { PO_POLL_MS } from "./PageOpportunities.jsx";
 import SiteIntelligence from "./SiteIntelligence.jsx";
@@ -100,6 +101,8 @@ beforeEach(() => {
   listPageOpportunities.mockResolvedValue(LIST);
   getPageOpportunity.mockResolvedValue(DETAIL);
   getSearchConsoleStatus.mockResolvedValue({ status: "not_connected" });
+  getPageIntelligence.mockResolvedValue({ status: "not_analyzed", analysis: null, history: [], verification: [],
+                                          suggestions: null, ai_suggestions_available: false });
 });
 afterEach(() => { vi.useRealTimers(); });
 
@@ -229,7 +232,7 @@ describe("URL detail", () => {
   it("explains why the page matters, its classification, data, issues and next action", async () => {
     renderPO();
     fireEvent.click(await screen.findByText("Widget"));
-    const dlg = await screen.findByRole("dialog", { name: /page opportunity/i });
+    const dlg = await screen.findByRole("dialog", { name: /page intelligence/i });
     await within(dlg).findByText(/recommended next action/i);
     within(dlg).getByText("Missing meta description — 3 of 4 product pages");
     expect(within(dlg).getByRole("link", { name: /open in action center/i }).getAttribute("href")).toBe("/app/action-center");

@@ -20,6 +20,7 @@ import {
 } from "../api.js";
 import { fmtDate } from "./ui.jsx";
 import { Cell, Button, Skeleton } from "../shared/spectrum.jsx";
+import PageIntelligence from "./PageIntelligence.jsx";
 import "./PageOpportunities.spectrum.css";
 
 export const PO_POLL_MS = 5000;
@@ -140,7 +141,7 @@ export default function PageOpportunities({ monitorId, canRun, canManage, onGate
           <Header results={results} run={run} canRun={canRun} busy={busy} onScore={score} />
           <Kpis counts={results.counts} />
           <Sources sources={results.sources} monitorId={monitorId} canManage={canManage} onGated={onGated} />
-          <PageTable monitorId={monitorId} runId={results.run.id} sources={results.sources} />
+          <PageTable monitorId={monitorId} runId={results.run.id} sources={results.sources} canRun={canRun} />
           <p className="sp-po-foot"><Info size={12} /> {data.definitions.score} {data.definitions.search_console}</p>
         </>
       )}
@@ -340,7 +341,7 @@ function SearchConsolePanel({ monitorId, canManage, onGated }) {
 
 /* ---------------------------------------------------------------- table */
 
-function PageTable({ monitorId, runId, sources }) {
+function PageTable({ monitorId, runId, sources, canRun }) {
   const [qInput, setQInput] = useState("");
   const [q, setQ] = useState("");
   const [type, setType] = useState("");
@@ -443,7 +444,8 @@ function PageTable({ monitorId, runId, sources }) {
           )}
         </>
       )}
-      {openId && <OpportunityDetail monitorId={monitorId} crawlUrlId={openId} onClose={() => setOpenId(null)} />}
+      {openId && <OpportunityDetail monitorId={monitorId} crawlUrlId={openId} canRun={canRun}
+                                    onClose={() => setOpenId(null)} />}
     </Cell>
   );
 }
@@ -455,7 +457,7 @@ export function money(v, currency) {
 
 /* ---------------------------------------------------------------- detail */
 
-function OpportunityDetail({ monitorId, crawlUrlId, onClose }) {
+function OpportunityDetail({ monitorId, crawlUrlId, canRun, onClose }) {
   const [d, setD] = useState(null);
   const [err, setErr] = useState(null);
   const closeRef = useRef(null);
@@ -476,10 +478,10 @@ function OpportunityDetail({ monitorId, crawlUrlId, onClose }) {
   const ctr = d && d.gsc_impressions ? ((d.gsc_clicks || 0) / d.gsc_impressions) * 100 : null;
   return createPortal(
     <div className="sp-si-drawer-backdrop" onClick={onClose}>
-      <aside className="sp-si-drawer sp-po-drawer" role="dialog" aria-modal="true" aria-label="Page opportunity"
+      <aside className="sp-si-drawer sp-po-drawer" role="dialog" aria-modal="true" aria-label="Page intelligence"
              onClick={(e) => e.stopPropagation()}>
         <div className="sp-si-drawer-head">
-          <h2>Page opportunity</h2>
+          <h2>Page intelligence</h2>
           <button ref={closeRef} type="button" className="sp-si-close" aria-label="Close" onClick={onClose}><X size={16} /></button>
         </div>
         {err && <p className="sp-si-job-error">{err}</p>}
@@ -488,16 +490,9 @@ function OpportunityDetail({ monitorId, crawlUrlId, onClose }) {
           <>
             <a className="sp-si-detail-url" href={d.url} target="_blank" rel="noreferrer">{d.url} <ExternalLink size={12} /></a>
 
-            <div className="sp-po-action">
-              <div className="sp-po-action-k">Recommended next action</div>
-              <strong>{d.recommended_action.title}</strong>
-              {d.recommended_action.action && <p>{d.recommended_action.action}</p>}
-              <p className="sp-si-muted">Evidence: {d.recommended_action.evidence}</p>
-              {d.recommended_action.kind === "finding" && (
-                <Link className="sp-si-link" to="/app/action-center">Open in Action Center <ArrowRight size={12} /></Link>
-              )}
-            </div>
-
+            <PageIntelligence monitorId={monitorId} crawlUrlId={crawlUrlId} canRun={canRun}
+                              fallbackAction={d.recommended_action}>
+              {(analysed) => <>
             <h3>Why this page matters</h3>
             <ul className="sp-po-why">{d.why_it_matters.map((w) => <li key={w}>{w}</li>)}</ul>
             <p className="sp-po-score">Business Value Score <strong>{Math.round(d.score)}</strong> / 100 ·
@@ -532,7 +527,7 @@ function OpportunityDetail({ monitorId, crawlUrlId, onClose }) {
             )}
             <p className="sp-si-muted">Google Search data ({d.sources.gsc?.window?.start || "—"} to {d.sources.gsc?.window?.end || "—"}) — not AI-assistant prompts.</p>
 
-            <h3>Issues on this page</h3>
+            {!analysed && <><h3>Issues on this page</h3>
             {!d.issues.length && !d.data_signals.length ? <p className="sp-si-muted">No checked issues.</p> : (
               <ul className="sp-si-issues">
                 {d.issues.map((i) => (
@@ -547,7 +542,7 @@ function OpportunityDetail({ monitorId, crawlUrlId, onClose }) {
             )}
             {d.findings.length > 0 && (
               <p className="sp-si-muted">{d.findings.length} Action Center finding{d.findings.length === 1 ? "" : "s"} include this page.</p>
-            )}
+            )}</>}
 
             <details className="sp-po-breakdown">
               <summary>How the score was calculated</summary>
@@ -567,6 +562,8 @@ function OpportunityDetail({ monitorId, crawlUrlId, onClose }) {
               <p className="sp-si-muted">The score is the points earned out of the points available. Signals that
                 aren't measured for this website are left out instead of counting as zero.</p>
             </details>
+              </>}
+            </PageIntelligence>
           </>
         )}
       </aside>

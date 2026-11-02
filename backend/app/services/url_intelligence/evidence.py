@@ -59,6 +59,25 @@ def _breadcrumbs(soup) -> list[str]:
     return [a.get_text(" ", strip=True) for a in nav.find_all("a") if a.get_text(strip=True)][:10]
 
 
+_DATE_KEYS = ("dateModified", "datePublished")
+_QUESTION_RE = re.compile(r"^(how|what|why|when|where|which|who|can|do|does|is|are|should|will)\b|\?\s*$", re.I)
+
+
+def _page_dates(soup, nodes: list[dict]) -> dict:
+    """Publication/modification dates the page itself declares (JSON-LD, then meta
+    tags). Values are copied as written — never inferred from anything else."""
+    out = {"published": None, "modified": None, "source": None}
+    for n in nodes:
+        for key, slot in (("datePublished", "published"), ("dateModified", "modified")):
+            if not out[slot] and _str(n.get(key)):
+                out[slot], out["source"] = _str(n.get(key))[:40], "structured data"
+    for prop, slot in (("article:published_time", "published"), ("article:modified_time", "modified")):
+        tag = soup.find("meta", attrs={"property": prop})
+        if not out[slot] and tag and _str(tag.get("content")):
+            out[slot], out["source"] = _str(tag.get("content"))[:40], out["source"] or "meta tag"
+    return out
+
+
 def extract_evidence(page: PageBundle, *, crawl_depth: int = 0,
                      ctx: SignalContext | None = None) -> dict:
     """Build the full deterministic evidence dict for a fetched page. Pure function —
@@ -100,6 +119,11 @@ def extract_evidence(page: PageBundle, *, crawl_depth: int = 0,
 
     jsonld = analyze_jsonld(ctx.jsonld)
     nodes = collect_nodes(ctx.jsonld)
+    # Section headings (H2/H3) as written, for heading-structure and answer-readiness
+    # checks; a short text excerpt so suggestions stay grounded in the page's own words.
+    subheadings = [_WS_RE.sub(" ", h.get_text(" ", strip=True))[:120]
+                   for h in soup.find_all(["h2", "h3"]) if h.get_text(strip=True)][:25]
+    text_excerpt = _WS_RE.sub(" ", ctx.text or "").strip()[:600] or None
     product = _product_evidence(nodes)
     breadcrumbs = _breadcrumbs(soup)
 
@@ -141,6 +165,10 @@ def extract_evidence(page: PageBundle, *, crawl_depth: int = 0,
         "robots_meta": robots_meta,
         "noindex": noindex,
         "h1_texts": h1s[:5],
+        "subheadings": subheadings,
+        "question_headings": sum(1 for h in subheadings if _QUESTION_RE.search(h)),
+        "dates": _page_dates(soup, nodes),
+        "text_excerpt": text_excerpt,
         "heading_counts": heading_counts,
         "word_count": word_count,
         "internal_link_count": internal_links,

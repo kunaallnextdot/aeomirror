@@ -231,6 +231,11 @@ def request_run(db: Session, *, org_id: str, monitor_id: str, trigger: str,
     crawl = latest_completed_crawl(db, org_id, monitor_id)
     if crawl is None:
         return None
+    # An older run still analysing pages is superseded: its rows will be replaced, and
+    # the new run re-uses every analysis whose inputs haven't changed.
+    (db.query(PageValueRun)
+     .filter(PageValueRun.monitor_id == monitor_id, PageValueRun.analysis_status.in_(ANALYSIS_ACTIVE))
+     .update({PageValueRun.analysis_status: "cancelled"}, synchronize_session=False))
     now = datetime.utcnow()
     run = PageValueRun(organization_id=org_id, monitor_id=monitor_id, crawl_job_id=crawl.id,
                        status=PV_PENDING, trigger=trigger, requested_by_user_id=user_id,
@@ -264,6 +269,12 @@ def request_runs_after_sync(db: Session, org_id: str, trigger: str) -> int:
 
 
 def cancel_run(db: Session, run: PageValueRun) -> None:
+    if run.status == PV_COMPLETED and run.analysis_status in ANALYSIS_ACTIVE:
+        # Scores stay (they're complete); only the remaining page analyses are skipped.
+        run.analysis_status = "cancelled"
+        run.updated_at = datetime.utcnow()
+        db.commit()
+        return
     if run.status in PV_ACTIVE:
         run.status = PV_CANCELLED
         run.finished_at = run.updated_at = datetime.utcnow()
@@ -273,6 +284,14 @@ def cancel_run(db: Session, run: PageValueRun) -> None:
 
 def is_terminal(status: str) -> bool:
     return status in (PV_COMPLETED, PV_FAILED, PV_CANCELLED)
+
+
+ANALYSIS_ACTIVE = ("pending", "running")
+
+
+def needs_work(run: PageValueRun) -> bool:
+    """Scoring still running, or scoring done and the Page Intelligence stage isn't."""
+    return not is_terminal(run.status) or (run.status == PV_COMPLETED and run.analysis_status in ANALYSIS_ACTIVE)
 
 
 def _cancelled(db: Session, run: PageValueRun) -> bool:
@@ -547,6 +566,10 @@ def _url_query(db: Session, run: PageValueRun):
 def run_chunk(db: Session, run: PageValueRun, chunk_size: int = CHUNK_SIZE) -> None:
     """Advance `run` by one bounded unit of work. Safe to re-run after a crash: a
     chunk's rows are deleted and rewritten before the cursor moves past them."""
+    if run.status == PV_COMPLETED and run.analysis_status in ANALYSIS_ACTIVE:
+        from app.services.url_intelligence import page_intelligence
+        page_intelligence.run_analysis_chunk(db, run)
+        return
     if is_terminal(run.status):
         return
     now = datetime.utcnow()
@@ -589,6 +612,7 @@ def run_chunk(db: Session, run: PageValueRun, chunk_size: int = CHUNK_SIZE) -> N
     if len(rows) < chunk_size:
         run.status = PV_COMPLETED
         run.finished_at = run.updated_at
+        run.analysis_status = "pending"   # Page Intelligence for the highest-value pages next
         # Keep only this website's newest completed run.
         old = [r for (r,) in db.query(PageValueRun.id)
                .filter(PageValueRun.monitor_id == run.monitor_id, PageValueRun.id != run.id,

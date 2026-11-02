@@ -365,7 +365,10 @@ def requeue_stalled_crawl_chunks(db: Session, now: datetime | None = None) -> in
         if job.status == JOB_FAILED and job.kind == JOB_KIND_PAGE_VALUE:
             from app.db.models import PV_ACTIVE, PV_FAILED, PageValueRun
             run = db.get(PageValueRun, job.page_value_run_id)
-            if run and run.status in PV_ACTIVE:
+            if run and run.status == "completed" and run.analysis_status in ("pending", "running"):
+                run.analysis_status, run.analysis_error = "failed", "Page analysis stopped early. Already analysed pages are kept."
+                db.commit()
+            elif run and run.status in PV_ACTIVE:
                 run.status, run.finished_at = PV_FAILED, now
                 run.error = "Scoring could not be completed. Please try again."
                 db.commit()

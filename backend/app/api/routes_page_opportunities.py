@@ -67,7 +67,9 @@ def _run_block(run: PageValueRun | None) -> dict | None:
     return {"id": run.id, "status": run.status, "trigger": run.trigger, "crawl_job_id": run.crawl_job_id,
             "total_urls": run.total_urls, "processed_urls": run.processed_urls, "error": run.error,
             "created_at": run.created_at, "started_at": run.started_at, "finished_at": run.finished_at,
-            "updated_at": run.updated_at, "active": run.status in PV_ACTIVE}
+            "updated_at": run.updated_at, "active": run.status in PV_ACTIVE,
+            "analysis_status": run.analysis_status, "analyzed_urls": run.analyzed_urls,
+            "analysis_total": run.analysis_total}
 
 
 def _completed_run(db: Session, monitor_id: str) -> PageValueRun | None:
@@ -225,7 +227,7 @@ def cancel(monitor_id: str, run_id: str, ctx: AuthContext = Depends(require_perm
     run = db.get(PageValueRun, run_id)
     if not run or run.organization_id != ctx.org_id or run.monitor_id != monitor_id:
         raise HTTPException(status_code=404, detail="Run not found.")
-    if run.status not in PV_ACTIVE:
+    if not pv.needs_work(run):
         raise HTTPException(status_code=409, detail="This run has already finished.")
     pv.cancel_run(db, run)
     return _run_block(run)

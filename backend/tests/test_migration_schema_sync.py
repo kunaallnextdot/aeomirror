@@ -90,7 +90,7 @@ def test_alembic_head_matches_the_latest_ga4_migration():
     from alembic.script import ScriptDirectory
     script = ScriptDirectory.from_config(cfg)
     heads = script.get_heads()
-    assert heads == ["b7e3c1d5f9a2"], (
+    assert heads == ["c4f8a2d6e1b3"], (
         f"expected alembic head to be a9d4e2f6c1b8, got {heads} — update this test "
         "alongside whatever new migration moved the head"
     )

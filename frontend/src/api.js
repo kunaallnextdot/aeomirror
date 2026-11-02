@@ -656,6 +656,20 @@ export function cancelPageOpportunitiesRun(monitorId, runId) {
   return request(`${_pv(monitorId)}/runs/${encodeURIComponent(runId)}/cancel`, { method: "POST" });
 }
 
+/* Page Intelligence (app/api/routes_page_intelligence.py): one page's stored analysis,
+   analyse-now, and on-demand AI suggestions (never applied to the website). */
+const _pi = (monitorId, crawlUrlId) =>
+  `/monitors/${encodeURIComponent(monitorId)}/page-intelligence/${encodeURIComponent(crawlUrlId)}`;
+export function getPageIntelligence(monitorId, crawlUrlId) {
+  return request(_pi(monitorId, crawlUrlId));
+}
+export function analyzePageNow(monitorId, crawlUrlId) {
+  return request(`${_pi(monitorId, crawlUrlId)}/analyze`, { method: "POST" });
+}
+export function generatePageSuggestions(monitorId, crawlUrlId) {
+  return request(`${_pi(monitorId, crawlUrlId)}/suggestions`, { method: "POST" });
+}
+
 /* Google Search Console (read-only, webmasters.readonly) — a separate connection from
    GA4 (app/api/routes_search_console.py). */
 export function getSearchConsoleStatus() {

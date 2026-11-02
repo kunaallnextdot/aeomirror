@@ -1284,6 +1284,7 @@ VERIFY_UNCHANGED = "unchanged"
 VERIFY_REGRESSED = "regressed"
 
 USAGE_URL_AI_ANALYSIS = "url_ai_analysis"   # UsageEvent kind: one row per AI template call
+USAGE_PAGE_SUGGESTIONS = "page_ai_suggestions"   # UsageEvent kind: one row per page-suggestion AI call
 
 
 class CrawlJob(Base):
@@ -1509,6 +1510,63 @@ class PageValueRun(Base):
     started_at = Column(DateTime, nullable=True)
     finished_at = Column(DateTime, nullable=True)
     updated_at = Column(DateTime, default=datetime.utcnow)
+    # Page Intelligence stage, run by the same job after scoring completes: the run's
+    # highest-value pages are analysed first. NULL = the run predates this stage.
+    analysis_status = Column(String, nullable=True)     # pending | running | completed | failed | cancelled
+    analysis_cursor = Column(Integer, nullable=True)    # rank offset into the run's pages
+    analysis_total = Column(Integer, nullable=True)
+    analyzed_urls = Column(Integer, nullable=True)
+    analysis_error = Column(String, nullable=True)
+
+
+class PageAnalysis(Base):
+    """Deterministic Page Intelligence for one URL of one website at one point in time.
+    History is kept per (monitor, normalized_key) across crawls; a page whose inputs
+    (evidence, measured performance, peer groups, rules version) are unchanged is not
+    re-analysed — the previous row stays current. Only successful analyses are stored,
+    so a failure never replaces the last good result."""
+    __tablename__ = "page_analyses"
+    __table_args__ = (
+        Index("ix_page_analyses_page", "monitor_id", "normalized_key", "created_at"),
+        Index("ix_page_analyses_run", "run_id"),
+    )
+    id = Column(String, primary_key=True, default=_uuid)
+    organization_id = Column(String, index=True, nullable=False)
+    monitor_id = Column(String, nullable=False)
+    normalized_key = Column(String, nullable=False)
+    crawl_job_id = Column(String, nullable=False)
+    crawl_url_id = Column(String, nullable=False)
+    run_id = Column(String, nullable=True)
+    url = Column(String, nullable=False)
+    page_type = Column(String, nullable=True)
+    input_fingerprint = Column(String, nullable=False)
+    rules_version = Column(String, nullable=False)
+    result = Column(JSON, nullable=False)        # sections, checks, comparison, recommendations
+    top_issue_code = Column(String, nullable=True)
+    recommendation_codes = Column(JSON, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class PageSuggestion(Base):
+    """AI-generated content suggestions for one page, made only when a user asks.
+    Cached by the page's content fingerprint: the same page content never costs a
+    second model call. Suggestions are never applied to the website."""
+    __tablename__ = "page_suggestions"
+    __table_args__ = (
+        Index("ix_page_suggestions_page", "monitor_id", "normalized_key", "content_fingerprint"),
+    )
+    id = Column(String, primary_key=True, default=_uuid)
+    organization_id = Column(String, index=True, nullable=False)
+    monitor_id = Column(String, nullable=False)
+    normalized_key = Column(String, nullable=False)
+    crawl_url_id = Column(String, nullable=False)
+    content_fingerprint = Column(String, nullable=False)
+    suggestions = Column(JSON, nullable=False)
+    model_used = Column(String, nullable=True)
+    tokens_input = Column(Integer, nullable=True)
+    tokens_output = Column(Integer, nullable=True)
+    requested_by_user_id = Column(String, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
 
 
 class PageValueScore(Base):
