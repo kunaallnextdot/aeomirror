@@ -24,7 +24,7 @@ from urllib.parse import urljoin, urlparse
 import httpx
 
 from app.config import settings
-from app.core.ssrf import UnsafeUrlError, validate_url
+from app.core.ssrf import UnsafeUrlError, validate_url_async
 from app.scanner.models import PageBundle
 
 _REDIRECT_CODES = {301, 302, 303, 307, 308}
@@ -171,7 +171,7 @@ async def _fetch_page(client: httpx.AsyncClient, start_url: str) -> tuple[int, s
                     # SSRF re-check on the redirect target. check_chars=False: a sloppy
                     # Location (raw space/pipe) must not kill an otherwise-safe scan; the
                     # IP-range checks still run. httpx encodes the path when it requests.
-                    validate_url(target, check_chars=False)
+                    await validate_url_async(target, check_chars=False)
                     chain.append({"url": current, "status_code": resp.status_code, "to": target})
                     current = target
                     continue

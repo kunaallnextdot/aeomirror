@@ -288,7 +288,7 @@ async def extract_for_run(db: Session, run: PromptRun) -> dict:
     return {"run_id": run.id, "status": EXTRACTION_COMPLETE, "analyzed": len(pairs), "calls": calls}
 
 
-async def run_pending_extractions(db: Session) -> int:
+async def run_pending_extractions(db: Session, keep_going=None) -> int:
     """Worker stage: analyse every run whose answer phase is terminal but whose extraction
     is still pending. Per-run isolation — one failure never aborts the rest. Returns the
     number of runs analysed."""
@@ -302,6 +302,8 @@ async def run_pending_extractions(db: Session) -> int:
 
     done = 0
     for run in due:
+        if keep_going and not keep_going():   # lost the phase lease / shutting down
+            break
         try:
             await extract_for_run(db, run)
             await run_gap_analysis_for_run(db, run)   # gap-to-action for zero-mention prompts

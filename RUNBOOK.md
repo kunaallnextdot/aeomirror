@@ -32,10 +32,17 @@ Incident playbooks and the launch smoke test. Keep this short and actionable.
   Rate limits/cache are per-process until Redis returns.
 
 ### Scheduled scans not running (SEV2)
-- Confirm the `aeomirror-worker` service is up (Render). It must have
-  `SCHEDULER_ENABLED=true`; the web service must have it `false`.
+- `aeomirror-api` must have `SCHEDULER_ENABLED=true` (there is no separate worker).
+  Check `/admin/system` → `scheduler_leader.active`; if false, look for
+  "scheduler leadership" lines in the API logs. A crashed leader is replaced within
+  `SCHEDULER_LEADER_LEASE_SECONDS` (60 s); its in-flight job is retried after
+  `JOB_LEASE_SECONDS` (300 s).
 - Inspect `scheduled_jobs`: many `failed` → check the error column + worker logs.
   Failed jobs auto-retry with backoff up to `MONITOR_JOB_MAX_ATTEMPTS`.
+- **Rolling back the API to a build without leader election** (anything before the
+  `scheduler_leases` migration, `f2c7a9d3b1e5`): set `SCHEDULER_ENABLED=false` FIRST.
+  Older builds run an unguarded scheduler in every uvicorn worker, which would send
+  duplicate emails. The migration is additive; leave it in place on rollback.
 
 ### Billing / webhooks failing (SEV2)
 - Stripe dashboard → webhook deliveries. 400 = signature mismatch → verify

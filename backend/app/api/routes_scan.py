@@ -1,11 +1,14 @@
 """Public scan endpoints. This is the free lead magnet's server side."""
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import logging
-from dataclasses import asdict
+import weakref
+from contextlib import asynccontextmanager
+from dataclasses import asdict, dataclass
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, Header, HTTPException, Request
 from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 from starlette.concurrency import run_in_threadpool
@@ -13,7 +16,7 @@ from starlette.concurrency import run_in_threadpool
 import time
 from datetime import datetime, timezone
 
-from app.api.deps import AuthContext, get_optional_user, require_permission
+from app.api.deps import AuthContext, require_permission
 from app.config import settings
 from app.core.cache import rate_limiter, scan_cache
 from app.core.fetch import fetch
@@ -23,7 +26,7 @@ from app.db.models import (
     SCAN_COMPLETED, SCAN_PENDING, SCAN_RUNNING, USAGE_SCAN_JOB,
     Monitor, OrganizationMember, Scan, User,
 )
-from app.db.session import get_db
+from app.db.session import SessionLocal, get_db
 from app.scanner import bulk
 from app.scanner.engine import score
 from app.scanner.rubric_provider import get_active_rubric
@@ -53,6 +56,56 @@ def _normalize(url: str) -> str:
     return (url.strip().lower()
             .replace("https://", "").replace("http://", "")
             .replace("www.", "").rstrip("/"))
+
+
+# ---- request-path isolation for user-triggered scans -------------------------------
+# A scan spends most of its time waiting on a remote site. It must therefore never hold
+# a pool connection across that wait, and never run blocking I/O (DB, Redis, DNS) on
+# the event loop: a blocked pool checkout on the loop freezes every request in the
+# process, /healthz included, for up to DB_POOL_TIMEOUT. So on this path:
+#   - each DB step runs in the threadpool in its OWN short-lived session, created,
+#     used, committed and closed in that one thread (_in_session);
+#   - Redis (rate limit, cache) and DNS (SSRF validation) run in the threadpool;
+#   - at most SCAN_MAX_CONCURRENCY scans run per process (_scan_slot). Each uses at
+#     most one connection at a time, so scans can never take the whole request pool.
+
+def _in_session(fn, *args, **kwargs):
+    """Run fn(db, ...) in a fresh session and close it before returning (call this
+    inside the threadpool). Return plain values only, never ORM objects."""
+    db = SessionLocal()
+    try:
+        return fn(db, *args, **kwargs)
+    finally:
+        db.close()
+
+
+async def _db(fn, *args, **kwargs):
+    return await run_in_threadpool(_in_session, fn, *args, **kwargs)
+
+
+_scan_slots: "weakref.WeakKeyDictionary[asyncio.AbstractEventLoop, asyncio.Semaphore]" = weakref.WeakKeyDictionary()
+
+
+@asynccontextmanager
+async def scan_slot():
+    """Bound concurrent user-triggered scans in this process. Waiting holds no
+    connection and no thread; a request that cannot start within
+    SCAN_QUEUE_TIMEOUT_SECONDS gets 503 + Retry-After instead of queueing forever."""
+    loop = asyncio.get_running_loop()
+    sem = _scan_slots.get(loop)
+    if sem is None:
+        sem = _scan_slots[loop] = asyncio.Semaphore(settings.scan_max_concurrency)
+    try:
+        await asyncio.wait_for(sem.acquire(), timeout=settings.scan_queue_timeout_seconds)
+    except asyncio.TimeoutError:
+        metrics.incr("scan_busy_503")
+        raise HTTPException(status_code=503,
+            detail="The scanner is busy right now. Please try again in a moment.",
+            headers={"Retry-After": "10"})
+    try:
+        yield
+    finally:
+        sem.release()
 
 
 
@@ -246,14 +299,21 @@ def _safe_diff(prev_payload: dict | None, curr_payload: dict, monitor_id: str | 
         return []
 
 
-async def run_scan(db: Session, safe_url: str, ip: str,
+async def run_scan(db: Session | None, safe_url: str, ip: str,
                    org_id: str | None = None, user_id: str | None = None,
                    monitor_id: str | None = None) -> dict:
     """Fetch, score, run signals, persist a NEW scan row, cache, return the payload.
     Single source of truth for executing a scan (used by create_scan and rerun).
     When org_id/user_id are given the scan is private to that organization;
     otherwise it stays anonymous (IP-scoped). Raises HTTPException on fetch/SSRF
-    failure. Rate limiting/caching are the caller's responsibility."""
+    failure. Rate limiting/caching are the caller's responsibility.
+
+    db=None is the API request mode: every DB step runs in the threadpool in its own
+    short session (see _in_session), so no connection is held across the fetch and
+    nothing blocks the event loop. A caller-owned session (the monitor runner, which
+    already runs off the request loop) keeps the original in-line behaviour."""
+    if db is None and monitor_id:
+        raise ValueError("monitor scans run with the caller's session")
     started = time.perf_counter()
     normalized = _normalize(safe_url)
     try:
@@ -263,7 +323,7 @@ async def run_scan(db: Session, safe_url: str, ip: str,
     except Exception:
         raise HTTPException(status_code=400,
             detail="Could not fetch that URL. Check the address and try again.")
-    rubric = get_active_rubric(db)
+    rubric = get_active_rubric(db) if db is not None else await _db(get_active_rubric)
     # Scoring and signals are pure CPU-bound HTML parsing (≈0.2 s for a typical page,
     # >1 s for a large one); off the event loop so other requests keep being served.
     report = await run_in_threadpool(score, page, rubric)
@@ -286,46 +346,54 @@ async def run_scan(db: Session, safe_url: str, ip: str,
     scanned_at = datetime.now(timezone.utc).isoformat()
     duration_ms = int((time.perf_counter() - started) * 1000)
 
-    row = Scan(
-        url=report.url, normalized_url=normalized, ars=report.ars,
-        rubric_version=report.rubric_version, rubric_version_id=rubric.version,
-        result={
-            "families": _families_payload(report),
-            "top_issues": report.top_issues, "crawlers": report.crawlers,
-            "overall_score": signals["overall_score"],
-            "scanner_version": signals["scanner_version"],
-            "scanned_at": scanned_at, "duration_ms": duration_ms,
-            "sections": signals["sections"],
-            "crawler_access": crawler_access,
-            "change_set": [],   # filled below, only after the snapshot baseline is safe
-            # Technical SEO & Indexability: the raw HTTP/redirect facts for this page,
-            # already captured by `fetch()` — stored so `scan_to_input` can hand them to
-            # `build_technical_seo_block` without a second fetch.
-            "status_code": page.status_code,
-            "redirect_chain": page.redirect_chain,
-            "final_url": page.final_url or page.url,
-        },
-        requester_ip_hash=_ip_hash(ip),
-        organization_id=org_id, user_id=user_id,
-    )
-    db.add(row)
-    db.commit()
-    db.refresh(row)
+    def persist(db: Session) -> Scan:
+        row = Scan(
+            url=report.url, normalized_url=normalized, ars=report.ars,
+            rubric_version=report.rubric_version, rubric_version_id=rubric.version,
+            result={
+                "families": _families_payload(report),
+                "top_issues": report.top_issues, "crawlers": report.crawlers,
+                "overall_score": signals["overall_score"],
+                "scanner_version": signals["scanner_version"],
+                "scanned_at": scanned_at, "duration_ms": duration_ms,
+                "sections": signals["sections"],
+                "crawler_access": crawler_access,
+                "change_set": [],   # filled below, only after the snapshot baseline is safe
+                # Technical SEO & Indexability: the raw HTTP/redirect facts for this page,
+                # already captured by `fetch()` — stored so `scan_to_input` can hand them to
+                # `build_technical_seo_block` without a second fetch.
+                "status_code": page.status_code,
+                "redirect_chain": page.redirect_chain,
+                "final_url": page.final_url or page.url,
+            },
+            requester_ip_hash=_ip_hash(ip),
+            organization_id=org_id, user_id=user_id,
+        )
+        db.add(row)
+        db.commit()
+        db.refresh(row)
 
-    # A scan job is billed the MOMENT its row is durably persisted — never after any
-    # later step (snapshot/diff/report-payload building below) that could still raise.
-    # Recording usage here (rather than in each caller, after awaiting this function)
-    # closes the exact window that could leave a real, completed, quota-consuming scan
-    # with no recorded usage event — the cause of "Recent Scans" and the sidebar's
-    # quota meter disagreeing on how many scans an org has used. Monitor-triggered
-    # scans (monitor_id set) are deliberately excluded, matching the existing quota
-    # contract (see entitlements.scans_this_month's docstring) — they don't consume
-    # scan-job quota.
-    if org_id and not monitor_id:
-        from app.billing import entitlements
-        entitlements.record_usage(db, org_id, USAGE_SCAN_JOB)
-    if not monitor_id:
-        _sync_monitor_latest_scan(db, org_id, normalized, row.id, signals["overall_score"])
+        # A scan job is billed the MOMENT its row is durably persisted — never after any
+        # later step (snapshot/diff/report-payload building below) that could still raise.
+        # Recording usage here (rather than in each caller, after awaiting this function)
+        # closes the exact window that could leave a real, completed, quota-consuming scan
+        # with no recorded usage event — the cause of "Recent Scans" and the sidebar's
+        # quota meter disagreeing on how many scans an org has used. Monitor-triggered
+        # scans (monitor_id set) are deliberately excluded, matching the existing quota
+        # contract (see entitlements.scans_this_month's docstring) — they don't consume
+        # scan-job quota.
+        if org_id and not monitor_id:
+            from app.billing import entitlements
+            entitlements.record_usage(db, org_id, USAGE_SCAN_JOB)
+        if not monitor_id:
+            _sync_monitor_latest_scan(db, org_id, normalized, row.id, signals["overall_score"])
+        return row
+
+    if db is not None:
+        row = persist(db)
+        scan_id = row.id
+    else:
+        scan_id = await _db(lambda s: persist(s).id)
 
     change_set: list = []
     if monitor_id and snapshot_payload is not None:
@@ -342,8 +410,11 @@ async def run_scan(db: Session, safe_url: str, ip: str,
             row.result = {**row.result, "change_set": change_set}
             db.commit()
 
-    payload = _report_payload(row.id, report, signals, scanned_at, duration_ms, crawler_access, page=page)
-    scan_cache.set(normalized, payload)
+    payload = _report_payload(scan_id, report, signals, scanned_at, duration_ms, crawler_access, page=page)
+    if db is not None:
+        scan_cache.set(normalized, payload)
+    else:
+        await run_in_threadpool(scan_cache.set, normalized, payload)
     return payload
 
 
@@ -569,10 +640,48 @@ def _owner_ids(db: Session, user: User | None) -> tuple[str | None, str | None]:
     return (member.organization_id if member else None), user.id
 
 
+@dataclass(frozen=True)
+class _ScanCaller:
+    """Everything create_scan needs from the database before scanning, read in ONE
+    short session (plain values — no ORM object leaves that session)."""
+    org_id: str | None
+    user_id: str | None
+    is_platform_admin: bool
+    maintenance: bool
+    maintenance_message: str | None
+    quota_exhausted: bool
+    quota_message: str | None
+
+
+def _scan_preflight(db: Session, authorization: str | None) -> _ScanCaller:
+    from app.admin import settings_store
+    from app.api.deps import get_optional_user
+    from app.billing import entitlements
+    user = get_optional_user(authorization=authorization, db=db)
+    maintenance = settings_store.is_maintenance(db)
+    org_id, user_id = _owner_ids(db, user)
+    exhausted, message = False, None
+    if org_id:
+        quota = entitlements.scan_quota(db, org_id)
+        if not quota["unlimited"] and quota["remaining"] <= 0:
+            exhausted, message = True, _scan_quota_message(entitlements.current_plan(db, org_id))
+    return _ScanCaller(
+        org_id=org_id, user_id=user_id, is_platform_admin=bool(user and user.is_platform_admin),
+        maintenance=maintenance,
+        maintenance_message=settings_store.get(db, "maintenance_message") if maintenance else None,
+        quota_exhausted=exhausted, quota_message=message)
+
+
+def _persist_cached_scan(db: Session, payload: dict, ip: str, org_id: str, user_id: str | None) -> str:
+    from app.billing import entitlements
+    row = _persist_from_payload(db, payload, ip, org_id, user_id)
+    entitlements.record_usage(db, org_id, USAGE_SCAN_JOB)
+    return row.id
+
+
 @router.post("/scan", response_model=ScanResponse)
 async def create_scan(body: ScanRequest, request: Request,
-                      db: Session = Depends(get_db),
-                      user: User | None = Depends(get_optional_user)):
+                      authorization: str | None = Header(default=None)):
     """Run a scan.
 
     Access model:
@@ -583,62 +692,59 @@ async def create_scan(body: ScanRequest, request: Request,
     - Signed-in scans are metered as "scan jobs" against the org's monthly quota
       (Free 1, Pro 15) → 402 when exhausted. Monitor-triggered scans go through
       run_scan directly and never reach here, so they never consume scan-job quota.
+
+    Nothing here blocks the event loop or holds a DB connection across the fetch (see
+    scan_slot / _in_session); checks run in the same order as before.
     """
     started = time.perf_counter()
     ip = _client_ip(request)
-    from app.admin import settings_store
-    if settings_store.is_maintenance(db) and not (user and user.is_platform_admin):
-        raise HTTPException(status_code=503, detail=settings_store.get(db, "maintenance_message"))
+    async with scan_slot():
+        caller = await _db(_scan_preflight, authorization)
+        if caller.maintenance and not caller.is_platform_admin:
+            raise HTTPException(status_code=503, detail=caller.maintenance_message)
+        org_id, user_id = caller.org_id, caller.user_id
 
-    org_id, user_id = _owner_ids(db, user)
+        # Modest per-IP abuse ceiling for EVERYONE (NOT a billing limit — blunts bursts).
+        allowed, remaining, retry_after = await run_in_threadpool(rate_limiter.check, _ip_hash(ip))
+        if not allowed:
+            metrics.incr("rate_limited_429")
+            raise HTTPException(status_code=429,
+                detail="Too many scans from your network right now. Please wait a moment and try again.",
+                headers={"Retry-After": str(retry_after)})
 
-    # Modest per-IP abuse ceiling for EVERYONE (NOT a billing limit — blunts bursts).
-    allowed, remaining, retry_after = rate_limiter.check(_ip_hash(ip))
-    if not allowed:
-        metrics.incr("rate_limited_429")
-        raise HTTPException(status_code=429,
-            detail="Too many scans from your network right now. Please wait a moment and try again.",
-            headers={"Retry-After": str(retry_after)})
+        # SSRF-validate the URL (before the quota gate, so a bad URL never burns a job).
+        try:
+            safe_url = await run_in_threadpool(validate_url, body.url)   # DNS: off the loop
+        except UnsafeUrlError as e:
+            raise HTTPException(status_code=422, detail=str(e))
 
-    # SSRF-validate the URL (before the quota gate, so a bad URL never burns a job).
-    try:
-        safe_url = validate_url(body.url)
-    except UnsafeUrlError as e:
-        raise HTTPException(status_code=422, detail=str(e))
-
-    from app.billing import entitlements
-    if org_id:
         # Signed-in: metered scan-job quota (Free 1 / Pro 15). The usage event is
         # recorded only AFTER the scan is accepted, so a failed fetch doesn't burn a job.
-        quota = entitlements.scan_quota(db, org_id)
-        if not quota["unlimited"] and quota["remaining"] <= 0:
-            raise HTTPException(status_code=402,
-                detail=_scan_quota_message(entitlements.current_plan(db, org_id)))
+        if org_id and caller.quota_exhausted:
+            raise HTTPException(status_code=402, detail=caller.quota_message)
 
-    normalized = _normalize(safe_url)
+        normalized = _normalize(safe_url)
 
-    # Cache: identical URL within TTL returns the stored result, no refetch. A signed-in
-    # caller still gets their own org-attributed row (and it counts as a scan job); an
-    # anonymous caller just gets the cached payload back.
-    cached = scan_cache.get(normalized)
-    if cached:
-        metrics.incr("cache_hits")
+        # Cache: identical URL within TTL returns the stored result, no refetch. A
+        # signed-in caller still gets their own org-attributed row (and it counts as a
+        # scan job); an anonymous caller just gets the cached payload back.
+        cached = await run_in_threadpool(scan_cache.get, normalized)
+        if cached:
+            metrics.incr("cache_hits")
+            metrics.incr("total_scans")
+            metrics.observe_scan_latency((time.perf_counter() - started) * 1000)
+            if org_id:
+                new_id = await _db(_persist_cached_scan, cached, ip, org_id, user_id)
+                return _response_from_payload({**cached, "scan_id": new_id}, remaining)
+            return _response_from_payload(cached, remaining)
+        metrics.incr("cache_misses")
+
+        # Fetch + score + signals + persist (caches its own payload). run_scan() itself
+        # records the scan job (for signed-in callers) the moment the row is persisted.
+        payload = await run_scan(None, safe_url, ip, org_id, user_id)
         metrics.incr("total_scans")
         metrics.observe_scan_latency((time.perf_counter() - started) * 1000)
-        if org_id:
-            new_row = _persist_from_payload(db, cached, ip, org_id, user_id)
-            entitlements.record_usage(db, org_id, USAGE_SCAN_JOB)
-            return _response_from_payload({**cached, "scan_id": new_row.id}, remaining)
-        return _response_from_payload(cached, remaining)
-    metrics.incr("cache_misses")
-
-    # Fetch + score + signals + persist (caches its own payload). run_scan() itself
-    # records the scan job (for signed-in callers) the moment the row is persisted —
-    # see its own docstring/comment — so there is nothing to do here on success.
-    payload = await run_scan(db, safe_url, ip, org_id, user_id)
-    metrics.incr("total_scans")
-    metrics.observe_scan_latency((time.perf_counter() - started) * 1000)
-    return _response_from_payload(payload, remaining)
+        return _response_from_payload(payload, remaining)
 
 
 def _create_pending_bulk_scan(db: Session, ip: str, urls: list[str],

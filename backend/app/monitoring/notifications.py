@@ -252,7 +252,7 @@ def _baseline(db: Session, org_id: str, kind: str) -> None:
          subject=None, status="skipped", meta={"baseline": True})
 
 
-def maybe_send_summaries(db: Session, now=None) -> dict:
+def maybe_send_summaries(db: Session, now=None, keep_going=None) -> dict:
     """Send weekly/monthly summaries to any org that is due. Idempotent via
     notification_log (won't re-send within the period). The first encounter only
     records a baseline."""
@@ -260,6 +260,8 @@ def maybe_send_summaries(db: Session, now=None) -> dict:
     org_ids = [r[0] for r in db.query(Monitor.organization_id).distinct().all() if r[0]]
     counts = {"weekly": 0, "monthly": 0}
     for org_id in org_ids:
+        if keep_going and not keep_going():   # lost the phase lease / shutting down
+            break
         # C1: the richer weekly DIGEST supersedes the legacy weekly summary for any org
         # that has at least one digest-enabled monitor — users must never get both.
         digest_active = db.query(Monitor).filter(

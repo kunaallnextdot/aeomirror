@@ -65,6 +65,24 @@ def _queue(db: Session) -> dict:
     return {"status": status, "pending": pending, "running": running, "failed": failed}
 
 
+def _scheduler_leader(db: Session) -> dict:
+    """Is any process currently coordinating background work? (No host/pid exposed.)"""
+    from datetime import datetime
+
+    from app.db.models import SchedulerLease
+    from app.monitoring.leader import LEASE_NAME
+    try:
+        row = db.get(SchedulerLease, LEASE_NAME)
+    except Exception:   # noqa: BLE001 — table missing before the migration runs
+        db.rollback()
+        return {"active": False, "last_renewed_seconds_ago": None}
+    if row is None:
+        return {"active": False, "last_renewed_seconds_ago": None}
+    now = datetime.utcnow()
+    return {"active": row.expires_at > now,
+            "last_renewed_seconds_ago": int((now - row.renewed_at).total_seconds())}
+
+
 def system_health(db: Session) -> dict:
     db_status = _db_status(db)
     redis_status = _redis_status()
@@ -85,6 +103,7 @@ def system_health(db: Session) -> dict:
         "queue": queue,
         "scheduler": scheduler_status,
         "worker": scheduler_status,          # in-process worker follows the scheduler flag
+        "scheduler_leader": _scheduler_leader(db),
         "email": email_status,
         # Boolean only — never expose the key (or any prefix/length of it).
         "ai_enabled": settings.ai_enabled,

@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import logging
 import threading
+import time
 from datetime import datetime, timedelta
 
 from sqlalchemy import or_
@@ -238,8 +239,16 @@ def complete_job(db: Session, job: ScheduledJob, now: datetime | None = None) ->
     return bool(n)
 
 
-def heartbeat(job_id: str, started_at: datetime | None, now: datetime | None = None) -> bool:
-    """Refresh a running job's heartbeat (own session: called from the heartbeat thread)."""
+HEARTBEAT_OK, HEARTBEAT_DONE, HEARTBEAT_TAKEN = "ok", "done", "taken"
+
+
+def heartbeat(job_id: str, started_at: datetime | None, now: datetime | None = None) -> str:
+    """Refresh a running job's heartbeat (own session: called from the heartbeat thread).
+
+    Returns HEARTBEAT_OK while the claim is ours; HEARTBEAT_TAKEN when the row is running
+    under a DIFFERENT claim (it was recovered and re-claimed elsewhere — the caller must
+    stop); HEARTBEAT_DONE when it is no longer running at all (this worker completed or
+    requeued it, or it was recovered and not yet re-claimed — nothing runs it elsewhere)."""
     from app.db.session import SessionLocal
     db = SessionLocal()
     try:
@@ -248,7 +257,12 @@ def heartbeat(job_id: str, started_at: datetime | None, now: datetime | None = N
                      ScheduledJob.started_at == started_at)
              .update({ScheduledJob.heartbeat_at: now or datetime.utcnow()}, synchronize_session=False))
         db.commit()
-        return bool(n)
+        if n:
+            return HEARTBEAT_OK
+        row = db.query(ScheduledJob.status, ScheduledJob.started_at).filter(ScheduledJob.id == job_id).first()
+        if row and row.status == JOB_RUNNING and row.started_at != started_at:
+            return HEARTBEAT_TAKEN
+        return HEARTBEAT_DONE
     finally:
         db.close()
 
@@ -256,20 +270,45 @@ def heartbeat(job_id: str, started_at: datetime | None, now: datetime | None = N
 class JobHeartbeat:
     """Keeps a claimed job's lease alive while it runs. A thread, not an asyncio task:
     several job bodies do long synchronous work (parsing, analysis) that would starve a
-    coroutine on the same event loop. Heartbeat failures are logged, never raised."""
+    coroutine on the same event loop.
 
-    def __init__(self, job: ScheduledJob, interval: float | None = None):
+    Fencing (`on_lost`, called at most once): when the claim has been taken by another
+    worker, or no beat has succeeded for long enough that recovery could begin
+    (JOB_LEASE_SECONDS minus two beats), the job must stop so it never runs alongside its
+    own retry. A job that never stops beating (alive, even if slow) is never recovered."""
+
+    def __init__(self, job: ScheduledJob, interval: float | None = None, on_lost=None,
+                 lease_seconds: float | None = None):
         self.job_id, self.started_at = job.id, job.started_at
         self.interval = interval if interval is not None else settings.job_heartbeat_seconds
+        lease = lease_seconds if lease_seconds is not None else settings.job_lease_seconds
+        self.give_up_after = max(lease - 2 * self.interval, self.interval)
+        self.on_lost = on_lost
         self._stop = threading.Event()
         self._thread = threading.Thread(target=self._run, name=f"job-heartbeat-{job.id}", daemon=True)
 
+    def _lost(self, why: str) -> None:
+        logger.error("job %s: %s; stopping it", self.job_id, why)
+        if self.on_lost:
+            self.on_lost()
+
     def _run(self):
+        from app.db.session import mark_background
+        mark_background()
+        last_ok = time.monotonic()
         while not self._stop.wait(self.interval):
             try:
-                heartbeat(self.job_id, self.started_at)
+                state = heartbeat(self.job_id, self.started_at)
             except Exception:   # noqa: BLE001 — a missed beat only shortens the lease
                 logger.warning("heartbeat for job %s failed", self.job_id)
+                if time.monotonic() - last_ok > self.give_up_after:
+                    return self._lost("heartbeat could not be written; it may be recovered elsewhere")
+                continue
+            if state == HEARTBEAT_TAKEN:
+                return self._lost("claim was taken over by another worker")
+            if state == HEARTBEAT_DONE:
+                return
+            last_ok = time.monotonic()
 
     def __enter__(self):
         if self.started_at is not None:
@@ -479,38 +518,47 @@ def stalled_jobs(db: Session, now: datetime | None = None) -> list[ScheduledJob]
             .all())
 
 
+def fail_and_finalize(db: Session, job: ScheduledJob, error, now: datetime | None = None) -> bool:
+    """fail_job, then — once attempts run out — finalize the job's parent record exactly
+    as the runner does, so a scan/crawl/scoring run never stays "running" forever.
+    Used for abandoned jobs (recover_stalled_jobs) and timed-out jobs (worker.tick)."""
+    from app.db.models import CRAWL_FAILED, CrawlJob
+    now = now or datetime.utcnow()
+    if not fail_job(db, job, error, now):
+        return False
+    if job.status == JOB_FAILED and job.kind == JOB_KIND_BULK_SCAN and job.scan_id:
+        from app.monitoring.runner import _mark_scan_failed
+        _mark_scan_failed(db, job.scan_id, RuntimeError(str(error)))
+    if job.status == JOB_FAILED and job.kind == JOB_KIND_PAGE_VALUE:
+        from app.db.models import PV_ACTIVE, PV_FAILED, PageValueRun
+        run = db.get(PageValueRun, job.page_value_run_id)
+        if run and run.status == "completed" and run.analysis_status in ("pending", "running"):
+            run.analysis_status, run.analysis_error = "failed", "Page analysis stopped early. Already analysed pages are kept."
+            db.commit()
+        elif run and run.status in PV_ACTIVE:
+            run.status, run.finished_at = PV_FAILED, now
+            run.error = "Scoring could not be completed. Please try again."
+            db.commit()
+    elif job.status == JOB_FAILED and job.kind == JOB_KIND_URL_CRAWL:
+        crawl = db.get(CrawlJob, job.crawl_job_id)
+        if crawl and crawl.phase not in ("completed", "failed", "cancelled"):
+            crawl.phase = CRAWL_FAILED
+            crawl.error = "The crawl could not be completed. Please try again."
+            crawl.finished_at = now
+            db.commit()
+    return True
+
+
 def recover_stalled_jobs(db: Session, now: datetime | None = None) -> int:
     """Return abandoned jobs to the queue through the normal retry path (fail_job:
     retried with backoff, or failed once attempts run out — then the parent record is
     finalized exactly as the runner does). Every job kind is safe to re-run: chunks
     persist progress as they go, syncs replace their date window, and scans/bulk scans
     skip work that already completed (runner.process_job)."""
-    from app.db.models import CRAWL_FAILED, CrawlJob
     now = now or datetime.utcnow()
     stale = stalled_jobs(db, now)
     for job in stale:
-        if not fail_job(db, job, "the worker stopped while this job was running", now):
-            continue
-        if job.status == JOB_FAILED and job.kind == JOB_KIND_BULK_SCAN and job.scan_id:
-            from app.monitoring.runner import _mark_scan_failed
-            _mark_scan_failed(db, job.scan_id, RuntimeError("worker stopped"))
-        if job.status == JOB_FAILED and job.kind == JOB_KIND_PAGE_VALUE:
-            from app.db.models import PV_ACTIVE, PV_FAILED, PageValueRun
-            run = db.get(PageValueRun, job.page_value_run_id)
-            if run and run.status == "completed" and run.analysis_status in ("pending", "running"):
-                run.analysis_status, run.analysis_error = "failed", "Page analysis stopped early. Already analysed pages are kept."
-                db.commit()
-            elif run and run.status in PV_ACTIVE:
-                run.status, run.finished_at = PV_FAILED, now
-                run.error = "Scoring could not be completed. Please try again."
-                db.commit()
-        elif job.status == JOB_FAILED and job.kind == JOB_KIND_URL_CRAWL:
-            crawl = db.get(CrawlJob, job.crawl_job_id)
-            if crawl and crawl.phase not in ("completed", "failed", "cancelled"):
-                crawl.phase = CRAWL_FAILED
-                crawl.error = "The crawl could not be completed. Please try again."
-                crawl.finished_at = now
-                db.commit()
+        fail_and_finalize(db, job, "the worker stopped while this job was running", now)
     if stale:
         logger.warning("recovered %d stalled job(s)", len(stale))
     return len(stale)

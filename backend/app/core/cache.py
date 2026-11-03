@@ -24,28 +24,36 @@ logger = logging.getLogger("aeomirror.cache")
 
 _redis_client = None
 _redis_init = False
+_redis_init_lock = Lock()
 
 
 def get_redis():
     """Return a shared Redis client, or None if REDIS_URL is not configured.
-    Never raises; connection problems surface when a command is issued."""
+    Never raises; connection problems surface when a command is issued.
+
+    Thread-safe: callers run in worker threads (the scan path calls the limiter and
+    cache off the event loop), so a concurrent first call waits for the client instead
+    of seeing "initialised" while it is still None — which would silently fall back to
+    the per-process in-memory limiter."""
     global _redis_client, _redis_init
     if not settings.redis_url:
         return None
     if not _redis_init:
-        _redis_init = True
-        try:
-            import redis  # local import so the dep is optional in dev/test
-            _redis_client = redis.Redis.from_url(
-                settings.redis_url,
-                decode_responses=True,
-                socket_connect_timeout=2,
-                socket_timeout=2,
-            )
-        except Exception as e:  # pragma: no cover - construction rarely fails
-            logger.warning("Redis client init failed (%s); using in-memory fallback",
-                           type(e).__name__)
-            _redis_client = None
+        with _redis_init_lock:
+            if not _redis_init:
+                try:
+                    import redis  # local import so the dep is optional in dev/test
+                    _redis_client = redis.Redis.from_url(
+                        settings.redis_url,
+                        decode_responses=True,
+                        socket_connect_timeout=2,
+                        socket_timeout=2,
+                    )
+                except Exception as e:  # pragma: no cover - construction rarely fails
+                    logger.warning("Redis client init failed (%s); using in-memory fallback",
+                                   type(e).__name__)
+                    _redis_client = None
+                _redis_init = True   # only once the client (or its failure) is settled
     return _redis_client
 
 

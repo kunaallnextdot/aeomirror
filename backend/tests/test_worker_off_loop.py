@@ -10,7 +10,7 @@ from app.monitoring import worker
 def test_each_tick_runs_on_its_own_loop_in_another_thread(monkeypatch):
     seen = {}
 
-    async def fake_tick():
+    async def fake_tick(*_):
         seen["thread"] = threading.get_ident()
         seen["loop"] = asyncio.get_running_loop()
         worker.stop_worker()
@@ -35,7 +35,7 @@ def test_each_tick_runs_on_its_own_loop_in_another_thread(monkeypatch):
 def test_a_blocking_tick_does_not_stall_the_request_loop(monkeypatch):
     import time
 
-    async def slow_tick():
+    async def slow_tick(*_):
         time.sleep(0.5)            # stands in for parsing/DB work inside a job
         worker.stop_worker()
         return {"processed": 1, "enqueued": 0}
@@ -59,7 +59,7 @@ def test_a_failing_tick_is_logged_and_the_loop_keeps_going(monkeypatch, caplog):
     monkeypatch.setattr(settings, "scheduler_interval_seconds", 0)
     calls = {"n": 0}
 
-    async def flaky_tick():
+    async def flaky_tick(*_):
         calls["n"] += 1
         if calls["n"] == 1:
             raise RuntimeError("db hiccup")
@@ -79,7 +79,7 @@ def test_ticks_never_overlap_within_a_process(monkeypatch):
     monkeypatch.setattr(settings, "scheduler_interval_seconds", 0)
     active, peak, runs = [0], [0], [0]
 
-    async def tick():
+    async def tick(*_):
         active[0] += 1; peak[0] = max(peak[0], active[0])
         time.sleep(0.05)
         active[0] -= 1; runs[0] += 1

@@ -51,6 +51,7 @@ class Metrics:
         self.cache_hits = 0
         self.cache_misses = 0
         self.rate_limited_429 = 0
+        self.scan_busy_503 = 0      # scans refused because every scan slot stayed busy
         self.api_requests = 0       # all HTTP requests handled (Phase 8 admin)
         self._latency_sum_ms = 0.0
         self._latency_count = 0
@@ -81,6 +82,7 @@ class Metrics:
                 "cache_hits": self.cache_hits,
                 "cache_misses": self.cache_misses,
                 "rate_limited_429": self.rate_limited_429,
+                "scan_busy_503": self.scan_busy_503,
                 "api_requests": self.api_requests,
                 "avg_scan_latency_ms": round(avg, 1),
                 "avg_request_latency_ms": round(req_avg, 1),

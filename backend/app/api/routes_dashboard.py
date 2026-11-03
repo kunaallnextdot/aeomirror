@@ -22,7 +22,7 @@ from starlette.concurrency import run_in_threadpool
 from app.api.deps import AuthContext, require_permission
 from app.config import settings
 from app.api.routes_scan import (
-    _client_ip, _ip_hash, _normalize, build_scan_response, run_scan,
+    _client_ip, _ip_hash, _normalize, build_scan_response, run_scan, scan_slot,
 )
 from app.core.cache import rate_limiter
 from app.core.fetch import fetch
@@ -405,7 +405,12 @@ async def rerun_scan(scan_id: str, request: Request,
     # A rerun always produces a FRESH scan row (bypasses the read cache), attributed
     # to the caller's organization. run_scan() itself records the scan job the moment
     # the row is persisted — see its own docstring — so there is nothing to do here.
-    payload = await run_scan(db, safe_url, ip, ctx.org_id, ctx.user.id)
+    # End the request session's transaction first so its pool connection is not held
+    # across the remote fetch; run_scan(None, ...) uses its own short sessions.
+    org_id, user_id = ctx.org_id, ctx.user.id
+    db.close()
+    async with scan_slot():
+        payload = await run_scan(None, safe_url, ip, org_id, user_id)
     return ScanResponse(**payload, remaining_free_scans=remaining)
 
 

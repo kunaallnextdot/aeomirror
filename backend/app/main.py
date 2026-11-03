@@ -32,19 +32,29 @@ async def lifespan(app: FastAPI):
     # Startup. Uvicorn handles SIGTERM and drains in-flight requests
     # (see --timeout-graceful-shutdown in the production entrypoint).
     logger.info("startup env=%s", settings.environment)
-    # In-process monitoring worker (Phase 7). Disabled under tests and when
-    # SCHEDULER_ENABLED=false (e.g. running scans from a separate worker process).
+    # Background coordinator candidate (Phase 7). Every uvicorn worker starts one, but
+    # a database lease elects a single leader across all processes and instances, and
+    # only it runs jobs (app/monitoring/leader.py). Disabled under tests and when
+    # SCHEDULER_ENABLED=false.
     worker_task = None
     if worker.should_start():
         worker_task = asyncio.create_task(worker.run_worker_loop())
-        logger.info("monitoring worker enabled")
+        logger.info("monitoring worker enabled (leader-elected)")
     yield
     worker.stop_worker()
     if worker_task:
+        # Let the job in hand finish, then the loop releases the lease. If it is still
+        # running at the deadline, cancelling still releases the lease (the loop's
+        # finally); the job itself is recovered from its stale heartbeat.
         try:
-            await asyncio.wait_for(worker_task, timeout=5)
+            await asyncio.wait_for(asyncio.shield(worker_task), timeout=settings.scheduler_shutdown_grace_seconds)
         except (asyncio.TimeoutError, asyncio.CancelledError):
+            logger.warning("background job still running at shutdown; it will be recovered")
             worker_task.cancel()
+            try:
+                await worker_task
+            except (asyncio.CancelledError, Exception):   # noqa: BLE001
+                pass
     logger.info("shutdown complete")
 
 

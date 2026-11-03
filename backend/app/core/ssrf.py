@@ -61,6 +61,13 @@ def _resolve(hostname: str, cache: dict | None = None) -> list:
     raise UnsafeUrlError("Host could not be resolved.") from last_err
 
 
+async def validate_url_async(raw: str, **kwargs) -> str:
+    """validate_url for async callers: DNS resolution (with its retry backoff) runs in a
+    worker thread, never on the event loop."""
+    import asyncio
+    return await asyncio.to_thread(validate_url, raw, **kwargs)
+
+
 def validate_url(raw: str, *, check_chars: bool = True, dns_cache: dict | None = None) -> str:
     """Return a normalized safe URL or raise UnsafeUrlError.
 

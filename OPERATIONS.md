@@ -3,9 +3,13 @@
 Day-2 operations: monitoring, scaling, migrations, config, and routine tasks.
 
 ## Services
-- `aeomirror-api` (Render web, Docker) — FastAPI, 2 uvicorn workers, `SCHEDULER_ENABLED=false`.
-- `aeomirror-worker` (Render worker, Docker) — `python run_worker.py`, drains the
-  scheduled-scan queue (`SCHEDULER_ENABLED=true`).
+- `aeomirror-api` (Render web, Docker) — FastAPI, 2 uvicorn workers, `SCHEDULER_ENABLED=true`
+  (set in the dashboard as the second stage of the rollout; `render.yaml` ships `false`).
+  Background jobs run inside this service: every uvicorn worker is a scheduler
+  candidate and a PostgreSQL lease (`scheduler_leases` table) elects exactly one
+  leader, which drains the job queue off the request loop. There is no separate
+  worker service. `/admin/system` → `scheduler_leader.active` shows whether a leader
+  currently holds the lease.
 - `aeomirror-db` (PostgreSQL 16), `aeomirror-redis` (Redis).
 - Frontend on Vercel (static).
 

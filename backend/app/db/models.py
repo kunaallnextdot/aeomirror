@@ -394,6 +394,18 @@ class ScheduledJob(Base):
     updated_at = Column(DateTime, default=datetime.utcnow)
 
 
+class SchedulerLease(Base):
+    __tablename__ = "scheduler_leases"
+    # Leader election for the background coordinator (app/monitoring/leader.py). Every
+    # API process is a candidate; the one whose conditional UPDATE wins owns the row
+    # until `expires_at` and keeps renewing it. Only that process runs scheduler ticks.
+    name = Column(String, primary_key=True)        # e.g. "scheduler"
+    holder = Column(String, nullable=False)        # host:pid:nonce of the current leader
+    acquired_at = Column(DateTime, nullable=False)
+    renewed_at = Column(DateTime, nullable=False)
+    expires_at = Column(DateTime, nullable=False)
+
+
 class MonitorHistory(Base):
     __tablename__ = "monitor_history"
     # One row per completed scan of a monitor. Stores a compact snapshot (scores +

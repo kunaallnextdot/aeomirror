@@ -30,6 +30,10 @@ class Settings(BaseSettings):
     db_max_overflow: int = 5        # burst headroom
     db_pool_timeout: int = 30
     db_pool_recycle: int = 1800     # recycle connections every 30 min
+    # Separate pool for the background coordinator (app/db/session.py): tick session,
+    # job heartbeats and lease renewals — never shared with API requests.
+    db_background_pool_size: int = 2
+    db_background_max_overflow: int = 3
 
     # --- fetch limits ---
     fetch_timeout_seconds: int = 12          # total request budget
@@ -56,6 +60,13 @@ class Settings(BaseSettings):
     # SSRF-validated before fetch; per-URL failures are recorded and excluded.
     bulk_max_urls: int = 50                    # max URLs accepted per bulk scan
     bulk_concurrency: int = 5                  # simultaneous page fetches
+    # User-triggered single-page scans running at once per process (POST /v1/scan and
+    # reruns). Each uses at most one request-pool connection at a time, so keeping this
+    # below the pool size (DB_POOL_SIZE + DB_MAX_OVERFLOW) means scans can never take
+    # every connection. Extra requests wait (holding no connection) up to
+    # SCAN_QUEUE_TIMEOUT_SECONDS, then get 503 + Retry-After.
+    scan_max_concurrency: int = 6
+    scan_queue_timeout_seconds: float = 30.0
     bulk_page_timeout_seconds: int = 12        # per-URL wall-clock cap (reuses the fetch budget)
     bulk_total_budget_seconds: int = 600       # whole-job wall-clock budget; finalize partial with truncated=true
     # --- Change attribution (scan snapshots) ---
@@ -440,6 +451,17 @@ class Settings(BaseSettings):
     # running job whose heartbeat is older than the lease is treated as abandoned.
     job_heartbeat_seconds: int = 30
     job_lease_seconds: int = 300
+    # Wall-clock cap on one job (bulk scans already stop at bulk_total_budget_seconds).
+    # A job past it is cancelled at its next await and retried through fail_job.
+    job_timeout_seconds: int = 900
+    # Single-coordinator leader election (app/monitoring/leader.py). Every API process
+    # is a candidate; only the lease holder runs scheduler ticks. A crashed leader is
+    # replaced once its lease expires; a clean shutdown releases it immediately.
+    scheduler_leader_lease_seconds: int = 60
+    scheduler_leader_renew_seconds: int = 15
+    # How long app shutdown waits for the current job before giving up on it (it is
+    # then recovered from its stale heartbeat). Keep below uvicorn's graceful timeout.
+    scheduler_shutdown_grace_seconds: int = 15
     # Alert thresholds (overall + per-category score drops).
     alert_score_drop_warning: int = 8
     alert_score_drop_critical: int = 15
@@ -632,6 +654,19 @@ class Settings(BaseSettings):
                 raise ValueError(
                     "TOKEN_ENCRYPTION_KEY is not a valid Fernet key."
                 ) from exc
+        # The leader must renew well inside its lease, or a healthy leader would lose
+        # leadership between renewals and two coordinators could overlap.
+        if not (0 < 2 * self.scheduler_leader_renew_seconds < self.scheduler_leader_lease_seconds):
+            raise ValueError(
+                "SCHEDULER_LEADER_RENEW_SECONDS must be positive and less than half of "
+                "SCHEDULER_LEADER_LEASE_SECONDS."
+            )
+        if not (0 < self.scan_max_concurrency < self.db_pool_size + self.db_max_overflow):
+            raise ValueError(
+                "SCAN_MAX_CONCURRENCY must be positive and below DB_POOL_SIZE + DB_MAX_OVERFLOW."
+            )
+        if self.job_timeout_seconds <= 0:
+            raise ValueError("JOB_TIMEOUT_SECONDS must be positive.")
         # Non-production convenience: a per-process random secret so local dev works
         # with zero config. It changes on restart (existing tokens invalidate) — that
         # is fine for dev and never used in production (validated above).

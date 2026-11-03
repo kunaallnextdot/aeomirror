@@ -263,7 +263,7 @@ def _sent_this_week(db: Session, org_id: str, now) -> bool:
             .first()) is not None
 
 
-def maybe_send_digests(db: Session, now=None) -> dict:
+def maybe_send_digests(db: Session, now=None, keep_going=None) -> dict:
     """Weekly, batched per org. Fires only within the configured UTC window and once per
     week per org. One org's failure is isolated — the batch continues."""
     now = now or now_utc()
@@ -274,6 +274,8 @@ def maybe_send_digests(db: Session, now=None) -> dict:
     org_ids = [r[0] for r in db.query(Monitor.organization_id).distinct().all() if r[0]]
     sent = 0
     for org_id in org_ids:
+        if keep_going and not keep_going():   # lost the phase lease / shutting down
+            break
         try:
             if not org_has_digest_monitor(db, org_id):
                 continue

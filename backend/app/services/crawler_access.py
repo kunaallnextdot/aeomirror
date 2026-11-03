@@ -30,7 +30,7 @@ import httpx
 
 from app.config import settings
 from app.core.fetch import ACCEPT_ENCODING, read_limited, with_deadline
-from app.core.ssrf import UnsafeUrlError, validate_url
+from app.core.ssrf import UnsafeUrlError, validate_url_async
 
 # ------------------------------- crawler set (extend here) -------------------------------
 # Each entry: key, display name, provider, the robots.txt token, the live User-Agent, and
@@ -158,7 +158,7 @@ async def _fetch(client: httpx.AsyncClient, url: str, ua: str, timeout: float) -
     async def hops():
         nonlocal current
         for _ in range(settings.fetch_max_redirects + 1):
-            validate_url(current, check_chars=False)   # SSRF on every hop
+            await validate_url_async(current, check_chars=False)   # SSRF on every hop
             # Only the status matters here: the body is never downloaded.
             async with client.stream("GET", current, headers={"User-Agent": ua},
                                      timeout=timeout, follow_redirects=False) as resp:
@@ -190,7 +190,7 @@ async def _fetch_robots(client: httpx.AsyncClient, origin: str, timeout: float) 
     async def get():
         current = urljoin(origin, "/robots.txt")
         for _ in range(settings.fetch_max_redirects + 1):
-            validate_url(current, check_chars=False)   # SSRF on every hop, like app.core.fetch
+            await validate_url_async(current, check_chars=False)   # SSRF on every hop, like app.core.fetch
             async with client.stream("GET", current, headers={"User-Agent": CONTROL_UA},
                                      timeout=timeout, follow_redirects=False) as resp:
                 if resp.status_code in _REDIRECT_STATUSES and resp.headers.get("location"):

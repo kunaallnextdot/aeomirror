@@ -16,7 +16,7 @@ from app.admin import analytics as analytics_svc
 from app.admin import audit, flags, health
 from app.admin import settings_store as settings_svc
 from app.api.deps import get_admin
-from app.api.routes_scan import _client_ip, _ip_hash, _normalize, run_scan
+from app.api.routes_scan import _client_ip, _ip_hash, _normalize, run_scan, scan_slot
 from app.config import settings
 from app.core.observability import metrics
 from app.core.security import generate_token, hash_token, token_expiry
@@ -328,8 +328,10 @@ async def admin_rerun_scan(scan_id: str, request: Request, admin: User = Depends
         safe_url = validate_url(s.url)
     except UnsafeUrlError as e:
         raise HTTPException(status_code=422, detail=str(e))
-    payload = await run_scan(db, safe_url, ip="admin",
-                             org_id=s.organization_id, user_id=s.user_id)
+    org_id, user_id = s.organization_id, s.user_id
+    db.close()   # don't hold the request's pool connection across the remote fetch
+    async with scan_slot():
+        payload = await run_scan(None, safe_url, ip="admin", org_id=org_id, user_id=user_id)
     audit.record(db, actor=admin, action=audit.RERUN_SCAN, target_type="scan", target_id=scan_id,
                  meta={"new_scan_id": payload.get("scan_id")}, ip_hash=_audit_ctx(request))
     return {"ok": True, "scan_id": payload.get("scan_id"), "overall_score": payload.get("overall_score")}

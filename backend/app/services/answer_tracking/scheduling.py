@@ -21,7 +21,7 @@ from .runner import execute_run
 log = logging.getLogger("app.answer_tracking.scheduling")
 
 
-async def run_scheduled(db: Session, now: datetime | None = None) -> int:
+async def run_scheduled(db: Session, now: datetime | None = None, keep_going=None) -> int:
     """Execute all due prompt sets. Returns the number of runs started. Never raises."""
     now = now or datetime.utcnow()
     due = service.due_prompt_sets(db, now)
@@ -32,6 +32,8 @@ async def run_scheduled(db: Session, now: datetime | None = None) -> int:
     started = 0
     for org_id, sets in by_org.items():
         for ps in sets:
+            if keep_going and not keep_going():   # lost the phase lease / shutting down
+                return started
             try:
                 run = service.create_run(db, ps, now=now)     # still subject to cost guards
             except RunRefused:

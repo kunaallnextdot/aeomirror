@@ -85,9 +85,9 @@ reconnect afterward.
 
 ### 6. Set the environment variables
 
-On **both** the `aeomirror-api` web service AND the `aeomirror-worker` service (the
-worker runs the actual daily sync job and needs to decrypt/refresh the stored
-credential too — see `render.yaml`):
+On the `aeomirror-api` web service (it also runs the daily sync job in its
+leader-elected background coordinator, which decrypts/refreshes the stored
+credential — see `render.yaml`):
 
 | Variable | Value |
 |---|---|
@@ -122,9 +122,8 @@ runs automatically via `preDeployCommand` in `render.yaml`.
 
 ### 8. Deploy
 
-Both the `aeomirror-api` web service and the `aeomirror-worker` service need the
-updated code and the env vars from step 6 — the worker is what actually executes the
-daily `ga4_sync` jobs (reusing the existing `ScheduledJob` queue and worker loop; no
+The `aeomirror-api` web service needs the updated code and the env vars from step 6
+— its background coordinator is what actually executes the daily `ga4_sync` jobs (reusing the existing `ScheduledJob` queue and worker loop; no
 new Render service or infrastructure was added for this).
 
 ### 9. Verify it actually works, end to end

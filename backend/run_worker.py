@@ -1,14 +1,15 @@
-"""Standalone monitoring worker (Phase 10).
+"""Standalone monitoring worker (optional).
 
-In production the web service runs with SCHEDULER_ENABLED=false and this process
-drains the scheduled-scan queue instead, so scans never compete with HTTP workers
-and the worker scales independently. The queue is claim-based, so running one (or
-several) of these is safe.
+Not needed in the default deployment: the web service runs the coordinator in-process
+(SCHEDULER_ENABLED=true) and a database lease elects one leader across its uvicorn
+workers (app/monitoring/leader.py). This script runs the same coordinator loop and
+competes for the same lease, so starting it never creates a second scheduler — it is
+a standby that takes over only when no API process holds the lease.
 
-On SIGTERM/SIGINT (a deploy or restart) the loop stops claiming new jobs and exits
-after the current tick. A job still running when the platform finally kills the
-process stops heartbeating and is recovered by the next worker once its lease expires
-(scheduler.recover_stalled_jobs).
+On SIGTERM/SIGINT (a deploy or restart) the loop stops claiming new jobs, finishes the
+current one and releases the lease. A job still running when the platform finally
+kills the process stops heartbeating and is recovered by the next leader once its
+lease expires (scheduler.recover_stalled_jobs).
 
     python run_worker.py
 """
