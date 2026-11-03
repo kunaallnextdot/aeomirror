@@ -383,6 +383,11 @@ class ScheduledJob(Base):
     scheduled_for = Column(DateTime, nullable=True)   # when it became due
     run_after = Column(DateTime, nullable=True)       # earliest claim time (backoff)
     started_at = Column(DateTime, nullable=True)
+    # Liveness of a RUNNING job: refreshed every job_heartbeat_seconds by the worker that
+    # claimed it. A running job whose heartbeat is older than job_lease_seconds was
+    # abandoned (crash, deploy, OOM kill) and is recovered; NULL = claimed before
+    # heartbeats existed (recovered on the older started_at rule).
+    heartbeat_at = Column(DateTime, nullable=True)
     finished_at = Column(DateTime, nullable=True)
     error = Column(String, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
@@ -957,6 +962,9 @@ class GoogleAnalyticsConnection(Base):
     # Safe, non-sensitive code only — never a raw exception message or API error body.
     last_sync_error_code = Column(String, nullable=True)
     next_sync_at = Column(DateTime, nullable=True, index=True)
+    # Consecutive transient sync failures (network, timeout, 429, 5xx); drives the
+    # backoff of next_sync_at. Reset to 0 by a successful sync. NULL = none recorded.
+    sync_failures = Column(Integer, nullable=True)
     status = Column(String, nullable=False, default=GA4_STATUS_PENDING_PROPERTY)
     # Whether the connected GA4 property has ANY key events configured, per the
     # Admin API's keyEvents list (see fetch_key_events_configured). NULL = not yet
@@ -1451,6 +1459,7 @@ class SearchConsoleConnection(Base):
     last_sync_status = Column(String, nullable=True)
     last_sync_error_code = Column(String, nullable=True)   # safe code only, never an API body
     next_sync_at = Column(DateTime, nullable=True, index=True)
+    sync_failures = Column(Integer, nullable=True)   # consecutive transient failures (see GA4 twin)
     # The date window (YYYY-MM-DD, inclusive) the stored page rows cover.
     window_start = Column(String, nullable=True)
     window_end = Column(String, nullable=True)

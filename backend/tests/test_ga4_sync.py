@@ -17,6 +17,7 @@ from app.db.models import (
 from app.db.session import SessionLocal
 from app.monitoring import runner, scheduler
 from app.services.integrations import google_analytics as ga4
+from app.services.integrations.google_errors import SyncDeferred, SyncStopped
 from tests.authutil import auth_client
 
 FAKE_KEY = "zxhjMoSGw8Hu9dZ0qVgN6W7AUHHho9mz5igY2ZvQ4oE="
@@ -195,7 +196,7 @@ def test_run_sync_marks_property_inaccessible_on_403(monkeypatch):
     db = SessionLocal()
     try:
         conn = _load(db, conn_id)
-        with pytest.raises(ga4.GoogleApiError):
+        with pytest.raises(SyncStopped):          # permanent: no retry until the property is re-selected
             asyncio.run(ga4.run_sync(db, conn))
         assert conn.status == GA4_STATUS_ERROR
         assert conn.last_sync_error_code == "property_inaccessible"
@@ -203,7 +204,7 @@ def test_run_sync_marks_property_inaccessible_on_403(monkeypatch):
         db.close()
 
 
-def test_run_sync_marks_quota_exceeded_on_429(monkeypatch):
+def test_run_sync_keeps_the_connection_active_and_backs_off_on_429(monkeypatch):
     client, body = auth_client()
     conn_id = _connection_id(body["organization"]["id"], body["user"]["id"])
     _patch_refresh_ok(monkeypatch)
@@ -215,9 +216,12 @@ def test_run_sync_marks_quota_exceeded_on_429(monkeypatch):
     db = SessionLocal()
     try:
         conn = _load(db, conn_id)
-        with pytest.raises(ga4.GoogleApiError):
+        before = datetime.utcnow()
+        with pytest.raises(SyncDeferred):         # transient: retried later, never disabled
             asyncio.run(ga4.run_sync(db, conn))
         assert conn.last_sync_error_code == "quota_exceeded"
+        assert conn.status == GA4_STATUS_ACTIVE and conn.sync_failures == 1
+        assert conn.next_sync_at > before + timedelta(minutes=10)
     finally:
         db.close()
 
@@ -365,7 +369,7 @@ def test_process_job_never_trusts_job_payload_as_proof_of_authorization(monkeypa
         db.close()
 
 
-def test_sync_job_failure_retries_then_fails_permanently(monkeypatch):
+def test_a_permanent_sync_failure_completes_the_job_and_stops_the_connection(monkeypatch):
     client, body = auth_client()
     conn_id = _connection_id(body["organization"]["id"], body["user"]["id"])
     _patch_refresh_ok(monkeypatch)
@@ -387,6 +391,12 @@ def test_sync_job_failure_retries_then_fails_permanently(monkeypatch):
         assert claimed.id == job.id
         asyncio.run(runner.process_job(db, claimed))
         db.refresh(claimed)
-        assert claimed.status == JOB_FAILED
+        # Retries belong to the connection (backoff / reconnect), not the job: the job
+        # is done and the connection says why it can't sync.
+        assert claimed.status == JOB_COMPLETED
+        conn = _load(db, conn_id)
+        assert conn.status == GA4_STATUS_ERROR and conn.last_sync_error_code == "property_inaccessible"
+        scheduler.enqueue_due_ga4_syncs(db, datetime.utcnow() + timedelta(days=2))
+        assert scheduler.has_active_ga4_sync_job(db, conn_id) is None   # never re-enqueued
     finally:
         db.close()

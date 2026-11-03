@@ -46,7 +46,7 @@ import {
 } from "../api.js";
 import { getGa4Intelligence, getGa4Events, saveGa4EventMappings } from "../api.js";
 import { intelFixture, eventsFixture } from "./__fixtures__/ga4Intelligence.js";
-import AiTraffic from "./AiTraffic.jsx";
+import AiTraffic, { syncRetryNote } from "./AiTraffic.jsx";
 
 const ZERO_METRICS = {
   total_users: 0, new_users: 0, sessions: 0, engaged_sessions: 0, views: 0,
@@ -350,6 +350,25 @@ describe("AiTraffic", () => {
     renderAt();
     await waitFor(() => screen.getByText(/access was revoked or expired/i));
     screen.getByRole("button", { name: /reconnect/i });
+  });
+
+  it("a temporary sync failure keeps the connection active and says when it retries (no reconnect)", async () => {
+    getGa4Status.mockResolvedValue({
+      status: "active", ga4_property_name: "Acme Main", last_synced_at: "2026-10-12T10:00:00Z",
+      last_sync_status: "error", last_sync_error_code: "quota_exceeded", next_sync_at: "2026-10-12T12:00:00Z",
+    });
+    renderAt();
+    const note = await screen.findByRole("status");
+    expect(note.textContent).toMatch(/request limit was reached\. AEOMirror will retry automatically/);
+    expect(note.textContent).toMatch(/Next attempt around/);
+    expect(screen.queryByRole("button", { name: /reconnect/i })).toBeNull();
+  });
+
+  it("syncRetryNote is silent for healthy or permanently failed connections", () => {
+    expect(syncRetryNote({ status: "active", last_sync_status: "success" })).toBeNull();
+    expect(syncRetryNote({ status: "error", last_sync_status: "error", last_sync_error_code: "auth_revoked" })).toBeNull();
+    expect(syncRetryNote({ status: "active", last_sync_status: "error", last_sync_error_code: "network_error" }))
+      .toMatch(/couldn't be reached\. AEOMirror will retry automatically/);
   });
 
   it("a generic API failure renders the real error, not a silent blank page", async () => {

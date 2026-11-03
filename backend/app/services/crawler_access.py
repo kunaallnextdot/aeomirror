@@ -29,6 +29,7 @@ from urllib.parse import urljoin, urlparse
 import httpx
 
 from app.config import settings
+from app.core.fetch import ACCEPT_ENCODING, read_limited, with_deadline
 from app.core.ssrf import UnsafeUrlError, validate_url
 
 # ------------------------------- crawler set (extend here) -------------------------------
@@ -154,18 +155,23 @@ async def _fetch(client: httpx.AsyncClient, url: str, ua: str, timeout: float) -
     def elapsed() -> int:
         return int((time.perf_counter() - start) * 1000)
 
-    try:
+    async def hops():
+        nonlocal current
         for _ in range(settings.fetch_max_redirects + 1):
             validate_url(current, check_chars=False)   # SSRF on every hop
-            resp = await client.get(current, headers={"User-Agent": ua},
-                                    timeout=timeout, follow_redirects=False)
-            if resp.status_code in _REDIRECT_STATUSES and resp.headers.get("location"):
-                current = urljoin(current, resp.headers["location"])
-                continue
-            return {"status_code": resp.status_code, "response_time_ms": elapsed(),
-                    "final_url": str(resp.url), "error": None}
+            # Only the status matters here: the body is never downloaded.
+            async with client.stream("GET", current, headers={"User-Agent": ua},
+                                     timeout=timeout, follow_redirects=False) as resp:
+                if resp.status_code in _REDIRECT_STATUSES and resp.headers.get("location"):
+                    current = urljoin(current, resp.headers["location"])
+                    continue
+                return {"status_code": resp.status_code, "response_time_ms": elapsed(),
+                        "final_url": str(resp.url), "error": None}
         return {"status_code": None, "response_time_ms": elapsed(),
                 "final_url": current, "error": "too_many_redirects"}
+
+    try:
+        return await with_deadline(hops(), timeout * 2)
     except (httpx.TimeoutException,) as e:
         return {"status_code": None, "response_time_ms": elapsed(),
                 "final_url": current, "error": "timeout"}
@@ -181,15 +187,27 @@ async def _fetch_robots(client: httpx.AsyncClient, origin: str, timeout: float) 
     """Fetch and classify robots.txt. Returns (text, status, warning):
       status: 'found' | 'missing' | 'malformed'; warning is a message or None.
     A 404 / non-2xx / transport error => missing (crawling allowed by default)."""
+    async def get():
+        current = urljoin(origin, "/robots.txt")
+        for _ in range(settings.fetch_max_redirects + 1):
+            validate_url(current, check_chars=False)   # SSRF on every hop, like app.core.fetch
+            async with client.stream("GET", current, headers={"User-Agent": CONTROL_UA},
+                                     timeout=timeout, follow_redirects=False) as resp:
+                if resp.status_code in _REDIRECT_STATUSES and resp.headers.get("location"):
+                    current = urljoin(current, resp.headers["location"])
+                    continue
+                if not (200 <= resp.status_code < 300):
+                    return None
+                body, _ = await read_limited(resp, settings.fetch_robots_max_bytes)
+                return None if body is None else body.decode(resp.encoding or "utf-8", errors="replace")
+        return None
+
     try:
-        resp = await client.get(urljoin(origin, "/robots.txt"),
-                                headers={"User-Agent": CONTROL_UA},
-                                timeout=timeout, follow_redirects=True)
-    except Exception:   # noqa: BLE001
+        text = await with_deadline(get(), timeout * 2)
+    except Exception:   # noqa: BLE001 — timeout, transport error, SSRF rejection: treat as missing
         return "", "missing", None
-    if resp.status_code == 404 or not (200 <= resp.status_code < 300):
+    if text is None:
         return "", "missing", None
-    text = resp.text or ""
     # "Malformed" = a body that has content but no parseable directives at all.
     if text.strip() and not re.search(r"(?im)^\s*(user-agent|disallow|allow)\s*:", text):
         return text, "malformed", "robots.txt is present but has no parseable rules — treating access as allowed."
@@ -247,7 +265,8 @@ async def check_crawler_access(url: str, *, transport: "httpx.BaseTransport | No
 
     base = {"checked_at": checked_at, "target_url": url}
     try:
-        async with httpx.AsyncClient(follow_redirects=False, transport=transport) as client:
+        async with httpx.AsyncClient(follow_redirects=False, transport=transport,
+                                     headers={"Accept-Encoding": ACCEPT_ENCODING}) as client:
             robots_text, robots_status, robots_warning = await _fetch_robots(client, origin, timeout)
             groups = _parse_groups(robots_text) if robots_status != "missing" else {}
 

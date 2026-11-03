@@ -16,7 +16,7 @@ from app.core.ssrf import validate_url
 from app.db.models import (
     CRAWL_COMPLETED, CRAWL_FAILED, JOB_FAILED, JOB_KIND_BULK_SCAN, JOB_KIND_GA4_SYNC, JOB_KIND_GSC_SYNC,
     JOB_KIND_PAGE_VALUE, JOB_KIND_URL_CRAWL, JOB_KIND_URL_RECHECK,
-    SCAN_FAILED, CrawlJob, GoogleAnalyticsConnection, Monitor, MonitorHistory, Scan,
+    SCAN_COMPLETED, SCAN_FAILED, CrawlJob, GoogleAnalyticsConnection, Monitor, MonitorHistory, Scan,
 )
 from app.monitoring import scheduler
 from app.monitoring.alerts import evaluate_alerts, persist_alerts
@@ -109,6 +109,12 @@ async def process_job(db: Session, job) -> None:
     if not monitor:
         scheduler.fail_job(db, job, "monitor no longer exists")
         return
+    # A retry of a job whose scan already finished (the worker died after recording the
+    # scan but before marking the job done) must not scan, alert and email again.
+    if (job.attempts or 0) > 1 and monitor.last_scan_at and job.created_at \
+            and monitor.last_scan_at >= job.created_at:
+        scheduler.complete_job(db, job)
+        return
     try:
         await run_scan_for_monitor(db, monitor)
         scheduler.complete_job(db, job)
@@ -132,15 +138,37 @@ async def _process_ga4_sync_job(db: Session, job) -> None:
     if connection.organization_id != job.organization_id:
         scheduler.fail_job(db, job, "connection/job organization mismatch")
         return
+    if not await _run_google_sync(db, job, connection, run_sync, "ga4"):
+        return
+    _rescore_after_sync(db, connection.organization_id, "ga4_sync")
+
+
+async def _run_google_sync(db: Session, job, connection, run_sync, label: str) -> bool:
+    """Run one GA4 / Search Console sync. Retries are owned by the CONNECTION, not the
+    job: a transient failure has already pushed connection.next_sync_at out with
+    backoff (honouring Retry-After) and a permanent one has set status=error, so the
+    job itself is complete either way — re-running it in two minutes would ignore that
+    backoff. An unexpected error is recorded as a transient failure for the same
+    reason, so a bug can't re-enqueue a sync every tick. True = synced."""
+    from app.services.integrations.google_errors import SyncDeferred, SyncStopped, record_transient
     try:
         await run_sync(db, connection)
         scheduler.complete_job(db, job)
+        return True
+    except (SyncDeferred, SyncStopped) as e:
+        logger.info("%s sync %s not completed: %s", label, connection.id, e)
+        scheduler.complete_job(db, job)
+        return False
     except Exception as e:
         db.rollback()
-        logger.warning("ga4 sync job %s failed: %s", job.id, type(e).__name__)
-        scheduler.fail_job(db, job, e)
-        return
-    _rescore_after_sync(db, connection.organization_id, "ga4_sync")
+        logger.warning("%s sync job %s failed: %s", label, job.id, type(e).__name__)
+        try:
+            db.refresh(connection)
+            record_transient(db, connection, "sync_failed")
+        except Exception:   # noqa: BLE001
+            db.rollback()
+        scheduler.complete_job(db, job)
+        return False
 
 
 def _rescore_after_sync(db: Session, org_id: str, trigger: str) -> None:
@@ -167,13 +195,7 @@ async def _process_gsc_sync_job(db: Session, job) -> None:
     if connection.organization_id != job.organization_id:
         scheduler.fail_job(db, job, "connection/job organization mismatch")
         return
-    try:
-        await run_sync(db, connection)
-        scheduler.complete_job(db, job)
-    except Exception as e:
-        db.rollback()
-        logger.warning("gsc sync job %s failed: %s", job.id, type(e).__name__)
-        scheduler.fail_job(db, job, e)
+    if not await _run_google_sync(db, job, connection, run_sync, "gsc"):
         return
     _rescore_after_sync(db, connection.organization_id, "gsc_sync")
 
@@ -255,6 +277,9 @@ async def _process_bulk_scan_job(db: Session, job) -> None:
     scan = db.get(Scan, job.scan_id)
     if not scan:
         scheduler.fail_job(db, job, "scan no longer exists")
+        return
+    if scan.status == SCAN_COMPLETED:   # finished before an interrupted worker could mark the job
+        scheduler.complete_job(db, job)
         return
     try:
         await execute_bulk_scan(db, scan)

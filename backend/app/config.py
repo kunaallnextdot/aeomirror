@@ -34,7 +34,13 @@ class Settings(BaseSettings):
     # --- fetch limits ---
     fetch_timeout_seconds: int = 12          # total request budget
     fetch_connect_timeout_seconds: int = 5   # connection establishment budget
-    fetch_max_bytes: int = 3_000_000         # 3 MB response cap
+    fetch_max_bytes: int = 3_000_000         # 3 MB response cap (decoded page body)
+    # Hard wall-clock limit for ONE request including its body (httpx's timeouts are
+    # per read, so a slow-drip server could otherwise hold a request open forever).
+    fetch_total_timeout_seconds: float = 20.0
+    fetch_aux_timeout_seconds: float = 8.0   # robots.txt / llms.txt / sitemap.xml probes
+    fetch_robots_max_bytes: int = 512_000    # Google itself reads at most 500 KiB of robots.txt
+    fetch_sitemap_max_bytes: int = 200_000   # what the sitemap signal inspects
     fetch_max_redirects: int = 5
     user_agent: str = "AEOMirrorBot/1.0 (+https://aeomirror.com/bot)"
 
@@ -430,6 +436,10 @@ class Settings(BaseSettings):
     scheduler_batch_size: int = 5             # max jobs drained per tick
     monitor_job_max_attempts: int = 3         # retries for a failed scan job
     monitor_job_retry_backoff_seconds: int = 120
+    # Job liveness: the worker refreshes a running job's heartbeat this often, and a
+    # running job whose heartbeat is older than the lease is treated as abandoned.
+    job_heartbeat_seconds: int = 30
+    job_lease_seconds: int = 300
     # Alert thresholds (overall + per-category score drops).
     alert_score_drop_warning: int = 8
     alert_score_drop_critical: int = 15

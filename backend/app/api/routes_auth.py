@@ -371,6 +371,13 @@ def update_me(body: UpdateMeRequest, ctx: AuthContext = Depends(get_context),
                 raise HTTPException(status_code=409, detail="That email is already in use.")
             user.email = new_email
             user.email_verified = False
+            # A verification link is proof of owning the address it was SENT to. Links
+            # issued for the previous address must not verify the new one (otherwise:
+            # register, keep the link, switch to someone else's address, click it).
+            now = token_expiry(0)
+            (db.query(EmailVerification)
+             .filter(EmailVerification.user_id == user.id, EmailVerification.used_at.is_(None))
+             .update({EmailVerification.used_at: now}, synchronize_session=False))
             raw = generate_token()
             db.add(EmailVerification(user_id=user.id, token_hash=hash_token(raw),
                                      expires_at=token_expiry(settings.verify_token_ttl_seconds)))

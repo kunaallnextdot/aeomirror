@@ -56,6 +56,7 @@ def status(ctx: AuthContext = Depends(require_permission("report:view")),
         "status": c.status, "site_url": c.site_url, "permission_level": c.permission_level,
         "connected_at": c.connected_at, "last_synced_at": c.last_synced_at,
         "last_sync_status": c.last_sync_status, "last_sync_error_code": c.last_sync_error_code,
+        "next_sync_at": c.next_sync_at, "sync_failures": c.sync_failures or 0,
         "window": {"start": c.window_start, "end": c.window_end} if c.window_start else None,
         "rows_fetched": c.rows_fetched, "truncated": c.truncated,
         # Which of the org's websites this property covers (deterministic URL match).
@@ -78,7 +79,12 @@ async def sites(ctx: AuthContext = Depends(require_permission("report:view")),
                 db: Session = Depends(get_db)):
     _require_pro(db, ctx)
     connection = _owned_connection_or_404(db, ctx)
-    token = await gsc.get_valid_access_token(db, connection)
+    from app.services.integrations.google_errors import GoogleTransientError
+    try:
+        token = await gsc.get_valid_access_token(db, connection)
+    except GoogleTransientError:
+        raise HTTPException(status_code=503,
+                            detail="Google is temporarily unavailable. Please try again in a few minutes.")
     if not token:
         raise HTTPException(status_code=502, detail="Could not reach your Search Console account. Try reconnecting.")
     found = await gsc.list_sites(token)

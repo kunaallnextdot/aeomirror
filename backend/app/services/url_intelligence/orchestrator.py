@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.config import settings
@@ -33,20 +34,26 @@ async def _run_analyze_chunk(db: Session, job: CrawlJob) -> bool:
         )
     ]
     for template_id in template_ids:
+        # Memory stays bounded whatever the template's size: only the representative
+        # page (the earliest crawled, as before) is loaded with its evidence; the size
+        # is a COUNT and the pages are marked by one UPDATE in the database. Loading
+        # every member (with its evidence JSON) used ~919 MiB for a 60k-page template.
         members = (db.query(CrawlUrl)
                    .filter(CrawlUrl.crawl_job_id == job.id, CrawlUrl.status == URL_CRAWLED,
-                           CrawlUrl.template_id == template_id)
-                   .order_by(CrawlUrl.crawled_at.asc())
-                   .all())
-        if not members:
+                           CrawlUrl.template_id == template_id))
+        representative = members.order_by(CrawlUrl.crawled_at.asc(), CrawlUrl.id.asc()).first()
+        if representative is None:
             continue
-        representative = members[0]
-        ai_analysis.analyze_template(db, job, representative, affected_url_count=len(members))
-        for m in members:
-            m.analyzed = True
-            m.analyzed_at = datetime.utcnow()
-        job.analyzed_count += len(members)
+        size = members.with_entities(func.count(CrawlUrl.id)).scalar() or 0
+        ai_analysis.analyze_template(db, job, representative, affected_url_count=size)
+        (db.query(CrawlUrl)
+         .filter(CrawlUrl.crawl_job_id == job.id, CrawlUrl.status == URL_CRAWLED,
+                 CrawlUrl.template_id == template_id)
+         .update({CrawlUrl.analyzed: True, CrawlUrl.analyzed_at: datetime.utcnow()},
+                 synchronize_session=False))
+        job.analyzed_count += size
         db.commit()
+        db.expunge(representative)   # don't keep its evidence alive across templates
 
     remaining = (db.query(CrawlUrl)
                  .filter(CrawlUrl.crawl_job_id == job.id, CrawlUrl.status == URL_CRAWLED,

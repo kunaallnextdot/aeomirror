@@ -49,9 +49,20 @@ class GoogleApiError(Exception):
     """A GA4 API call failed in a way the caller must react to specifically (as
     opposed to a generic transport/5xx failure, which just returns None)."""
 
-    def __init__(self, message: str, *, status_code: int | None = None):
+    def __init__(self, message: str, *, status_code: int | None = None, retry_after: float | None = None):
         super().__init__(message)
         self.status_code = status_code
+        self.retry_after = retry_after
+
+
+def _raise_for_status(resp) -> None:
+    """403 (no access to the property) and 429 / rate-limit 403 (quota) are the two
+    failures callers handle specifically; everything else returns None upstream."""
+    from app.services.integrations.google_errors import is_rate_limited_403, retry_after_seconds
+    if resp.status_code == 429 or (resp.status_code == 403 and is_rate_limited_403(resp)):
+        raise GoogleApiError("quota exceeded", status_code=429, retry_after=retry_after_seconds(resp))
+    if resp.status_code == 403:
+        raise GoogleApiError("property not accessible", status_code=403)
 
 
 # --------------------------- PKCE + OAuth state ---------------------------
@@ -159,11 +170,37 @@ async def exchange_code_for_tokens(code: str, code_verifier: str) -> dict | None
 
 
 async def refresh_access_token(refresh_token: str) -> dict | None:
-    return await _token_request({
-        "refresh_token": refresh_token, "client_id": settings.google_oauth_client_id,
-        "client_secret": settings.google_oauth_client_secret,
-        "grant_type": "refresh_token",
-    })
+    """A fresh access token. None = the grant is unusable (invalid_grant: revoked or
+    expired — reconnect needed). Raises GoogleTransientError for failures worth
+    retrying (network, timeout, 429, 5xx) and GooglePermanentError("auth_failed") when
+    Google rejects our client/request (configuration — not retried)."""
+    import httpx
+
+    from app.services.integrations.google_errors import (
+        GooglePermanentError, GoogleTransientError, classify_token_failure,
+    )
+    try:
+        async with httpx.AsyncClient(timeout=settings.ga4_api_timeout_seconds) as client:
+            resp = await client.post(_TOKEN_URL, data={
+                "refresh_token": refresh_token, "client_id": settings.google_oauth_client_id,
+                "client_secret": settings.google_oauth_client_secret, "grant_type": "refresh_token",
+            })
+    except (httpx.TimeoutException, httpx.TransportError):
+        log.warning("google token refresh failed: transport error")
+        raise GoogleTransientError("network_error")
+    if resp.status_code >= 400:
+        log.warning("google token refresh failed: http %s", resp.status_code)
+        failure = classify_token_failure(resp)
+        if isinstance(failure, GooglePermanentError) and failure.code == "auth_revoked":
+            return None
+        raise failure
+    try:
+        tokens = resp.json()
+    except Exception:  # noqa: BLE001
+        raise GoogleTransientError("google_unavailable")
+    if not isinstance(tokens, dict) or not tokens.get("access_token"):
+        raise GoogleTransientError("google_unavailable")
+    return tokens
 
 
 async def revoke_token(token: str) -> bool:
@@ -285,10 +322,7 @@ async def _run_report(access_token: str, property_id: str, body: dict, what: str
             for _ in range(_MAX_REPORT_PAGES):
                 resp = await client.post(url, headers=headers,
                                          json={**body, "limit": _PAGE_SIZE, "offset": offset})
-                if resp.status_code == 403:
-                    raise GoogleApiError("property not accessible", status_code=403)
-                if resp.status_code == 429:
-                    raise GoogleApiError("quota exceeded", status_code=429)
+                _raise_for_status(resp)
                 if resp.status_code >= 400:
                     log.warning("ga4 %s report failed: http %s (%s)", what, resp.status_code,
                                 _google_error_reason(resp))
@@ -407,10 +441,7 @@ async def fetch_daily_overview(access_token: str, property_id: str,
     except (httpx.TimeoutException, httpx.TransportError):
         log.warning("ga4 daily-overview report failed: transport error")
         return None
-    if resp.status_code == 403:
-        raise GoogleApiError("property not accessible", status_code=403)
-    if resp.status_code == 429:
-        raise GoogleApiError("quota exceeded", status_code=429)
+    _raise_for_status(resp)
     if resp.status_code >= 400:
         log.warning("ga4 daily-overview report failed: http %s (%s)", resp.status_code, _google_error_reason(resp))
         return None
@@ -562,10 +593,7 @@ async def fetch_overview_with_comparison(
     except (httpx.TimeoutException, httpx.TransportError):
         log.warning("ga4 overview-comparison report failed: transport error")
         return None
-    if resp.status_code == 403:
-        raise GoogleApiError("property not accessible", status_code=403)
-    if resp.status_code == 429:
-        raise GoogleApiError("quota exceeded", status_code=429)
+    _raise_for_status(resp)
     if resp.status_code >= 400:
         log.warning("ga4 overview-comparison report failed: http %s (%s)", resp.status_code, _google_error_reason(resp))
         return None
@@ -630,13 +658,21 @@ def _mark_error(db: Session, connection: GoogleAnalyticsConnection, code: str) -
 
 async def get_valid_access_token(db: Session, connection: GoogleAnalyticsConnection) -> str | None:
     """Decrypt the stored refresh token and exchange it for a fresh, short-lived
-    access token. On any auth failure, marks the connection status=error with a
-    safe error code and returns None — never raises, never returns a stale token."""
+    access token. A PERMANENT failure (token undecryptable, grant revoked, our request
+    rejected) marks the connection status=error with a safe code and returns None. A
+    TRANSIENT failure raises GoogleTransientError and leaves the connection untouched,
+    so a network blip or Google outage — even during a dashboard page view — never
+    disables syncing. Never returns a stale token."""
+    from app.services.integrations.google_errors import GooglePermanentError
     plaintext_refresh = token_crypto.decrypt_token(connection.encrypted_refresh_token)
     if not plaintext_refresh:
         _mark_error(db, connection, "credential_unavailable")
         return None
-    tokens = await refresh_access_token(plaintext_refresh)
+    try:
+        tokens = await refresh_access_token(plaintext_refresh)
+    except GooglePermanentError as exc:
+        _mark_error(db, connection, exc.code)
+        return None
     if not tokens or not tokens.get("access_token"):
         _mark_error(db, connection, "auth_revoked")
         return None
@@ -699,7 +735,11 @@ async def select_property(db: Session, connection: GoogleAnalyticsConnection,
     """Validates `property_id` against the connected account's OWN accessible
     property list before persisting it — never trusts a client-supplied name, and
     never accepts an arbitrary resource id that happens to look like one."""
-    access_token = await get_valid_access_token(db, connection)
+    from app.services.integrations.google_errors import GoogleTransientError
+    try:
+        access_token = await get_valid_access_token(db, connection)
+    except GoogleTransientError:
+        return {"status": "error", "error_code": "properties_unavailable"}
     if not access_token:
         return {"status": "error", "error_code": "auth_revoked"}
     properties = await list_ga4_properties(access_token)
@@ -795,12 +835,19 @@ async def run_sync(db: Session, connection: GoogleAnalyticsConnection) -> dict:
     app/monitoring/runner.py's ga4_sync dispatch); returns a summary dict on
     success. A bounded lookback (not every historical day) keeps each sync's GA4
     quota cost and DB write volume small and predictable."""
+    from app.services.integrations.google_errors import (
+        GoogleTransientError, SyncDeferred, SyncStopped, record_transient,
+    )
     if connection.status != GA4_STATUS_ACTIVE or not connection.ga4_property_id:
-        raise RuntimeError("connection is not ready to sync (no property selected)")
+        raise SyncStopped("connection is not ready to sync (no property selected)")
 
-    access_token = await get_valid_access_token(db, connection)
+    try:
+        access_token = await get_valid_access_token(db, connection)
+    except GoogleTransientError as exc:
+        record_transient(db, connection, exc.code, exc.retry_after)
+        raise SyncDeferred(exc.code)
     if not access_token:
-        raise RuntimeError("could not obtain a valid access token")
+        raise SyncStopped("could not obtain a valid access token")
 
     lookback = (settings.ga4_initial_sync_lookback_days if connection.last_synced_at is None
                 else settings.ga4_sync_lookback_days)
@@ -813,11 +860,14 @@ async def run_sync(db: Session, connection: GoogleAnalyticsConnection) -> dict:
     try:
         rows = await fetch_daily_traffic(access_token, connection.ga4_property_id, start_str, end_str)
     except GoogleApiError as exc:
-        _mark_error(db, connection,
-                    "property_inaccessible" if exc.status_code == 403 else "quota_exceeded")
-        raise
-    if rows is None:
-        raise RuntimeError("ga4 runReport returned no usable data")
+        if exc.status_code == 403:
+            _mark_error(db, connection, "property_inaccessible")
+            raise SyncStopped("property_inaccessible")
+        record_transient(db, connection, "quota_exceeded", exc.retry_after)
+        raise SyncDeferred("quota_exceeded")
+    if rows is None:   # network error, timeout, 5xx or an unusable answer: retry later
+        record_transient(db, connection, "google_unavailable")
+        raise SyncDeferred("google_unavailable")
 
     # Replace the whole window, never upsert row by row: a re-sync then yields exactly
     # GA4's current numbers (idempotent), a row GA4 no longer reports can't linger, and
@@ -944,6 +994,7 @@ async def run_sync(db: Session, connection: GoogleAnalyticsConnection) -> dict:
     connection.last_synced_at = now
     connection.last_sync_status = "success"
     connection.last_sync_error_code = None
+    connection.sync_failures = 0
     connection.status = GA4_STATUS_ACTIVE
     connection.next_sync_at = now + timedelta(hours=settings.ga4_sync_interval_hours)
     connection.updated_at = now

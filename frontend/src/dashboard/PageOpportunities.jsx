@@ -327,7 +327,9 @@ function SearchConsolePanel({ monitorId, canManage, onGated }) {
     body = (
       <p className="sp-si-muted">Connected to {st.site_url}
         {st.last_synced_at ? `, last synced ${fmtDate(st.last_synced_at)}` : ", first sync pending"}.
-        {!covers && " This property doesn't cover this website's address, so its data isn't used here."}</p>
+        {!covers && " This property doesn't cover this website's address, so its data isn't used here."}
+        {st.last_sync_status === "error" && ` The last sync failed temporarily; AEOMirror will retry automatically${
+          st.next_sync_at ? ` around ${fmtDate(st.next_sync_at)}` : ""}.`}</p>
     );
   }
   return (

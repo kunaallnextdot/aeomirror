@@ -130,8 +130,15 @@ def require_permission(action: str):
 
 
 def is_platform_admin(user: User) -> bool:
-    """True for platform admins: the DB flag or an allowlisted email (bootstrap)."""
-    return bool(user.is_platform_admin) or user.email in settings.admin_email_list()
+    """True for platform admins: the DB flag, or an allowlisted email (bootstrap) that
+    the account has proven it owns. The allowlist alone is never enough: anyone can
+    register with (or change their email to) an address nobody has claimed yet, so the
+    email must be verified — and verification links are bound to the address they were
+    sent to (see routes_auth.update_me)."""
+    if user.is_platform_admin:
+        return True
+    email = (user.email or "").strip().lower()
+    return bool(user.email_verified) and bool(email) and email in settings.admin_email_list()
 
 
 def get_admin(user: User = Depends(get_current_user)) -> User:

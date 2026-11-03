@@ -13,8 +13,10 @@ The actual scanning happens in runner.py; this module never fetches or scores.
 from __future__ import annotations
 
 import logging
+import threading
 from datetime import datetime, timedelta
 
+from sqlalchemy import or_
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -203,6 +205,7 @@ def claim_job(db: Session, now: datetime | None = None) -> ScheduledJob | None:
     updated = (db.query(ScheduledJob)
                .filter(ScheduledJob.id == job.id, ScheduledJob.status == JOB_PENDING)
                .update({ScheduledJob.status: JOB_RUNNING, ScheduledJob.started_at: now,
+                        ScheduledJob.heartbeat_at: now,
                         ScheduledJob.attempts: ScheduledJob.attempts + 1,
                         ScheduledJob.updated_at: now}, synchronize_session=False))
     db.commit()
@@ -212,13 +215,72 @@ def claim_job(db: Session, now: datetime | None = None) -> ScheduledJob | None:
     return job
 
 
-def complete_job(db: Session, job: ScheduledJob, now: datetime | None = None) -> None:
+def _still_ours(job: ScheduledJob):
+    """Filter matching the job row only while it is still the claim this process holds
+    (or was never claimed, e.g. the API's inline "Run now"). Once a stalled job is
+    recovered and re-claimed by another worker its started_at changes, so a worker that
+    comes back late can no longer complete or fail it."""
+    claim = (ScheduledJob.started_at.is_(None) if job.started_at is None
+             else or_(ScheduledJob.started_at == job.started_at, ScheduledJob.started_at.is_(None)))
+    return (ScheduledJob.id == job.id, ScheduledJob.status.in_((JOB_PENDING, JOB_RUNNING)), claim)
+
+
+def complete_job(db: Session, job: ScheduledJob, now: datetime | None = None) -> bool:
+    """Mark the job completed. False (and no change) when the claim is no longer ours."""
     now = now or datetime.utcnow()
-    job.status = JOB_COMPLETED
-    job.finished_at = now
-    job.updated_at = now
-    job.error = None
+    n = (db.query(ScheduledJob).filter(*_still_ours(job))
+         .update({ScheduledJob.status: JOB_COMPLETED, ScheduledJob.finished_at: now,
+                  ScheduledJob.updated_at: now, ScheduledJob.error: None}, synchronize_session=False))
     db.commit()
+    db.refresh(job)
+    if not n:
+        logger.warning("job %s was recovered by another worker; not marking it completed", job.id)
+    return bool(n)
+
+
+def heartbeat(job_id: str, started_at: datetime | None, now: datetime | None = None) -> bool:
+    """Refresh a running job's heartbeat (own session: called from the heartbeat thread)."""
+    from app.db.session import SessionLocal
+    db = SessionLocal()
+    try:
+        n = (db.query(ScheduledJob)
+             .filter(ScheduledJob.id == job_id, ScheduledJob.status == JOB_RUNNING,
+                     ScheduledJob.started_at == started_at)
+             .update({ScheduledJob.heartbeat_at: now or datetime.utcnow()}, synchronize_session=False))
+        db.commit()
+        return bool(n)
+    finally:
+        db.close()
+
+
+class JobHeartbeat:
+    """Keeps a claimed job's lease alive while it runs. A thread, not an asyncio task:
+    several job bodies do long synchronous work (parsing, analysis) that would starve a
+    coroutine on the same event loop. Heartbeat failures are logged, never raised."""
+
+    def __init__(self, job: ScheduledJob, interval: float | None = None):
+        self.job_id, self.started_at = job.id, job.started_at
+        self.interval = interval if interval is not None else settings.job_heartbeat_seconds
+        self._stop = threading.Event()
+        self._thread = threading.Thread(target=self._run, name=f"job-heartbeat-{job.id}", daemon=True)
+
+    def _run(self):
+        while not self._stop.wait(self.interval):
+            try:
+                heartbeat(self.job_id, self.started_at)
+            except Exception:   # noqa: BLE001 — a missed beat only shortens the lease
+                logger.warning("heartbeat for job %s failed", self.job_id)
+
+    def __enter__(self):
+        if self.started_at is not None:
+            self._thread.start()
+        return self
+
+    def __exit__(self, *exc):
+        self._stop.set()
+        if self._thread.is_alive():
+            self._thread.join(timeout=5)
+        return False
 
 
 def has_active_url_crawl_job(db: Session, crawl_job_id: str) -> ScheduledJob | None:
@@ -255,19 +317,21 @@ def enqueue_url_crawl_chunk(db: Session, crawl_job_id: str, org_id: str | None,
     return job
 
 
-def fail_job(db: Session, job: ScheduledJob, error, now: datetime | None = None) -> None:
-    """Retry with backoff until max_attempts, then mark failed."""
+def fail_job(db: Session, job: ScheduledJob, error, now: datetime | None = None) -> bool:
+    """Retry with backoff until max_attempts, then mark failed. Applied only while the
+    claim is still ours (see _still_ours); returns False otherwise."""
     now = now or datetime.utcnow()
-    job.error = str(error)[:500]
-    job.updated_at = now
+    values = {ScheduledJob.error: str(error)[:500], ScheduledJob.updated_at: now}
     if job.attempts < job.max_attempts:
-        job.status = JOB_PENDING
-        job.started_at = None
-        job.run_after = now + timedelta(seconds=settings.monitor_job_retry_backoff_seconds)
+        values.update({ScheduledJob.status: JOB_PENDING, ScheduledJob.started_at: None,
+                       ScheduledJob.heartbeat_at: None,
+                       ScheduledJob.run_after: now + timedelta(seconds=settings.monitor_job_retry_backoff_seconds)})
     else:
-        job.status = JOB_FAILED
-        job.finished_at = now
+        values.update({ScheduledJob.status: JOB_FAILED, ScheduledJob.finished_at: now})
+    n = db.query(ScheduledJob).filter(*_still_ours(job)).update(values, synchronize_session=False)
     db.commit()
+    db.refresh(job)
+    return bool(n)
 
 
 def has_active_page_value_job(db: Session, run_id: str) -> ScheduledJob | None:
@@ -395,27 +459,41 @@ def enqueue_manual_gsc_sync(db: Session, connection, now: datetime | None = None
     return job
 
 
-# A crawl chunk is bounded (url_crawl_fetch_batch_size pages, each under the fetch
-# timeout), so one still "running" this long after it started was abandoned by a worker
-# that stopped mid-chunk (deploy, restart, crash). Left alone it would block the crawl
-# forever: the one-active-chunk-per-crawl index stops a continuation from being queued.
+# A running job is alive while its heartbeat is fresh (JobHeartbeat). Jobs claimed
+# before heartbeats existed have none; for those the older rule applies: still
+# "running" this long after starting means the worker stopped mid-job.
 STALLED_CRAWL_CHUNK_MINUTES = 30
 
 
-def requeue_stalled_crawl_chunks(db: Session, now: datetime | None = None) -> int:
-    """Return abandoned crawl chunks to the queue through the normal retry path
-    (fail_job: retried with backoff, or failed once attempts run out — then the crawl
-    itself is marked failed, exactly as the runner does). Chunks are safe to re-run:
-    every page's status is persisted as it is processed."""
+def stalled_jobs(db: Session, now: datetime | None = None) -> list[ScheduledJob]:
+    """Running jobs of ANY kind whose worker is gone: heartbeat older than the lease,
+    or (no heartbeat recorded) started more than STALLED_CRAWL_CHUNK_MINUTES ago. A job
+    whose worker is alive keeps a fresh heartbeat and is never returned."""
+    now = now or datetime.utcnow()
+    lease_cutoff = now - timedelta(seconds=settings.job_lease_seconds)
+    legacy_cutoff = now - timedelta(minutes=STALLED_CRAWL_CHUNK_MINUTES)
+    return (db.query(ScheduledJob)
+            .filter(ScheduledJob.status == JOB_RUNNING,
+                    or_(ScheduledJob.heartbeat_at < lease_cutoff,
+                        ScheduledJob.heartbeat_at.is_(None) & (ScheduledJob.started_at < legacy_cutoff)))
+            .all())
+
+
+def recover_stalled_jobs(db: Session, now: datetime | None = None) -> int:
+    """Return abandoned jobs to the queue through the normal retry path (fail_job:
+    retried with backoff, or failed once attempts run out — then the parent record is
+    finalized exactly as the runner does). Every job kind is safe to re-run: chunks
+    persist progress as they go, syncs replace their date window, and scans/bulk scans
+    skip work that already completed (runner.process_job)."""
     from app.db.models import CRAWL_FAILED, CrawlJob
     now = now or datetime.utcnow()
-    cutoff = now - timedelta(minutes=STALLED_CRAWL_CHUNK_MINUTES)
-    stale = (db.query(ScheduledJob)
-             .filter(ScheduledJob.kind.in_((JOB_KIND_URL_CRAWL, JOB_KIND_PAGE_VALUE, JOB_KIND_URL_RECHECK)),
-                     ScheduledJob.status == JOB_RUNNING, ScheduledJob.started_at < cutoff)
-             .all())
+    stale = stalled_jobs(db, now)
     for job in stale:
-        fail_job(db, job, "the worker stopped while this chunk was running", now)
+        if not fail_job(db, job, "the worker stopped while this job was running", now):
+            continue
+        if job.status == JOB_FAILED and job.kind == JOB_KIND_BULK_SCAN and job.scan_id:
+            from app.monitoring.runner import _mark_scan_failed
+            _mark_scan_failed(db, job.scan_id, RuntimeError("worker stopped"))
         if job.status == JOB_FAILED and job.kind == JOB_KIND_PAGE_VALUE:
             from app.db.models import PV_ACTIVE, PV_FAILED, PageValueRun
             run = db.get(PageValueRun, job.page_value_run_id)
@@ -434,5 +512,8 @@ def requeue_stalled_crawl_chunks(db: Session, now: datetime | None = None) -> in
                 crawl.finished_at = now
                 db.commit()
     if stale:
-        logger.warning("requeued %d stalled crawl chunk(s)", len(stale))
+        logger.warning("recovered %d stalled job(s)", len(stale))
     return len(stale)
+
+
+requeue_stalled_crawl_chunks = recover_stalled_jobs   # former name, kept for callers

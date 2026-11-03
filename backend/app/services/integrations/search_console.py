@@ -119,11 +119,18 @@ def _mark_error(db: Session, connection: SearchConsoleConnection, code: str) -> 
 
 
 async def get_valid_access_token(db: Session, connection: SearchConsoleConnection) -> str | None:
+    """Same contract as the GA4 twin: permanent failures mark the connection and return
+    None; transient ones raise GoogleTransientError and leave it untouched."""
+    from app.services.integrations.google_errors import GooglePermanentError
     plaintext = token_crypto.decrypt_token(connection.encrypted_refresh_token)
     if not plaintext:
         _mark_error(db, connection, "credential_unavailable")
         return None
-    tokens = await ga4.refresh_access_token(plaintext)
+    try:
+        tokens = await ga4.refresh_access_token(plaintext)
+    except GooglePermanentError as exc:
+        _mark_error(db, connection, exc.code)
+        return None
     if not tokens or not tokens.get("access_token"):
         _mark_error(db, connection, "auth_revoked")
         return None
@@ -133,10 +140,15 @@ async def get_valid_access_token(db: Session, connection: SearchConsoleConnectio
 # --------------------------- raw API calls ---------------------------
 
 def _raise_for_quota_or_access(resp) -> None:
-    if resp.status_code in (401, 403):
+    """429, or a 403 whose reason is a rate limit (Search Console often reports quota
+    that way) = retry later; any other 403 = this account can no longer read the
+    property. A 401 right after a successful token refresh is treated as transient."""
+    from app.services.integrations.google_errors import is_rate_limited_403, retry_after_seconds
+    if resp.status_code == 429 or (resp.status_code == 403 and is_rate_limited_403(resp)):
+        raise GoogleApiError("search console quota exceeded", status_code=429,
+                             retry_after=retry_after_seconds(resp))
+    if resp.status_code == 403:
         raise GoogleApiError("search console access denied", status_code=403)
-    if resp.status_code == 429:
-        raise GoogleApiError("search console quota exceeded", status_code=429)
 
 
 async def list_sites(access_token: str) -> list[dict] | None:
@@ -222,7 +234,11 @@ def site_covers(site_url: str | None, url: str | None) -> bool:
 
 async def select_site(db: Session, connection: SearchConsoleConnection, site_url: str) -> dict:
     """Accept only a property the connected account itself can access (verified)."""
-    access_token = await get_valid_access_token(db, connection)
+    from app.services.integrations.google_errors import GoogleTransientError
+    try:
+        access_token = await get_valid_access_token(db, connection)
+    except GoogleTransientError:
+        return {"status": "error", "error_code": "properties_unavailable"}
     if not access_token:
         return {"status": "error", "error_code": "auth_revoked"}
     sites = await list_sites(access_token)
@@ -279,11 +295,18 @@ async def run_sync(db: Session, connection: SearchConsoleConnection) -> dict:
     the fetch succeeded."""
     from app.services.analytics.aggregation import page_key
 
+    from app.services.integrations.google_errors import (
+        GoogleTransientError, SyncDeferred, SyncStopped, record_transient,
+    )
     if connection.status != GA4_STATUS_ACTIVE or not connection.site_url:
-        raise RuntimeError("search console connection is not ready to sync")
-    access_token = await get_valid_access_token(db, connection)
+        raise SyncStopped("search console connection is not ready to sync")
+    try:
+        access_token = await get_valid_access_token(db, connection)
+    except GoogleTransientError as exc:
+        record_transient(db, connection, exc.code, exc.retry_after)
+        raise SyncDeferred(exc.code)
     if not access_token:
-        raise RuntimeError("could not obtain a valid access token")
+        raise SyncStopped("could not obtain a valid access token")
 
     start, end = sync_window()
     start_s, end_s = start.isoformat(), end.isoformat()
@@ -293,10 +316,14 @@ async def run_sync(db: Session, connection: SearchConsoleConnection) -> dict:
         try:
             batch = await query_pages(access_token, connection.site_url, start_s, end_s, page_no * ROW_LIMIT)
         except GoogleApiError as exc:
-            _mark_error(db, connection, "property_inaccessible" if exc.status_code == 403 else "quota_exceeded")
-            raise
-        if batch is None:
-            raise RuntimeError("search console query returned no usable data")
+            if exc.status_code == 403:
+                _mark_error(db, connection, "property_inaccessible")
+                raise SyncStopped("property_inaccessible")
+            record_transient(db, connection, "quota_exceeded", exc.retry_after)
+            raise SyncDeferred("quota_exceeded")
+        if batch is None:   # network error, timeout, 5xx or an unusable answer: retry later
+            record_transient(db, connection, "google_unavailable")
+            raise SyncDeferred("google_unavailable")
         rows.extend(batch)
         if len(batch) < ROW_LIMIT:
             break
@@ -321,6 +348,7 @@ async def run_sync(db: Session, connection: SearchConsoleConnection) -> dict:
     connection.last_synced_at = now
     connection.last_sync_status = "success"
     connection.last_sync_error_code = None
+    connection.sync_failures = 0
     connection.next_sync_at = now + timedelta(hours=settings.ga4_sync_interval_hours)
     connection.updated_at = now
     db.commit()

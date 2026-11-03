@@ -2,7 +2,10 @@
 
 Hardened (Phase 1):
 - Split connect vs. total timeouts.
-- Response body capped WHILE streaming (never buffers an unbounded body).
+- Every response body capped WHILE streaming — the page, robots.txt, llms.txt and
+  sitemap.xml alike — counting DECOMPRESSED bytes and inflating gzip/deflate in bounded
+  steps, so neither a huge file nor a compression bomb can exhaust memory.
+- A total wall-clock deadline per request (httpx's own timeouts apply per read).
 - Redirects followed manually and **every hop is SSRF-revalidated** — a redirect
   to a private/loopback/reserved address is rejected, not just the initial URL.
 - Bounded exponential backoff + jitter, retrying ONLY transient failures
@@ -15,6 +18,7 @@ from __future__ import annotations
 
 import asyncio
 import random
+import zlib
 from urllib.parse import urljoin, urlparse
 
 import httpx
@@ -25,6 +29,8 @@ from app.scanner.models import PageBundle
 
 _REDIRECT_CODES = {301, 302, 303, 307, 308}
 _RETRY_STATUS = {502, 503, 504}
+# Only encodings read_limited can inflate in bounded steps are advertised.
+ACCEPT_ENCODING = "gzip, deflate"
 
 
 class FetchError(Exception):
@@ -71,16 +77,77 @@ async def _with_retry(factory, retries: int | None = None):
             await _sleep_backoff(i)
 
 
+async def read_limited(resp: httpx.Response, limit: int) -> tuple[bytes | None, bool]:
+    """Stream at most `limit` DECODED bytes of a response body. Returns (body, truncated).
+    Reads raw bytes and inflates gzip/deflate itself with a max_length per step (httpx's
+    decoder would inflate a whole network chunk at once — up to ~1000x its size). The
+    raw stream is capped at `limit` too. body=None when the body uses an encoding that
+    can't be inflated safely (we never advertise one; a server sending it anyway is
+    treated as "no usable body")."""
+    if resp.is_stream_consumed:    # body already in memory (a response built from bytes): just cap it
+        data = resp.content
+        return data[:limit], len(data) > limit
+    encodings = [e.strip().lower() for e in (resp.headers.get("content-encoding") or "").split(",") if e.strip()]
+    encodings = [e for e in encodings if e != "identity"]
+    if len(encodings) > 1 or (encodings and encodings[0] not in ("gzip", "x-gzip", "deflate")):
+        return None, True
+    if encodings and encodings[0] in ("gzip", "x-gzip"):
+        decoder = zlib.decompressobj(16 + zlib.MAX_WBITS)
+    elif encodings:
+        decoder = zlib.decompressobj(zlib.MAX_WBITS)     # zlib-wrapped; raw deflate handled below
+    else:
+        decoder = None
+    out = bytearray()
+    raw_total, first = 0, True
+    async for raw in resp.aiter_raw():
+        raw_total += len(raw)
+        if raw_total > limit:
+            return bytes(out[:limit]), True
+        if decoder is None:
+            out += raw[: limit + 1 - len(out)]
+        else:
+            data = raw
+            while data:
+                try:
+                    piece = decoder.decompress(data, limit + 1 - len(out))
+                except zlib.error:
+                    if first and encodings[0] == "deflate":   # some servers send raw deflate
+                        decoder, first = zlib.decompressobj(-zlib.MAX_WBITS), False
+                        continue
+                    return bytes(out), True                   # corrupt stream: keep what decoded
+                first = False
+                out += piece
+                if len(out) > limit:
+                    break
+                data = decoder.unconsumed_tail
+        if len(out) > limit:
+            return bytes(out[:limit]), True
+    if decoder is not None:
+        try:
+            out += decoder.flush()[: limit + 1 - len(out)]
+        except zlib.error:
+            return bytes(out), True
+        if len(out) > limit:
+            return bytes(out[:limit]), True
+    return bytes(out), False
+
+
+async def with_deadline(coro, seconds: float):
+    """Await `coro` under a total wall-clock deadline; a miss is a ReadTimeout (so the
+    page fetch's transient-retry logic treats it like any other timeout)."""
+    try:
+        return await asyncio.wait_for(coro, timeout=seconds)
+    except asyncio.TimeoutError:
+        raise httpx.ReadTimeout(f"no complete response within {seconds:g}s")
+
+
+def _decode(resp: httpx.Response, body: bytes | None) -> str:
+    return (body or b"").decode(resp.encoding or "utf-8", errors="replace")
+
+
 async def _read_capped(resp: httpx.Response) -> tuple[int, str, dict]:
-    chunks, total = [], 0
-    async for chunk in resp.aiter_bytes():
-        total += len(chunk)
-        if total > settings.fetch_max_bytes:
-            break  # stop streaming; do not buffer more than the cap
-        chunks.append(chunk)
-    body = b"".join(chunks)
-    text = body.decode(resp.encoding or "utf-8", errors="replace")
-    return resp.status_code, text, dict(resp.headers)
+    body, _ = await read_limited(resp, settings.fetch_max_bytes)
+    return resp.status_code, _decode(resp, body), dict(resp.headers)
 
 
 async def _fetch_page(client: httpx.AsyncClient, start_url: str) -> tuple[int, str, dict, list, str]:
@@ -116,11 +183,30 @@ async def _fetch_page(client: httpx.AsyncClient, start_url: str) -> tuple[int, s
 
 
 async def _exists(client: httpx.AsyncClient, url: str) -> bool:
+    """Status only: the body is never read (no redirect following for aux probes)."""
+    async def probe():
+        async with client.stream("GET", url) as r:
+            return r.status_code == 200
     try:
-        r = await client.get(url)  # no redirect following for aux probes
-        return r.status_code == 200
+        return await with_deadline(probe(), settings.fetch_aux_timeout_seconds)
     except httpx.HTTPError:
         return False
+
+
+async def _get_text(client: httpx.AsyncClient, url: str, limit: int) -> str | None:
+    """Body of a 200 response, capped at `limit` decoded bytes; None otherwise. Never
+    raises: an optional resource that is oversized, slow, compressed oddly or missing
+    just leaves the scan without it."""
+    async def get():
+        async with client.stream("GET", url) as r:
+            if r.status_code != 200:
+                return None
+            body, _ = await read_limited(r, limit)
+            return None if body is None else _decode(r, body)
+    try:
+        return await with_deadline(get(), settings.fetch_aux_timeout_seconds)
+    except httpx.HTTPError:
+        return None
 
 
 async def fetch(url: str, *, transport: "httpx.BaseTransport | None" = None,
@@ -136,7 +222,7 @@ async def fetch(url: str, *, transport: "httpx.BaseTransport | None" = None,
 
     origin = _origin(url)
     limits = httpx.Limits(max_connections=10)
-    headers = {"User-Agent": settings.user_agent}
+    headers = {"User-Agent": settings.user_agent, "Accept-Encoding": ACCEPT_ENCODING}
 
     async with httpx.AsyncClient(
         headers=headers, timeout=_timeout(), limits=limits,
@@ -144,26 +230,14 @@ async def fetch(url: str, *, transport: "httpx.BaseTransport | None" = None,
         transport=transport,
     ) as client:
         status, html, resp_headers, redirect_chain, final_url = await _with_retry(
-            lambda: _fetch_page(client, url), retries)
+            lambda: with_deadline(_fetch_page(client, url), settings.fetch_total_timeout_seconds), retries)
 
-        robots = ""
-        try:
-            r = await client.get(f"{origin}/robots.txt")
-            if r.status_code == 200:
-                robots = r.text
-        except httpx.HTTPError:
-            pass
+        robots = await _get_text(client, f"{origin}/robots.txt", settings.fetch_robots_max_bytes) or ""
 
         llms_present = await _exists(client, f"{origin}/llms.txt")
 
         # Capture the sitemap body (capped) so the sitemap signal can validate it.
-        sitemap_xml = ""
-        try:
-            sm = await client.get(f"{origin}/sitemap.xml")
-            if sm.status_code == 200:
-                sitemap_xml = sm.text[:200_000]
-        except httpx.HTTPError:
-            pass
+        sitemap_xml = await _get_text(client, f"{origin}/sitemap.xml", settings.fetch_sitemap_max_bytes) or ""
         sitemap_present = bool(sitemap_xml) or ("sitemap" in robots.lower())
 
     return PageBundle(

@@ -755,7 +755,8 @@ def test_sync_access_errors_mark_the_connection_and_keep_existing_rows(monkeypat
     db = SessionLocal()
     try:
         conn = db.get(SearchConsoleConnection, cid)
-        with pytest.raises(ga4.GoogleApiError):
+        from app.services.integrations.google_errors import SyncStopped
+        with pytest.raises(SyncStopped):
             asyncio.run(gsc.run_sync(db, conn))
         db.refresh(conn)
         assert conn.status == GA4_STATUS_ERROR and conn.last_sync_error_code == "property_inaccessible"

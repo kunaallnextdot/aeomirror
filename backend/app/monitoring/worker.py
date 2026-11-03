@@ -82,7 +82,7 @@ async def tick() -> dict:
     """One scheduler pass. Returns counts. Safe to call from tests/scripts."""
     db = SessionLocal()
     try:
-        scheduler.requeue_stalled_crawl_chunks(db)
+        scheduler.recover_stalled_jobs(db)
         enqueued = scheduler.enqueue_due(db)
         enqueued += scheduler.enqueue_due_ga4_syncs(db)
         enqueued += scheduler.enqueue_due_gsc_syncs(db)
@@ -92,7 +92,8 @@ async def tick() -> dict:
             job = scheduler.claim_job(db)
             if not job:
                 break
-            await runner.process_job(db, job)
+            with scheduler.JobHeartbeat(job):
+                await runner.process_job(db, job)
             processed += 1
         # Both do blocking SMTP sends on this async scheduler pass — offload to threads.
         summaries = await anyio.to_thread.run_sync(notifications.maybe_send_summaries, db)

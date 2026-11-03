@@ -20,6 +20,7 @@ from sqlalchemy.orm import Session
 from app.api.deps import AuthContext, get_context, require_permission
 from app.billing import entitlements
 from app.config import settings
+from app.services.integrations.google_errors import GoogleTransientError
 from app.db.models import (
     AI_ASSISTANT_LABELS, AI_SOURCE_LABELS, GA4_STATUS_ACTIVE, Ga4DailyOverview, Ga4LandingPageSnapshot,
     Ga4TrafficSnapshot, GoogleAnalyticsConnection, Monitor, Scan,
@@ -159,6 +160,9 @@ def status(ctx: AuthContext = Depends(require_permission("report:view")),
         "last_synced_at": connection.last_synced_at,
         "last_sync_status": connection.last_sync_status,
         "last_sync_error_code": connection.last_sync_error_code,
+        # When the scheduler will try again (after a transient failure: the backoff).
+        "next_sync_at": connection.next_sync_at,
+        "sync_failures": connection.sync_failures or 0,
         "linked_monitor_id": connection.linked_monitor_id,
         # Each dataset's own last successful sync; the overview and landing-page
         # reports are best-effort and can lag the traffic report.
@@ -180,7 +184,11 @@ async def properties(ctx: AuthContext = Depends(require_permission("report:view"
                      db: Session = Depends(get_db)):
     _require_pro(db, ctx)
     connection = _owned_connection_or_404(db, ctx)
-    access_token = await ga4.get_valid_access_token(db, connection)
+    try:
+        access_token = await ga4.get_valid_access_token(db, connection)
+    except GoogleTransientError:
+        raise HTTPException(status_code=503,
+            detail="Google is temporarily unavailable. Please try again in a few minutes.")
     if not access_token:
         raise HTTPException(status_code=502,
             detail="Could not reach your Google Analytics account. Try reconnecting.")
@@ -366,7 +374,11 @@ async def overview(start_date: str | None = Query(default=None),
     if connection.status != GA4_STATUS_ACTIVE or not connection.ga4_property_id:
         return {**base, "current": None, "previous": None, "unavailable_reason": "not_active"}
 
-    access_token = await ga4.get_valid_access_token(db, connection)
+    try:
+        access_token = await ga4.get_valid_access_token(db, connection)
+    except GoogleTransientError:
+        raise HTTPException(status_code=503,
+            detail="Google is temporarily unavailable. Please try again in a few minutes.")
     if not access_token:
         raise HTTPException(status_code=401,
             detail="Your Google Analytics connection needs to be reconnected.")

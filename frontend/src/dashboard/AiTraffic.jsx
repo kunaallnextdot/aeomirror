@@ -63,11 +63,24 @@ const ERROR_MESSAGES = {
   properties_unavailable: "Could not load your Google Analytics properties right now.",
   property_not_accessible: "That property isn't accessible to the connected Google account.",
   credential_unavailable: "Your Google Analytics connection needs to be reconnected.",
-  quota_exceeded: "Google Analytics' request limit was reached. The next sync retries automatically.",
+  auth_failed: "Google rejected AEOMirror's sign-in for this connection. Reconnect to keep syncing.",
   property_inaccessible: "The selected property is no longer accessible to the connected account.",
   integration_disabled: "Google Analytics isn't configured on this server yet.",
 };
 const errorMessage = (code) => ERROR_MESSAGES[code] || "Something went wrong with Google Analytics.";
+// Temporary failures: the connection stays active and the scheduler retries with backoff.
+const RETRY_MESSAGES = {
+  quota_exceeded: "Google Analytics' request limit was reached",
+  google_unavailable: "Google Analytics didn't respond properly",
+  network_error: "Google couldn't be reached",
+  sync_failed: "The last sync didn't finish",
+};
+export function syncRetryNote(status, product = "Google Analytics") {
+  if (!status || status.status !== "active" || status.last_sync_status !== "error") return null;
+  const why = RETRY_MESSAGES[status.last_sync_error_code] || `The last ${product} sync failed`;
+  const when = status.next_sync_at ? ` Next attempt around ${fmtDate(status.next_sync_at)}.` : "";
+  return `${why}. AEOMirror will retry automatically; data shown is from the last successful sync.${when}`;
+}
 
 const RANGES = [
   { label: "7 days", days: 7 }, { label: "28 days", days: 28 },
@@ -449,6 +462,7 @@ export default function AiTraffic() {
                   ? `Last synced ${fmtDate(status.last_synced_at)}`
                   : "Not synced yet"}
               </div>
+              {syncRetryNote(status) && <div className="sp-ga4-synced" role="status">{syncRetryNote(status)}</div>}
             </div>
             <div className="sp-ga4-ranges">
               {RANGES.map((r) => (
