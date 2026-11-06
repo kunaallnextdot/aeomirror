@@ -1,19 +1,5 @@
-# AEOMirror — allow all crawlers, including AI engines.
+# AEOMirror — TEMPORARILY closed to all crawlers while the site is being tested.
+# To reopen, restore the previous rules (allow all, Disallow /app and /admin,
+# explicit Allow for GPTBot / ClaudeBot / PerplexityBot / Google-Extended, Sitemap line).
 User-agent: *
-Allow: /
-Disallow: /app
-Disallow: /admin
-
-User-agent: GPTBot
-Allow: /
-
-User-agent: ClaudeBot
-Allow: /
-
-User-agent: PerplexityBot
-Allow: /
-
-User-agent: Google-Extended
-Allow: /
-
-Sitemap: https://aeomirror.com/sitemap.xml
+Disallow: /
